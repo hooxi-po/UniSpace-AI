@@ -6,8 +6,8 @@ import {
   Zap, Thermometer, Droplets, Wifi, Shield, Activity, 
   Layers, Map, Maximize, AlertCircle, TrendingUp, Users, MonitorPlay, Sun, CloudRain, Wind
 } from 'lucide-react';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, Environment, Html, ContactShadows, Sky, useGLTF } from '@react-three/drei';
+import { Canvas } from '@react-three/fiber';
+import { OrbitControls, Environment, Html, ContactShadows, Sky } from '@react-three/drei';
 import * as THREE from 'three';
 
 // Fix for React Three Fiber intrinsic elements in TypeScript
@@ -64,15 +64,10 @@ const occupancyData = [
 const OCCUPANCY_COLORS = ['#165DFF', '#00B42A', '#FF7D00', '#F53F3F'];
 
 // --- 3D Components ---
+import { useGLTF } from '@react-three/drei';
 
-// 载入 GLB 数字孪生模型（办公楼）
-const OfficeModel: React.FC<{ scale?: [number, number, number]; position?: [number, number, number] }> = ({ scale = [1,1,1], position = [0,0,0] }) => {
-    const { scene } = useGLTF('/modle/officeBuild.glb') as unknown as GLTFResult;
-    return <primitive object={scene} scale={scale} position={position} />;
-};
-
-/* 保留旧组件以备后期调试
-const BuildingBlock = ({ position, size, color, label }: { position: [number, number, number], size: [number, number, number], color: string, label?: string }) => {
+/* Procedural building blocks replaced by imported GLB model */
+const BuildingBlockDeprecated = ({ position, size, color, label }: { position: [number, number, number], size: [number, number, number], color: string, label?: string }) => {
     const mesh = useRef<THREE.Mesh>(null);
     const [hovered, setHover] = useState(false);
 
@@ -131,14 +126,13 @@ const SensorMarker = ({ position, type, status, value, label }: any) => {
     )
 }
 
-import { GLTF } from 'three/examples/jsm/loaders/GLTFLoader';
-
-type GLTFResult = GLTF & {
-  nodes: Record<string, THREE.Mesh>;
-  materials: Record<string, THREE.Material>;
+const OfficeModel = (props: any) => {
+    const { scene } = useGLTF('/modle/officeBuild.glb');
+    return <primitive object={scene} {...props} />;
 };
+useGLTF.preload('/modle/officeBuild.glb');
 
-const CampusScene = ({ activeLayer }: { activeLayer: string }) => {
+const CampusScene: React.FC = () => {
     return (
         <>
             <ambientLight intensity={0.8} />
@@ -153,41 +147,10 @@ const CampusScene = ({ activeLayer }: { activeLayer: string }) => {
             </mesh>
             <gridHelper args={[100, 50, '#cbd5e1', '#f1f5f9']} />
 
-            {/* Buildings */}
-            {/* Admin Block */}
-            <BuildingBlock position={[-10, 0, -5]} size={[8, 12, 6]} color="#cbd5e1" label="行政楼" />
-            {/* Library */}
-            <BuildingBlock position={[0, 0, -15]} size={[15, 8, 10]} color="#94a3b8" label="图书馆" />
-            {/* Science Block */}
-            <BuildingBlock position={[12, 0, -5]} size={[10, 15, 8]} color="#64748b" label="理工实验楼" />
-            {/* Dorms */}
-            <BuildingBlock position={[-15, 0, 10]} size={[6, 10, 15]} color="#f8fafc" label="西区宿舍" />
-            <BuildingBlock position={[-5, 0, 10]} size={[6, 10, 15]} color="#f8fafc" label="西区宿舍 B" />
-            {/* Gym */}
-            <BuildingBlock position={[15, 0, 10]} size={[12, 6, 12]} color="#bae6fd" label="体育馆" />
-
-            {/* Trees (Simple Cones) */}
-            {[-8, 8, -12, 12].map((x, i) => (
-                <mesh key={i} position={[x, 1.5, 5]} castShadow>
-                    <coneGeometry args={[1, 3, 8]} />
-                    <meshStandardMaterial color="#4ade80" />
-                </mesh>
-            ))}
-
-            {/* Sensors */}
-            {(activeLayer === 'ALL' || activeLayer === 'ENERGY') && (
-                <>
-                    <SensorMarker position={[-10, 6, -5]} type="energy" status="normal" label="行政楼能耗" value="120 kW" />
-                    <SensorMarker position={[12, 10, -5]} type="temp" status="warning" label="实验室暖通" value="28°C" />
-                    <SensorMarker position={[0, 5, -15]} type="energy" status="normal" label="图书馆照明" value="Online" />
-                </>
-            )}
-             {(activeLayer === 'ALL' || activeLayer === 'SECURITY') && (
-                <>
-                    <SensorMarker position={[-15, 8, 10]} type="security" status="normal" label="宿舍门禁" value="Closed" />
-                    <SensorMarker position={[15, 4, 10]} type="security" status="error" label="体育馆侧门" value="Open" />
-                </>
-            )}
+            {/* Digital Twin Model */}
+            <group position={[0, 0, 0]}>
+                <OfficeModel />
+            </group>
 
             <ContactShadows opacity={0.4} scale={40} blur={2} far={10} resolution={256} color="#000000" />
             
@@ -324,7 +287,7 @@ export const Dashboard: React.FC = () => {
         <div className="col-span-12 lg:col-span-6 relative bg-slate-900 rounded-sm overflow-hidden shadow-2xl border border-slate-700 group">
             <Canvas shadows camera={{ position: [20, 20, 20], fov: 45 }}>
                 <Suspense fallback={null}>
-                    <CampusScene activeLayer={activeLayer} />
+                    <CampusScene />
                 </Suspense>
             </Canvas>
 

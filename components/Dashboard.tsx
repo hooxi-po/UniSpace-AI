@@ -7,7 +7,7 @@ import {
   Layers, Map, Maximize, AlertCircle, TrendingUp, Users, MonitorPlay, Sun, CloudRain, Wind
 } from 'lucide-react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, Environment, Html, ContactShadows, Sky } from '@react-three/drei';
+import { OrbitControls, Environment, Html, ContactShadows, Sky, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 
 // Fix for React Three Fiber intrinsic elements in TypeScript
@@ -65,6 +65,13 @@ const OCCUPANCY_COLORS = ['#165DFF', '#00B42A', '#FF7D00', '#F53F3F'];
 
 // --- 3D Components ---
 
+// 载入 GLB 数字孪生模型（办公楼）
+const OfficeModel: React.FC<{ scale?: [number, number, number]; position?: [number, number, number] }> = ({ scale = [1,1,1], position = [0,0,0] }) => {
+    const { scene } = useGLTF('/modle/officeBuild.glb') as unknown as GLTFResult;
+    return <primitive object={scene} scale={scale} position={position} />;
+};
+
+/* 保留旧组件以备后期调试
 const BuildingBlock = ({ position, size, color, label }: { position: [number, number, number], size: [number, number, number], color: string, label?: string }) => {
     const mesh = useRef<THREE.Mesh>(null);
     const [hovered, setHover] = useState(false);
@@ -123,6 +130,13 @@ const SensorMarker = ({ position, type, status, value, label }: any) => {
         </Html>
     )
 }
+
+import { GLTF } from 'three/examples/jsm/loaders/GLTFLoader';
+
+type GLTFResult = GLTF & {
+  nodes: Record<string, THREE.Mesh>;
+  materials: Record<string, THREE.Material>;
+};
 
 const CampusScene = ({ activeLayer }: { activeLayer: string }) => {
     return (

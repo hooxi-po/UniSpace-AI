@@ -1,6 +1,11 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Initialize once and re-use across the whole front-end
+// NOTE: 你必须通过 .env 或环境变量注入 API_KEY
+const genAI = new GoogleGenerativeAI(process.env.API_KEY || "");
+// 使用目前普遍可用的模型名称（如果你的账号已开通其他 preview 模型，可自行替换）
+const MODEL_NAME = "gemini-pro";
+const model = genAI.getGenerativeModel({ model: MODEL_NAME });
 
 // System instruction for the chat assistant
 const CHAT_SYSTEM_INSTRUCTION = `
@@ -11,66 +16,56 @@ const CHAT_SYSTEM_INSTRUCTION = `
 请始终用中文回复。
 `;
 
-export const analyzeMaintenanceRequest = async (description: string, location: string) => {
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: `用户报告了位于 ${location} 的维保问题: "${description}". 
-      请分析此请求并提供 JSON 响应，包含优先级、类别和简短的建议措施。
-      所有文本字段必须使用中文。`,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            priority: {
-              type: Type.STRING,
-              enum: ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
-              description: "基于安全和对校园运营影响的紧迫程度 (CRITICAL, HIGH, MEDIUM, LOW).",
-            },
-            category: {
-              type: Type.STRING,
-              description: "行业类别（例如：水管、电气、暖通空调、IT、结构）。",
-            },
-            suggestedAction: {
-              type: Type.STRING,
-              description: "给设施团队的一句话初步建议步骤（中文）。",
-            },
-            summaryTitle: {
-                type: Type.STRING,
-                description: "工单的简明标题，3-5个字（中文）。"
-            }
-          },
-          required: ["priority", "category", "suggestedAction", "summaryTitle"],
-        },
-      },
-    });
+export interface MaintenanceAIResponse {
+  priority: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  category: string;
+  suggestedAction: string;
+  summaryTitle: string;
+}
 
-    return JSON.parse(response.text || "{}");
+export const analyzeMaintenanceRequest = async (
+  description: string,
+  location: string
+): Promise<MaintenanceAIResponse> => {
+  try {
+    const prompt = `用户报告了位于 ${location} 的维保问题: \"${description}\"。\n请分析此请求并返回严格的 JSON（不要包含任何额外说明），格式示例如下：\n{\n  \"priority\": \"HIGH\",\n  \"category\": \"电气\",\n  \"suggestedAction\": \"立即断电并安排电工检查\",\n  \"summaryTitle\": \"电气故障\"\n}`;
+
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
+    // 尝试只提取 JSON
+    const firstBrace = text.indexOf("{");
+    const lastBrace = text.lastIndexOf("}");
+    const jsonStr = firstBrace !== -1 && lastBrace !== -1 ? text.slice(firstBrace, lastBrace + 1) : "{}";
+
+    return JSON.parse(jsonStr);
   } catch (error) {
     console.error("AI Analysis failed:", error);
-    // Fallback
+    // Fallback values
     return {
       priority: "MEDIUM",
       category: "综合",
       suggestedAction: "请人工调查报告的问题。",
-      summaryTitle: "维保请求"
+      summaryTitle: "维保请求",
     };
   }
 };
 
-export const sendChatMessage = async (history: { role: string; parts: { text: string }[] }[], newMessage: string) => {
+export const sendChatMessage = async (
+  history: { role: "user" | "model" | "system"; parts: { text: string }[] }[],
+  newMessage: string
+): Promise<string> => {
   try {
-    const chat = ai.chats.create({
-      model: "gemini-3-flash-preview",
-      config: {
-        systemInstruction: CHAT_SYSTEM_INSTRUCTION,
-      },
-      history: history,
-    });
+    // 将系统指令放在第一条
+    const messages = [
+      { role: "system", parts: [{ text: CHAT_SYSTEM_INSTRUCTION }] },
+      ...history,
+      { role: "user", parts: [{ text: newMessage }] },
+    ];
 
-    const result = await chat.sendMessage({ message: newMessage });
-    return result.text;
+    const chatModel = genAI.getChatModel({ model: MODEL_NAME });
+    const chat = chatModel.startChat({ history: messages });
+    const result = await chat.sendMessage(newMessage);
+    return result.response.text();
   } catch (error) {
     console.error("Chat error:", error);
     return "抱歉，目前连接校园网络出现问题，请稍后再试。";

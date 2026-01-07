@@ -19,10 +19,11 @@ onMounted(async () => {
   Cesium.Ion.defaultAccessToken = config.public.cesiumToken as string
   
   viewer = new Cesium.Viewer(viewerEl.value, {
-    // 使用 Cesium Ion 默认影像（Bing Maps）
+    // 先不加载默认底图
+    baseLayerPicker: false,
+    imageryProvider: false,
     // 添加 Cesium World Terrain 地形数据
     terrain: Cesium.Terrain.fromWorldTerrain(),
-    baseLayerPicker: false,
     timeline: false,
     animation: false,
     geocoder: false,
@@ -31,6 +32,14 @@ onMounted(async () => {
     navigationHelpButton: false,
     fullscreenButton: false,
   })
+
+  // 添加 OpenStreetMap 底图
+  viewer.imageryLayers.addImageryProvider(
+    new Cesium.UrlTemplateImageryProvider({
+      url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+      credit: '© OpenStreetMap contributors'
+    })
+  )
 
   // 添加 Cesium OSM 3D 建筑
   try {
@@ -48,9 +57,9 @@ onMounted(async () => {
   // 设置 3D 视角（倾斜观看建筑）
   viewer.camera.setView({
     destination: Cesium.Cartesian3.fromDegrees(
-      119.1935,  // 经度
-      26.0253,   // 纬度
-      800        // 高度（米）- 降低高度看清建筑
+      119.1895,  // 经度
+      26.0254,   // 纬度
+      500        // 高度（米）- 降低高度看清建筑
     ),
     orientation: {
       heading: Cesium.Math.toRadians(30),   // 稍微偏转

@@ -19,10 +19,7 @@ onMounted(async () => {
   Cesium.Ion.defaultAccessToken = config.public.cesiumToken as string
   
   viewer = new Cesium.Viewer(viewerEl.value, {
-    imageryProvider: new Cesium.UrlTemplateImageryProvider({
-      url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-      credit: '© OpenStreetMap contributors'
-    }),
+    // 使用 Cesium Ion 默认影像（Bing Maps）
     // 添加 Cesium World Terrain 地形数据
     terrain: Cesium.Terrain.fromWorldTerrain(),
     baseLayerPicker: false,
@@ -64,8 +61,51 @@ onMounted(async () => {
 
   try {
     const dataSource = await Cesium.GeoJsonDataSource.load('/map/map.geojson', {
-      clampToGround: true
+      clampToGround: false  // 不贴地，用于 3D 拉伸
     })
+    
+    // 遍历所有实体，将建筑拉伸成 3D
+    const entities = dataSource.entities.values
+    for (const entity of entities) {
+      const properties = entity.properties
+      
+      // 隐藏所有标签
+      if (entity.label) {
+        entity.label.show = false
+      }
+      // 隐藏点标记
+      if (entity.billboard) {
+        entity.billboard.show = false
+      }
+      if (entity.point) {
+        entity.point.show = false
+      }
+      
+      // 检查是否是建筑
+      if (properties && properties.building) {
+        const buildingType = properties.building.getValue()
+        if (buildingType) {
+          // 获取楼层数，默认 3 层
+          let levels = 3
+          if (properties['building:levels']) {
+            levels = parseInt(properties['building:levels'].getValue()) || 3
+          }
+          
+          // 每层约 3 米，计算建筑高度
+          const height = levels * 20
+          
+          // 设置拉伸高度
+          if (entity.polygon) {
+            entity.polygon.extrudedHeight = height
+            entity.polygon.height = 0
+            entity.polygon.material = Cesium.Color.fromCssColorString('#8B9DC3').withAlpha(0.9)
+            entity.polygon.outline = true
+            entity.polygon.outlineColor = Cesium.Color.BLACK
+          }
+        }
+      }
+    }
+    
     viewer.dataSources.add(dataSource)
   } catch (e) {
     console.error('Failed to load GeoJSON', e)

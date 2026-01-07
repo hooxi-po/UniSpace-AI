@@ -31,12 +31,26 @@ onMounted(async () => {
   // 强制 resize 以适应容器
   viewer.resize()
 
+  // 设置初始视角（WGS84 坐标，从 GCJ02 转换）
+  viewer.camera.setView({
+    destination: Cesium.Cartesian3.fromDegrees(
+      119.1935,  // 经度
+      26.0303,   // 纬度
+      2000       // 高度（米）
+    ),
+    orientation: {
+      heading: Cesium.Math.toRadians(0),
+      pitch: Cesium.Math.toRadians(-90),
+      roll: 0
+    }
+  })
+
   try {
     const dataSource = await Cesium.GeoJsonDataSource.load('/map/map.geojson', {
       clampToGround: true
     })
     viewer.dataSources.add(dataSource)
-    viewer.flyTo(dataSource)
+    // 不再自动飞行，保持初始视角
   } catch (e) {
     console.error('Failed to load GeoJSON', e)
   }

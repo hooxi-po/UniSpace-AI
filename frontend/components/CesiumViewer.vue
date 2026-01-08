@@ -34,6 +34,9 @@ const viewerEl = ref<HTMLElement | null>(null)
 /** Cesium Viewer 实例 */
 let viewer: Cesium.Viewer | undefined
 
+/** 建筑数据源，用于控制显示/隐藏 */
+let buildingDataSource: Cesium.DataSource | undefined
+
 /** 是否处于地下视角 */
 const isUnderground = ref(false)
 
@@ -58,8 +61,9 @@ const closeInfo = () => {
 }
 
 /**
- * 切换地下/地上视角
- * 点击按钮时在两种视角之间切换
+ * 切换 2D 俯视图/3D 视角
+ * 2D 模式：垂直向下看，隐藏建筑
+ * 3D 模式：倾斜视角，显示建筑
  */
 const toggleUnderground = () => {
   if (!viewer) return
@@ -67,7 +71,12 @@ const toggleUnderground = () => {
   isUnderground.value = !isUnderground.value
   
   if (isUnderground.value) {
-    // 飞行到地下视角
+    // 切换到 2D 俯视图
+    // 隐藏 3D 建筑
+    if (buildingDataSource) {
+      buildingDataSource.show = false
+    }
+    // 飞行到垂直俯视视角
     flyToPosition(
       viewer,
       UNDERGROUND_CAMERA.longitude,
@@ -77,7 +86,12 @@ const toggleUnderground = () => {
       UNDERGROUND_CAMERA.pitch
     )
   } else {
-    // 飞行回地上视角
+    // 切换回 3D 视角
+    // 显示 3D 建筑
+    if (buildingDataSource) {
+      buildingDataSource.show = true
+    }
+    // 飞行回倾斜视角
     flyToPosition(
       viewer,
       DEFAULT_CAMERA.longitude,
@@ -132,7 +146,7 @@ onMounted(async () => {
 
   // 加载建筑数据
   try {
-    await loadBuildings(viewer, '/map/map.geojson')
+    buildingDataSource = await loadBuildings(viewer, '/map/map.geojson')
   } catch (e) {
     console.error('加载建筑数据失败', e)
   }
@@ -151,9 +165,9 @@ onBeforeUnmount(() => {
   <!-- Cesium 地图容器 -->
   <div ref="viewerEl" class="cesium-container"></div>
   
-  <!-- 地下视角切换按钮 -->
+  <!-- 视角切换按钮 -->
   <button class="underground-btn" @click="toggleUnderground">
-    {{ isUnderground ? '返回地面' : '地下视角' }}
+    {{ isUnderground ? '3D 视角' : '2D 俯视' }}
   </button>
   
   <!-- 建筑信息弹窗 -->

@@ -22,20 +22,20 @@ export const DEFAULT_CAMERA = {
 }
 
 /**
- * 地下视角相机配置
- * 用于切换到地下视角时的相机位置
+ * 地下视角相机配置（2D 俯视图）
+ * 垂直向下看地图，不显示 3D 建筑
  */
 export const UNDERGROUND_CAMERA = {
   /** 经度 */
-  longitude: 119.1895,
+  longitude: 119.1945,
   /** 纬度 */
-  latitude: 26.0254,
-  /** 相机高度（米），负值表示地下 */
-  height: -50,
+  latitude: 26.0304,
+  /** 相机高度（米） */
+  height: 1000,
   /** 方向角（度） */
   heading: 0,
-  /** 俯仰角（度），正值为向上看 */
-  pitch: 10
+  /** 俯仰角（度），-90 为垂直向下看 */
+  pitch: -90
 }
 
 /**

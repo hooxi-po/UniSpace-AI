@@ -42,7 +42,7 @@ export function getBuildingColor(buildingType: string): Cesium.Color {
  * 建筑透明度
  * 0 为完全透明，1 为完全不透明
  */
-export const BUILDING_ALPHA = 0.9
+export const BUILDING_ALPHA = 0.5
 
 /**
  * 建筑轮廓线颜色

@@ -1,136 +1,178 @@
+<!--
+  @file CesiumViewer.vue
+  @description Cesium 3D 地图查看器组件
+  主要功能：
+  - 显示 3D 建筑模型
+  - 支持地下视角切换
+  - 点击建筑显示中文信息
+-->
+
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref, nextTick } from 'vue'
-// @ts-ignore - cesium types may not be installed yet
 import * as Cesium from 'cesium'
 import 'cesium/Build/Cesium/Widgets/widgets.css'
 
+// 导入 Cesium 工具模块
+import {
+  DEFAULT_CAMERA,
+  UNDERGROUND_CAMERA,
+  createViewer,
+  addOsmImagery,
+  setupUndergroundView,
+  setDefaultCamera,
+  flyToPosition,
+  loadBuildings,
+  setupPicker,
+  type PropertyInfo
+} from '../utils/cesium'
+
+// ==================== 响应式状态 ====================
+
+/** Viewer 容器 DOM 引用 */
 const viewerEl = ref<HTMLElement | null>(null)
+
+/** Cesium Viewer 实例 */
 let viewer: Cesium.Viewer | undefined
 
-// 获取 Cesium Ion Token
+/** 是否处于地下视角 */
+const isUnderground = ref(false)
+
+/** 是否显示建筑信息弹窗 */
+const showInfo = ref(false)
+
+/** 当前选中建筑的属性信息 */
+const buildingInfo = ref<PropertyInfo[]>([])
+
+// ==================== 配置获取 ====================
+
+/** 获取运行时配置（包含 Cesium Token） */
 const config = useRuntimeConfig()
 
+// ==================== 事件处理函数 ====================
+
+/**
+ * 关闭建筑信息弹窗
+ */
+const closeInfo = () => {
+  showInfo.value = false
+}
+
+/**
+ * 切换地下/地上视角
+ * 点击按钮时在两种视角之间切换
+ */
+const toggleUnderground = () => {
+  if (!viewer) return
+  
+  isUnderground.value = !isUnderground.value
+  
+  if (isUnderground.value) {
+    // 飞行到地下视角
+    flyToPosition(
+      viewer,
+      UNDERGROUND_CAMERA.longitude,
+      UNDERGROUND_CAMERA.latitude,
+      UNDERGROUND_CAMERA.height,
+      UNDERGROUND_CAMERA.heading,
+      UNDERGROUND_CAMERA.pitch
+    )
+  } else {
+    // 飞行回地上视角
+    flyToPosition(
+      viewer,
+      DEFAULT_CAMERA.longitude,
+      DEFAULT_CAMERA.latitude,
+      DEFAULT_CAMERA.height,
+      DEFAULT_CAMERA.heading,
+      DEFAULT_CAMERA.pitch
+    )
+  }
+}
+
+// ==================== 生命周期钩子 ====================
+
+/**
+ * 组件挂载时初始化 Cesium Viewer
+ */
 onMounted(async () => {
   if (!viewerEl.value) return
   
+  // 等待 DOM 完全渲染
   await nextTick()
 
-  // 设置 Cesium Ion Token
-  Cesium.Ion.defaultAccessToken = config.public.cesiumToken as string
-  
-  viewer = new Cesium.Viewer(viewerEl.value, {
-    // 先不加载默认底图
-    baseLayerPicker: false,
-    imageryProvider: false,
-    // 添加 Cesium World Terrain 地形数据
-    terrain: Cesium.Terrain.fromWorldTerrain(),
-    timeline: false,
-    animation: false,
-    geocoder: false,
-    homeButton: false,
-    sceneModePicker: false,
-    navigationHelpButton: false,
-    fullscreenButton: false,
+  // 创建 Viewer 实例
+  viewer = createViewer({
+    container: viewerEl.value,
+    token: config.public.cesiumToken as string
   })
 
   // 添加 OpenStreetMap 底图
-  viewer.imageryLayers.addImageryProvider(
-    new Cesium.UrlTemplateImageryProvider({
-      url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-      credit: '© OpenStreetMap contributors'
-    })
-  )
+  addOsmImagery(viewer)
 
-  // 添加 Cesium OSM 3D 建筑
-  try {
-    const osmBuildings = await Cesium.createOsmBuildingsAsync()
-    viewer.scene.primitives.add(osmBuildings)
-  } catch (e) {
-    console.error('Failed to load OSM Buildings', e)
-  }
+  // 配置地下视角功能
+  setupUndergroundView(viewer)
 
-  // 启用深度检测
-  viewer.scene.globe.depthTestAgainstTerrain = true
-
-  viewer.resize()
-
-  // 设置 3D 视角（倾斜观看建筑）
-  viewer.camera.setView({
-    destination: Cesium.Cartesian3.fromDegrees(
-      119.1895,  // 经度
-      26.0254,   // 纬度
-      500        // 高度（米）- 降低高度看清建筑
-    ),
-    orientation: {
-      heading: Cesium.Math.toRadians(30),   // 稍微偏转
-      pitch: Cesium.Math.toRadians(-35),    // 倾斜看
-      roll: 0
+  // 设置点击拾取事件
+  setupPicker(viewer, (info) => {
+    if (info) {
+      // 显示建筑信息
+      buildingInfo.value = info
+      showInfo.value = true
+    } else {
+      // 点击空白处，关闭弹窗
+      showInfo.value = false
     }
   })
 
+  // 调整 Viewer 尺寸
+  viewer.resize()
+
+  // 设置默认相机视角
+  setDefaultCamera(viewer)
+
+  // 加载建筑数据
   try {
-    const dataSource = await Cesium.GeoJsonDataSource.load('/map/map.geojson', {
-      clampToGround: false  // 不贴地，用于 3D 拉伸
-    })
-    
-    // 遍历所有实体，将建筑拉伸成 3D
-    const entities = dataSource.entities.values
-    for (const entity of entities) {
-      const properties = entity.properties
-      
-      // 隐藏所有标签
-      if (entity.label) {
-        entity.label.show = false
-      }
-      // 隐藏点标记
-      if (entity.billboard) {
-        entity.billboard.show = false
-      }
-      if (entity.point) {
-        entity.point.show = false
-      }
-      
-      // 检查是否是建筑
-      if (properties && properties.building) {
-        const buildingType = properties.building.getValue()
-        if (buildingType) {
-          // 获取楼层数，默认 3 层
-          let levels = 3
-          if (properties['building:levels']) {
-            levels = parseInt(properties['building:levels'].getValue()) || 3
-          }
-          
-          // 每层约 3 米，计算建筑高度
-          const height = levels * 20
-          
-          // 设置拉伸高度
-          if (entity.polygon) {
-            entity.polygon.extrudedHeight = height
-            entity.polygon.height = 0
-            entity.polygon.material = Cesium.Color.fromCssColorString('#8B9DC3').withAlpha(0.9)
-            entity.polygon.outline = true
-            entity.polygon.outlineColor = Cesium.Color.BLACK
-          }
-        }
-      }
-    }
-    
-    viewer.dataSources.add(dataSource)
+    await loadBuildings(viewer, '/map/map.geojson')
   } catch (e) {
-    console.error('Failed to load GeoJSON', e)
+    console.error('加载建筑数据失败', e)
   }
 })
 
+/**
+ * 组件卸载时销毁 Viewer
+ * 释放 WebGL 资源，防止内存泄漏
+ */
 onBeforeUnmount(() => {
   viewer?.destroy()
 })
 </script>
 
 <template>
+  <!-- Cesium 地图容器 -->
   <div ref="viewerEl" class="cesium-container"></div>
+  
+  <!-- 地下视角切换按钮 -->
+  <button class="underground-btn" @click="toggleUnderground">
+    {{ isUnderground ? '返回地面' : '地下视角' }}
+  </button>
+  
+  <!-- 建筑信息弹窗 -->
+  <div v-if="showInfo" class="info-panel">
+    <div class="info-header">
+      <span>建筑信息</span>
+      <button class="close-btn" @click="closeInfo">×</button>
+    </div>
+    <div class="info-content">
+      <div v-for="item in buildingInfo" :key="item.label" class="info-row">
+        <span class="info-label">{{ item.label }}：</span>
+        <span class="info-value">{{ item.value }}</span>
+      </div>
+    </div>
+  </div>
 </template>
 
 <style>
+/* ==================== 全局样式重置 ==================== */
 html, body {
   margin: 0;
   padding: 0;
@@ -139,6 +181,7 @@ html, body {
   overflow: hidden;
 }
 
+/* ==================== 地图容器 ==================== */
 .cesium-container {
   width: 100vw;
   height: 100vh;
@@ -150,24 +193,95 @@ html, body {
   left: 0;
 }
 
-.cesium-viewer {
-  width: 100% !important;
-  height: 100% !important;
+/* ==================== 地下视角按钮 ==================== */
+.underground-btn {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 1000;
+  padding: 10px 20px;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  border: 1px solid #fff;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
 }
 
-.cesium-viewer-cesiumWidgetContainer {
-  width: 100% !important;
-  height: 100% !important;
+.underground-btn:hover {
+  background: rgba(0, 0, 0, 0.9);
 }
 
-.cesium-widget {
-  width: 100% !important;
-  height: 100% !important;
+/* ==================== 建筑信息弹窗 ==================== */
+.info-panel {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.85);
+  color: white;
+  border-radius: 8px;
+  min-width: 200px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
+/* 弹窗标题栏 */
+.info-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  font-weight: bold;
+}
+
+/* 关闭按钮 */
+.close-btn {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.close-btn:hover {
+  color: #ff6b6b;
+}
+
+/* 弹窗内容区 */
+.info-content {
+  padding: 12px 16px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* 信息行 */
+.info-row {
+  margin-bottom: 8px;
+}
+
+.info-row:last-child {
+  margin-bottom: 0;
+}
+
+/* 属性标签 */
+.info-label {
+  color: #aaa;
+}
+
+/* 属性值 */
+.info-value {
+  color: #fff;
+}
+
+/* ==================== Cesium 组件样式覆盖 ==================== */
+.cesium-viewer,
+.cesium-viewer-cesiumWidgetContainer,
+.cesium-widget,
 .cesium-widget canvas {
   width: 100% !important;
   height: 100% !important;
 }
 </style>
-

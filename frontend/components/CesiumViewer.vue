@@ -23,6 +23,8 @@ import {
   flyToPosition,
   loadBuildings,
   setupPicker,
+  loadAllModels,
+  setModelsVisibility,
   type PropertyInfo
 } from '../utils/cesium'
 
@@ -36,6 +38,9 @@ let viewer: Cesium.Viewer | undefined
 
 /** 建筑数据源，用于控制显示/隐藏 */
 let buildingDataSource: Cesium.DataSource | undefined
+
+/** 3D 模型实体数组 */
+let modelEntities: Cesium.Entity[] = []
 
 /** 是否处于地下视角 */
 const isUnderground = ref(false)
@@ -76,6 +81,8 @@ const toggleUnderground = () => {
     if (buildingDataSource) {
       buildingDataSource.show = false
     }
+    // 显示 glTF 模型
+    setModelsVisibility(modelEntities, true)
     // 飞行到垂直俯视视角
     flyToPosition(
       viewer,
@@ -91,6 +98,8 @@ const toggleUnderground = () => {
     if (buildingDataSource) {
       buildingDataSource.show = true
     }
+    // 隐藏 glTF 模型（避免与拉伸建筑重叠）
+    setModelsVisibility(modelEntities, false)
     // 飞行回倾斜视角
     flyToPosition(
       viewer,
@@ -149,6 +158,15 @@ onMounted(async () => {
     buildingDataSource = await loadBuildings(viewer, '/map/map.geojson')
   } catch (e) {
     console.error('加载建筑数据失败', e)
+  }
+
+  // 加载 3D 模型（初始隐藏，2D 模式下显示）
+  try {
+    modelEntities = loadAllModels(viewer)
+    // 默认隐藏模型（3D 视角下不显示）
+    setModelsVisibility(modelEntities, false)
+  } catch (e) {
+    console.error('加载 3D 模型失败', e)
   }
 })
 

@@ -21,3 +21,6 @@ export * from './buildings'
 
 // 点击拾取
 export * from './picker'
+
+// 3D 模型加载
+export * from './models'

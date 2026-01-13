@@ -34,19 +34,7 @@ export interface ModelConfig {
  * 预定义的模型配置
  */
 export const MODEL_CONFIGS: ModelConfig[] = [
-  {
-    // 生化实验楼 - way/1372826600
-    name: '生化实验楼',
-    uri: '/model/Untitled.glb',
-    // 建筑中心点坐标（根据 GeoJSON 多边形计算）
-    longitude: 119.1943277,
-    latitude: 26.0286408,
-    height: 0,
-    scale: 1,
-    heading: 0,
-    pitch: 0,
-    roll: 0
-  }
+  // 暂时清空，后续添加模型时在此配置
 ]
 
 /**

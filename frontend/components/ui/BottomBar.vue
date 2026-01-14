@@ -1,7 +1,7 @@
 <template>
   <footer class="bottom-bar" :class="{ 'sidebar-collapsed': !showRightSidebar }">
     <div class="left-info">
-      <div class="pressure-display">
+      <div class="pressure-display" @click="setActiveNavItem('实时压力')">
         <div class="pressure-label">实时压力</div>
         <div class="pressure-value">
           {{ realtimePressure.value.toFixed(2) }} 
@@ -9,10 +9,10 @@
         </div>
       </div>
       <div class="media-controls">
-        <button :class="{ active: isPlaying }" @click="togglePlay">
+        <button :class="{ active: isPlaying }" @click="togglePlay" title="播放/暂停">
           {{ isPlaying ? '❚❚' : '►' }}
         </button>
-        <button @click="resetView">⟲</button>
+        <button @click="resetView" title="重置视角">⟲</button>
       </div>
     </div>
 
@@ -32,7 +32,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { useMapState } from '../../composables/useMapState'
+import { useMapState, type NavItemType } from '../../composables/useMapState'
 
 const { 
   realtimePressure, 
@@ -41,7 +41,7 @@ const {
   showRightSidebar 
 } = useMapState()
 
-const navItems = ['管网类型', '物联网设备', '建筑模型', '关联模型', '关联楼宇', '实时压力']
+const navItems: NavItemType[] = ['管网类型', '物联网设备', '建筑模型', '关联模型', '关联楼宇', '实时压力']
 
 const isPlaying = ref(true)
 
@@ -58,7 +58,6 @@ const togglePlay = () => {
 }
 
 const resetView = () => {
-  // 触发重置视角事件（可以通过 emit 或全局状态）
   console.log('Reset view')
 }
 </script>
@@ -94,6 +93,14 @@ const resetView = () => {
 .pressure-display {
   text-align: center;
   margin-right: 20px;
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.pressure-display:hover {
+  background: rgba(0, 191, 255, 0.1);
 }
 
 .pressure-label {
@@ -144,7 +151,7 @@ const resetView = () => {
 
 .main-nav {
   display: flex;
-  gap: 8px;
+  gap: 6px;
 }
 
 .main-nav a {
@@ -154,6 +161,7 @@ const resetView = () => {
   border-radius: 4px;
   transition: all 0.2s;
   font-size: 14px;
+  border: 1px solid transparent;
 }
 
 .main-nav a:hover {
@@ -162,8 +170,8 @@ const resetView = () => {
 }
 
 .main-nav a.active {
-  color: white;
-  background: rgba(0, 191, 255, 0.25);
-  border: 1px solid rgba(0, 191, 255, 0.4);
+  color: #00bfff;
+  background: rgba(0, 191, 255, 0.2);
+  border-color: rgba(0, 191, 255, 0.4);
 }
 </style>

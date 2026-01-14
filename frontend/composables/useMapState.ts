@@ -40,8 +40,11 @@ const showRightSidebar = ref(true)
 
 // ==================== 底部导航状态 ====================
 
+/** 导航项类型 */
+export type NavItemType = '管网类型' | '物联网设备' | '建筑模型' | '关联模型' | '关联楼宇' | '实时压力'
+
 /** 当前激活的导航项 */
-const activeNavItem = ref('管网类型')
+const activeNavItem = ref<NavItemType>('管网类型')
 
 // ==================== 实时数据（模拟） ====================
 
@@ -84,8 +87,10 @@ export const useMapState = () => {
   }
 
   // 设置激活的导航项
-  const setActiveNavItem = (item: string) => {
+  const setActiveNavItem = (item: NavItemType) => {
     activeNavItem.value = item
+    // 切换导航时自动打开左侧栏
+    showLeftSidebar.value = true
   }
 
   // 更新实时压力（模拟数据更新）

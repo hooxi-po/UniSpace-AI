@@ -171,7 +171,6 @@ const selectedBuilding = ref('')
 .sidebar-content::-webkit-scrollbar-thumb {
   background: rgba(0, 191, 255, 0.4);
   border-radius: 3px;
-  transition: background 0.2s;
 }
 .sidebar-content::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 191, 255, 0.6);
@@ -181,21 +180,21 @@ const selectedBuilding = ref('')
 .layer-section h4:hover { background: rgba(0, 191, 255, 0.2); }
 .layer-section h4 svg { margin-right: 10px; }
 
-/* 修复箭头方向：展开时向下，折叠时向右 */
+/* 箭头方向：展开时向下，折叠时向右 */
 .toggle-arrow { 
   margin-left: auto; 
   border: solid white; 
   border-width: 0 2px 2px 0; 
   display: inline-block; 
   padding: 3px; 
-  transform: rotate(45deg); /* 默认向下（展开状态） */
+  transform: rotate(45deg); /* 向下 = 展开状态 */
   transition: transform 0.3s; 
 }
 .layer-section.collapsed .toggle-arrow { 
-  transform: rotate(-45deg); /* 折叠时向右 */
+  transform: rotate(-45deg); /* 向右 = 折叠状态 */
 }
 
-.layer-section ul { list-style: none; padding: 0 0 0 16px; margin: 10px 0; max-height: 500px; overflow: hidden; transition: max-height 0.5s ease-in-out; }
+.layer-section ul { list-style: none; padding: 0 0 0 16px; margin: 10px 0; max-height: 500px; overflow: hidden; transition: ma    x-height 0.5s ease-in-out; }
 .layer-section.collapsed ul { max-height: 0; margin: 0; }
 .layer-section li { padding: 8px 0; }
 .layer-section label { display: flex; align-items: center; cursor: pointer; font-size: 14px; }
@@ -234,6 +233,7 @@ const selectedBuilding = ref('')
 .gauge-value.高 { color: #dc3545; }
 .gauge-value .unit { font-size: 16px; font-weight: normal; }
 .gauge-status { color: #aaa; margin-top: 8px; }
+.pressure-list { margin-top: 8px; }
 .pressure-item { display: flex; justify-content: space-between; padding: 10px 8px; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 13px; }
 .point-value { font-weight: bold; }
 .point-value.正常 { color: #00ff7f; }

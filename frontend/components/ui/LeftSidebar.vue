@@ -29,7 +29,15 @@
             <div class="stat-card offline"><div class="stat-value">5</div><div class="stat-label">离线设备</div></div>
           </section>
           <section class="layer-section"><h4><span>设备列表</span></h4>
-            <ul class="device-list"><li v-for="device in iotDevices" :key="device.id"><span class="device-status" :class="device.status"></span><span class="device-name">{{ device.name }}</span><span class="device-value">{{ device.value }}</span></li></ul>
+            <!-- Loading 骨架屏 -->
+            <div v-if="isLoadingDevices" class="skeleton-list">
+              <div class="skeleton-item" v-for="i in 5" :key="i">
+                <div class="skeleton-dot"></div>
+                <div class="skeleton-text"></div>
+                <div class="skeleton-value"></div>
+              </div>
+            </div>
+            <ul v-else class="device-list"><li v-for="device in iotDevices" :key="device.id"><span class="device-status" :class="device.status"></span><span class="device-name">{{ device.name }}</span><span class="device-value">{{ device.value }}</span></li></ul>
           </section>
         </template>
         <template v-else-if="activeNavItem === '建筑模型'">
@@ -43,7 +51,25 @@
           <section class="info-section"><p class="panel-desc">选择楼宇查看关联管网</p><div class="building-list"><div class="building-item" v-for="building in buildings" :key="building.name" :class="{ active: selectedBuilding === building.name }" @click="selectedBuilding = building.name"><span class="building-name">{{ building.name }}</span><span class="building-count">{{ building.pipeCount }} 条管网</span></div></div></section>
         </template>
         <template v-else-if="activeNavItem === '实时压力'">
-          <section class="info-section"><div class="pressure-gauge"><div class="gauge-value" :class="realtimePressure.status">{{ realtimePressure.value.toFixed(2) }}<span class="unit">{{ realtimePressure.unit }}</span></div><div class="gauge-status">状态: {{ realtimePressure.status }}</div></div><div class="pressure-list"><div class="pressure-item" v-for="point in pressurePoints" :key="point.name"><span class="point-name">{{ point.name }}</span><span class="point-value" :class="point.status">{{ point.value }} MPa</span></div></div></section>
+          <section class="info-section">
+            <div class="pressure-gauge">
+              <div class="gauge-value" :class="realtimePressure.status">{{ realtimePressure.value.toFixed(2) }}<span class="unit">{{ realtimePressure.unit }}</span></div>
+              <div class="gauge-status">状态: {{ realtimePressure.status }}</div>
+            </div>
+            <!-- Loading 骨架屏 -->
+            <div v-if="isLoadingPressure" class="skeleton-list">
+              <div class="skeleton-item" v-for="i in 5" :key="i">
+                <div class="skeleton-text long"></div>
+                <div class="skeleton-value"></div>
+              </div>
+            </div>
+            <div v-else class="pressure-list">
+              <div class="pressure-item" v-for="point in pressurePoints" :key="point.name">
+                <span class="point-name">{{ point.name }}</span>
+                <span class="point-value" :class="point.status">{{ point.value }} MPa</span>
+              </div>
+            </div>
+          </section>
         </template>
       </div>
     </aside>
@@ -52,7 +78,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, h } from 'vue'
+import { ref, computed, h, onMounted } from 'vue'
 import { useMapState } from '../../composables/useMapState'
 
 const { layers, toggleLayer, showLeftSidebar, toggleLeftSidebar, activeNavItem, realtimePressure } = useMapState()
@@ -71,11 +97,43 @@ const panelConfig = {
 }
 const currentPanel = computed(() => panelConfig[activeNavItem.value] || panelConfig['管网类型'])
 
-const iotDevices = ref([{ id: 1, name: '流量计-001', value: '28.5 m³/h', status: 'online' },{ id: 2, name: '压力传感器-002', value: '0.45 MPa', status: 'warning' },{ id: 3, name: '水位计-003', value: '2.3 m', status: 'online' },{ id: 4, name: '阀门控制器-004', value: '开启', status: 'online' },{ id: 5, name: '温度传感器-005', value: '18.5°C', status: 'offline' }])
+// Loading 状态
+const isLoadingDevices = ref(true)
+const isLoadingPressure = ref(true)
+
+// 模拟数据加载
+const iotDevices = ref<Array<{ id: number; name: string; value: string; status: string }>>([])
+const pressurePoints = ref<Array<{ name: string; value: string; status: string }>>([])
+
+onMounted(() => {
+  // 模拟设备数据加载
+  setTimeout(() => {
+    iotDevices.value = [
+      { id: 1, name: '流量计-001', value: '28.5 m³/h', status: 'online' },
+      { id: 2, name: '压力传感器-002', value: '0.45 MPa', status: 'warning' },
+      { id: 3, name: '水位计-003', value: '2.3 m', status: 'online' },
+      { id: 4, name: '阀门控制器-004', value: '开启', status: 'online' },
+      { id: 5, name: '温度传感器-005', value: '18.5°C', status: 'offline' }
+    ]
+    isLoadingDevices.value = false
+  }, 1200)
+
+  // 模拟压力数据加载
+  setTimeout(() => {
+    pressurePoints.value = [
+      { name: '主入口阀门', value: '0.52', status: '正常' },
+      { name: '图书馆分支', value: '0.45', status: '低' },
+      { name: '教学区主管', value: '0.48', status: '正常' },
+      { name: '宿舍区分支', value: '0.38', status: '低' },
+      { name: '食堂供水点', value: '0.55', status: '正常' }
+    ]
+    isLoadingPressure.value = false
+  }, 1500)
+})
+
 const relationModels = ref([{ building: '图书馆', pipes: ['供水主管', '消防管道', '排水管'] },{ building: '教学楼A', pipes: ['供水支管', '暖气管道'] },{ building: '学生宿舍1号楼', pipes: ['供水管', '排污管', '燃气管'] }])
 const buildings = ref([{ name: '图书馆', pipeCount: 5 },{ name: '教学楼A', pipeCount: 3 },{ name: '教学楼B', pipeCount: 4 },{ name: '学生宿舍1号楼', pipeCount: 6 },{ name: '食堂', pipeCount: 8 }])
 const selectedBuilding = ref('')
-const pressurePoints = ref([{ name: '主入口阀门', value: '0.52', status: '正常' },{ name: '图书馆分支', value: '0.45', status: '低' },{ name: '教学区主管', value: '0.48', status: '正常' },{ name: '宿舍区分支', value: '0.38', status: '低' },{ name: '食堂供水点', value: '0.55', status: '正常' }])
 </script>
 
 <style scoped>
@@ -96,12 +154,47 @@ const pressurePoints = ref([{ name: '主入口阀门', value: '0.52', status: '�
 .sidebar-header h3 { margin: 0; font-size: 16px; display: flex; align-items: center; gap: 10px; color: #00bfff; }
 .close-button { background: none; border: none; color: #aaa; font-size: 24px; cursor: pointer; transition: color 0.2s; }
 .close-button:hover { color: #fff; }
-.sidebar-content { padding: 12px; overflow-y: auto; flex: 1; }
+
+/* 自定义滚动条样式 */
+.sidebar-content { 
+  padding: 12px; 
+  overflow-y: auto; 
+  flex: 1; 
+}
+.sidebar-content::-webkit-scrollbar {
+  width: 6px;
+}
+.sidebar-content::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+.sidebar-content::-webkit-scrollbar-thumb {
+  background: rgba(0, 191, 255, 0.4);
+  border-radius: 3px;
+  transition: background 0.2s;
+}
+.sidebar-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 191, 255, 0.6);
+}
+
 .layer-section h4 { display: flex; align-items: center; padding: 10px 8px; margin: 0; cursor: pointer; background: rgba(0, 191, 255, 0.1); border-radius: 4px; transition: background 0.3s; font-size: 14px; }
 .layer-section h4:hover { background: rgba(0, 191, 255, 0.2); }
 .layer-section h4 svg { margin-right: 10px; }
-.toggle-arrow { margin-left: auto; border: solid white; border-width: 0 2px 2px 0; display: inline-block; padding: 3px; transform: rotate(45deg); transition: transform 0.3s; }
-.layer-section.collapsed .toggle-arrow { transform: rotate(-135deg); }
+
+/* 修复箭头方向：展开时向下，折叠时向右 */
+.toggle-arrow { 
+  margin-left: auto; 
+  border: solid white; 
+  border-width: 0 2px 2px 0; 
+  display: inline-block; 
+  padding: 3px; 
+  transform: rotate(45deg); /* 默认向下（展开状态） */
+  transition: transform 0.3s; 
+}
+.layer-section.collapsed .toggle-arrow { 
+  transform: rotate(-45deg); /* 折叠时向右 */
+}
+
 .layer-section ul { list-style: none; padding: 0 0 0 16px; margin: 10px 0; max-height: 500px; overflow: hidden; transition: max-height 0.5s ease-in-out; }
 .layer-section.collapsed ul { max-height: 0; margin: 0; }
 .layer-section li { padding: 8px 0; }
@@ -146,4 +239,46 @@ const pressurePoints = ref([{ name: '主入口阀门', value: '0.52', status: '�
 .point-value.正常 { color: #00ff7f; }
 .point-value.低 { color: #ffc107; }
 .point-value.高 { color: #dc3545; }
+
+/* 骨架屏 Loading 样式 */
+.skeleton-list {
+  padding: 0 8px;
+}
+.skeleton-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+.skeleton-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(0, 191, 255, 0.2);
+  margin-right: 10px;
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+.skeleton-text {
+  flex: 1;
+  height: 14px;
+  background: rgba(0, 191, 255, 0.15);
+  border-radius: 4px;
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+.skeleton-text.long {
+  max-width: 120px;
+}
+.skeleton-value {
+  width: 60px;
+  height: 14px;
+  background: rgba(0, 191, 255, 0.15);
+  border-radius: 4px;
+  margin-left: 10px;
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+  animation-delay: 0.2s;
+}
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
 </style>

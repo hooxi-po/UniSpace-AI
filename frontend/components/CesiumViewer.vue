@@ -34,7 +34,8 @@ import {
 const { 
   layers, 
   showBuildingInfo, 
-  closeBuildingPopup 
+  closeBuildingPopup,
+  isEditorMode
 } = useMapState()
 
 // ==================== 响应式状态 ====================
@@ -58,6 +59,35 @@ watch(() => layers.value.buildings, (visible) => {
   }
   // 模型跟随建筑图层显示/隐藏
   setModelsVisibility(modelEntities, visible)
+})
+
+// 监听编辑模式变化，切换2D/3D视角
+watch(() => isEditorMode.value, (editing) => {
+  if (!viewer) return
+  
+  if (editing) {
+    // 切换到2D俯视视角，使用 UNDERGROUND_CAMERA 配置
+    flyToPosition(
+      viewer,
+      UNDERGROUND_CAMERA.longitude,
+      UNDERGROUND_CAMERA.latitude,
+      UNDERGROUND_CAMERA.height,
+      UNDERGROUND_CAMERA.heading,
+      UNDERGROUND_CAMERA.pitch,
+      1.5
+    )
+  } else {
+    // 恢复默认3D视角
+    flyToPosition(
+      viewer,
+      DEFAULT_CAMERA.longitude,
+      DEFAULT_CAMERA.latitude,
+      DEFAULT_CAMERA.height,
+      DEFAULT_CAMERA.heading,
+      DEFAULT_CAMERA.pitch,
+      1.5
+    )
+  }
 })
 
 // ==================== 事件处理函数 ====================

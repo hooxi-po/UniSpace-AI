@@ -70,7 +70,7 @@ const {
   showRightSidebar 
 } = useMapState()
 
-const navItems: NavItemType[] = ['管网类型', '物联网设备', '建筑模型', '关联模型', '关联楼宇', '实时压力']
+const navItems: NavItemType[] = ['管网类型', '管网编辑器', '建筑模型', '关联模型', '关联楼宇', '实时压力']
 
 const isPlaying = ref(true)
 const showDropdown = ref(false)

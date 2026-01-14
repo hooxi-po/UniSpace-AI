@@ -41,10 +41,13 @@ const showRightSidebar = ref(true)
 // ==================== 底部导航状态 ====================
 
 /** 导航项类型 */
-export type NavItemType = '管网类型' | '物联网设备' | '建筑模型' | '关联模型' | '关联楼宇' | '实时压力'
+export type NavItemType = '管网类型' | '管网编辑器' | '建筑模型' | '关联模型' | '关联楼宇' | '实时压力'
 
 /** 当前激活的导航项 */
 const activeNavItem = ref<NavItemType>('管网类型')
+
+/** 是否为编辑模式（2D视角） */
+const isEditorMode = ref(false)
 
 // ==================== 实时数据（模拟） ====================
 
@@ -91,6 +94,16 @@ export const useMapState = () => {
     activeNavItem.value = item
     // 切换导航时自动打开左侧栏
     showLeftSidebar.value = true
+    
+    // 管网编辑器模式：隐藏建筑，切换到2D视角
+    if (item === '管网编辑器') {
+      isEditorMode.value = true
+      layers.value.buildings = false
+    } else if (isEditorMode.value) {
+      // 退出编辑器模式时恢复
+      isEditorMode.value = false
+      layers.value.buildings = true
+    }
   }
 
   // 更新实时压力（模拟数据更新）
@@ -126,6 +139,7 @@ export const useMapState = () => {
     // 导航
     activeNavItem: readonly(activeNavItem),
     setActiveNavItem,
+    isEditorMode: readonly(isEditorMode),
     
     // 实时数据
     realtimePressure: readonly(realtimePressure),

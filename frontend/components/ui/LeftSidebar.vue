@@ -21,23 +21,15 @@
             </ul>
           </section>
         </template>
-        <template v-else-if="activeNavItem === '物联网设备'">
+        <template v-else-if="activeNavItem === '管网编辑器'">
           <section class="info-section">
-            <div class="stat-card"><div class="stat-value">128</div><div class="stat-label">设备总数</div></div>
-            <div class="stat-card online"><div class="stat-value">115</div><div class="stat-label">在线设备</div></div>
-            <div class="stat-card warning"><div class="stat-value">8</div><div class="stat-label">告警设备</div></div>
-            <div class="stat-card offline"><div class="stat-value">5</div><div class="stat-label">离线设备</div></div>
-          </section>
-          <section class="layer-section"><h4><span>设备列表</span></h4>
-            <!-- Loading 骨架屏 -->
-            <div v-if="isLoadingDevices" class="skeleton-list">
-              <div class="skeleton-item" v-for="i in 5" :key="i">
-                <div class="skeleton-dot"></div>
-                <div class="skeleton-text"></div>
-                <div class="skeleton-value"></div>
-              </div>
+            <p class="panel-desc">管网编辑工具</p>
+            <div class="editor-tools">
+              <button class="tool-btn"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg><span>添加节点</span></button>
+              <button class="tool-btn"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"></path></svg><span>绘制管线</span></button>
+              <button class="tool-btn"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg><span>编辑属性</span></button>
+              <button class="tool-btn danger"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg><span>删除选中</span></button>
             </div>
-            <ul v-else class="device-list"><li v-for="device in iotDevices" :key="device.id"><span class="device-status" :class="device.status"></span><span class="device-name">{{ device.name }}</span><span class="device-value">{{ device.value }}</span></li></ul>
           </section>
         </template>
         <template v-else-if="activeNavItem === '建筑模型'">
@@ -89,7 +81,7 @@ const toggleSection = (section: Section) => { collapsedSections.value[section] =
 
 const panelConfig = {
   '管网类型': { title: '管网类型', icon: () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', width: 24, height: 24, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': 2 }, [h('path', { d: 'M22 12h-4l-3 9L9 3l-3 9H2' })]) },
-  '物联网设备': { title: '物联网设备', icon: () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', width: 24, height: 24, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': 2 }, [h('rect', { x: 4, y: 4, width: 16, height: 16, rx: 2 }), h('rect', { x: 9, y: 9, width: 6, height: 6 })]) },
+  '管网编辑器': { title: '管网编辑器', icon: () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', width: 24, height: 24, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': 2 }, [h('path', { d: 'M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7' }), h('path', { d: 'M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z' })]) },
   '建筑模型': { title: '建筑模型', icon: () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', width: 24, height: 24, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': 2 }, [h('path', { d: 'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' })]) },
   '关联模型': { title: '关联模型', icon: () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', width: 24, height: 24, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': 2 }, [h('circle', { cx: 12, cy: 12, r: 10 }), h('line', { x1: 2, y1: 12, x2: 22, y2: 12 })]) },
   '关联楼宇': { title: '关联楼宇', icon: () => h('svg', { xmlns: 'http://www.w3.org/2000/svg', width: 24, height: 24, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', 'stroke-width': 2 }, [h('rect', { x: 4, y: 2, width: 16, height: 20, rx: 2 }), h('path', { d: 'M9 22v-4h6v4' })]) },
@@ -239,6 +231,38 @@ const selectedBuilding = ref('')
 .point-value.正常 { color: #00ff7f; }
 .point-value.低 { color: #ffc107; }
 .point-value.高 { color: #dc3545; }
+
+/* 管网编辑器工具样式 */
+.editor-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 0;
+}
+.tool-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: rgba(0, 191, 255, 0.1);
+  border: 1px solid rgba(0, 191, 255, 0.3);
+  border-radius: 6px;
+  color: #fff;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 14px;
+}
+.tool-btn:hover {
+  background: rgba(0, 191, 255, 0.2);
+  border-color: rgba(0, 191, 255, 0.5);
+}
+.tool-btn.danger {
+  border-color: rgba(220, 53, 69, 0.3);
+}
+.tool-btn.danger:hover {
+  background: rgba(220, 53, 69, 0.2);
+  border-color: rgba(220, 53, 69, 0.5);
+}
 
 /* 骨架屏 Loading 样式 */
 .skeleton-list {

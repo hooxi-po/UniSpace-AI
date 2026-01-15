@@ -5,6 +5,7 @@ import LeftSidebar from '../components/ui/LeftSidebar.vue'
 import RightSidebar from '../components/ui/RightSidebar.vue'
 import BottomBar from '../components/ui/BottomBar.vue'
 import InfoPopup from '../components/ui/InfoPopup.vue'
+import PipeFormModal from '../components/ui/PipeFormModal.vue'
 </script>
 
 <template>
@@ -15,6 +16,7 @@ import InfoPopup from '../components/ui/InfoPopup.vue'
     <RightSidebar />
     <BottomBar />
     <InfoPopup />
+    <PipeFormModal />
     <NuxtRouteAnnouncer />
   </div>
 </template>

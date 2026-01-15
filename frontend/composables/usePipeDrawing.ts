@@ -1,408 +1,519 @@
 /**
  * @file usePipeDrawing.ts
  * @description 管道交互式绘制功能
- * 提供类似 CAD 的点击绘制体验
- * 注意：绘制完成后只返回坐标数据，永久管道由 pipes.ts 统一渲染
+ * 新流程：绘制节点 → 自动连接 → 调整曲线 → 设置粗细 → 填写信息
  */
 
-import { ref, readonly } from 'vue'
+import { ref, readonly, computed } from 'vue'
 import * as Cesium from 'cesium'
 
-export type DrawingMode = 'none' | 'node' | 'pipe' | 'edit'
-export type PipeType = 'surface' | 'underground'
+// ==================== 类型定义 ====================
 
-// 绘制状态
+export type DrawingMode = 'none' | 'bindNode' | 'bindPipe' | 'node' | 'bindCurve' | 'adjustCurve' | 'bindWidth' | 'adjustWidth'
+
+export interface PipeNode {
+  id: string
+  position: Cesium.Cartesian3
+  coordinates: [number, number] // [经度, 纬度]
+  entity?: Cesium.Entity
+}
+
+export interface PipeSegment {
+  id: string
+  startNode: PipeNode
+  endNode: PipeNode
+  controlPoints: Cesium.Cartesian3[] // 贝塞尔曲线控制点
+  width: number // 管道宽度（像素）
+  entity?: Cesium.Entity
+}
+
+export interface DrawnPipeData {
+  nodes: PipeNode[]
+  segments: PipeSegment[]
+  totalLength: number
+}
+
+// ==================== 响应式状态 ====================
+
 const drawingMode = ref<DrawingMode>('none')
-const drawingPoints = ref<Cesium.Cartesian3[]>([])
-const tempEntities = ref<Cesium.Entity[]>([])
-const selectedEntity = ref<Cesium.Entity | null>(null)
-const pipeType = ref<PipeType>('surface')
-const pipeDepth = ref<number>(5) // 地下管道深度（米）
+const nodes = ref<PipeNode[]>([])
+const segments = ref<PipeSegment[]>([])
+const selectedNode = ref<PipeNode | null>(null)
+const selectedSegment = ref<PipeSegment | null>(null)
+const currentWidth = ref<number>(5)
+const canUndo = ref(false)
+const showPipeForm = ref(false)
+const drawnPipeData = ref<DrawnPipeData | null>(null)
 
-// Cesium Viewer 实例
+// ==================== 模块级变量 ====================
+
 let viewer: Cesium.Viewer | null = null
 let handler: Cesium.ScreenSpaceEventHandler | null = null
-
-// 临时绘制图层
 let drawingDataSource: Cesium.CustomDataSource | null = null
+let nodeIdCounter = 0
+let segmentIdCounter = 0
 
-/**
- * 初始化绘制工具
- */
+// 回调函数
+let onPipeDrawComplete: ((data: DrawnPipeData) => void) | null = null
+
+// ==================== 计算属性 ====================
+
+const totalLength = computed(() => {
+  let length = 0
+  for (const seg of segments.value) {
+    length += calculateSegmentLength(seg)
+  }
+  return Math.round(length)
+})
+
+// ==================== 初始化 ====================
+
 export function initDrawingTool(cesiumViewer: Cesium.Viewer): void {
   viewer = cesiumViewer
-  
-  // 创建临时绘制图层
-  drawingDataSource = new Cesium.CustomDataSource('drawing')
+  drawingDataSource = new Cesium.CustomDataSource('pipeDrawing')
   viewer.dataSources.add(drawingDataSource)
-  
-  // 创建事件处理器
   handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
 }
 
-/**
- * 设置管道类型
- */
-export function setPipeType(type: PipeType): void {
-  pipeType.value = type
-}
+// ==================== 模式控制 ====================
 
-/**
- * 设置地下管道深度
- */
-export function setPipeDepth(depth: number): void {
-  pipeDepth.value = depth
-}
-
-/**
- * 设置绘制模式
- */
 export function setDrawingMode(mode: DrawingMode): void {
+  // 清除之前的事件监听
+  clearEventHandlers()
+  
   drawingMode.value = mode
   
-  // 清除之前的绘制状态
-  clearDrawing()
-  
-  if (mode === 'none') {
-    // 移除所有事件监听
-    if (handler) {
-      handler.removeInputAction(Cesium.ScreenSpaceEventType.LEFT_CLICK)
-      handler.removeInputAction(Cesium.ScreenSpaceEventType.MOUSE_MOVE)
-      handler.removeInputAction(Cesium.ScreenSpaceEventType.RIGHT_CLICK)
-    }
-  } else if (mode === 'node') {
-    setupNodeDrawing()
-  } else if (mode === 'pipe') {
-    setupPipeDrawing()
-  } else if (mode === 'edit') {
-    setupEditMode()
+  switch (mode) {
+    case 'node':
+      setupNodeDrawing()
+      break
+    case 'adjustCurve':
+      setupCurveAdjustment()
+      break
+    case 'adjustWidth':
+      setupWidthAdjustment()
+      break
+    case 'none':
+      // 不做任何事
+      break
   }
 }
 
-/**
- * 设置节点绘制模式
- */
+function clearEventHandlers(): void {
+  if (handler) {
+    handler.removeInputAction(Cesium.ScreenSpaceEventType.LEFT_CLICK)
+    handler.removeInputAction(Cesium.ScreenSpaceEventType.MOUSE_MOVE)
+    handler.removeInputAction(Cesium.ScreenSpaceEventType.RIGHT_CLICK)
+    handler.removeInputAction(Cesium.ScreenSpaceEventType.MIDDLE_CLICK)
+  }
+}
+
+// ==================== 节点绘制 ====================
+
 function setupNodeDrawing(): void {
-  if (!viewer || !handler || !drawingDataSource) return
-  
-  // 左键点击添加节点
-  handler.setInputAction((click: { position: Cesium.Cartesian2 }) => {
-    if (!viewer || !drawingDataSource) return
-    
-    // 获取点击位置的地理坐标
-    const cartesian = viewer.camera.pickEllipsoid(click.position, viewer.scene.globe.ellipsoid)
-    if (!cartesian) return
-    
-    // 添加节点标记
-    const entity = drawingDataSource.entities.add({
-      position: cartesian,
-      point: {
-        pixelSize: 10,
-        color: Cesium.Color.CYAN,
-        outlineColor: Cesium.Color.WHITE,
-        outlineWidth: 2,
-        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND
-      },
-      label: {
-        text: `节点 ${drawingDataSource.entities.values.length}`,
-        font: '14px sans-serif',
-        fillColor: Cesium.Color.WHITE,
-        outlineColor: Cesium.Color.BLACK,
-        outlineWidth: 2,
-        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-        pixelOffset: new Cesium.Cartesian2(0, -15),
-        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND
-      }
-    })
-    
-    tempEntities.value.push(entity)
-    drawingPoints.value.push(cartesian)
-  }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
-  
-  // 右键取消
-  handler.setInputAction(() => {
-    clearDrawing()
-  }, Cesium.ScreenSpaceEventType.RIGHT_CLICK)
-}
-
-/**
- * 设置管道绘制模式
- */
-function setupPipeDrawing(): void {
-  if (!viewer || !handler || !drawingDataSource) return
-  
-  let activePolyline: Cesium.Entity | null = null
-  let activePoints: Cesium.Cartesian3[] = []
-  
-  // 左键点击添加管道点
-  handler.setInputAction((click: { position: Cesium.Cartesian2 }) => {
-    if (!viewer || !drawingDataSource) return
-    
-    const cartesian = viewer.camera.pickEllipsoid(click.position, viewer.scene.globe.ellipsoid)
-    if (!cartesian) return
-    
-    activePoints.push(cartesian)
-    drawingPoints.value.push(cartesian)
-    
-    // 添加点标记
-    const pointEntity = drawingDataSource.entities.add({
-      position: cartesian,
-      point: {
-        pixelSize: 8,
-        color: Cesium.Color.CYAN,
-        outlineColor: Cesium.Color.WHITE,
-        outlineWidth: 2,
-        heightReference: Cesium.HeightReference.CLAMP_TO_GROUND
-      }
-    })
-    tempEntities.value.push(pointEntity)
-    
-    // 如果有两个或以上的点，绘制管线
-    if (activePoints.length >= 2) {
-      if (activePolyline) {
-        // 更新现有管线
-        activePolyline.polyline!.positions = new Cesium.CallbackProperty(() => {
-          return activePoints
-        }, false)
-      } else {
-        // 创建新管线
-        activePolyline = drawingDataSource.entities.add({
-          polyline: {
-            positions: new Cesium.CallbackProperty(() => {
-              return activePoints
-            }, false),
-            width: 5,
-            material: Cesium.Color.CYAN.withAlpha(0.8),
-            clampToGround: true
-          }
-        })
-        tempEntities.value.push(activePolyline)
-      }
-    }
-  }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
-  
-  // 鼠标移动显示预览线
-  let previewLine: Cesium.Entity | null = null
-  handler.setInputAction((movement: { endPosition: Cesium.Cartesian2 }) => {
-    if (!viewer || !drawingDataSource || activePoints.length === 0) return
-    
-    const cartesian = viewer.camera.pickEllipsoid(movement.endPosition, viewer.scene.globe.ellipsoid)
-    if (!cartesian) return
-    
-    // 移除旧的预览线
-    if (previewLine) {
-      drawingDataSource.entities.remove(previewLine)
-    }
-    
-    // 创建新的预览线
-    const previewPoints = [...activePoints, cartesian]
-    previewLine = drawingDataSource.entities.add({
-      polyline: {
-        positions: previewPoints,
-        width: 3,
-        material: new Cesium.PolylineDashMaterialProperty({
-          color: Cesium.Color.YELLOW,
-          dashLength: 16
-        }),
-        clampToGround: true
-      }
-    })
-  }, Cesium.ScreenSpaceEventType.MOUSE_MOVE)
-  
-  // 右键完成绘制
-  handler.setInputAction(() => {
-    // 先保存点的副本，因为 clearDrawing 会清空
-    const pointsCopy = [...activePoints]
-    
-    // 清除预览线
-    if (previewLine && drawingDataSource) {
-      drawingDataSource.entities.remove(previewLine)
-      previewLine = null
-    }
-    
-    // 清除临时绘制（包括临时管线和点标记）
-    clearDrawing()
-    
-    // 重置状态
-    activePoints = []
-    activePolyline = null
-    
-    // 最后创建永久管道
-    if (pointsCopy.length >= 2) {
-      finishPipeDrawing(pointsCopy)
-    }
-  }, Cesium.ScreenSpaceEventType.RIGHT_CLICK)
-}
-
-/**
- * 设置编辑模式
- */
-function setupEditMode(): void {
   if (!viewer || !handler) return
   
-  // 左键点击选择实体
+  // 左键添加节点
   handler.setInputAction((click: { position: Cesium.Cartesian2 }) => {
-    if (!viewer) return
+    const cartesian = viewer!.camera.pickEllipsoid(click.position, viewer!.scene.globe.ellipsoid)
+    if (!cartesian) return
+    addNode(cartesian)
+  }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
+  
+  // 中键撤销
+  handler.setInputAction(() => {
+    undoLastNode()
+  }, Cesium.ScreenSpaceEventType.MIDDLE_CLICK)
+  
+  // 右键完成节点绘制，进入曲线调整模式
+  handler.setInputAction(() => {
+    if (nodes.value.length >= 2) {
+      setDrawingMode('adjustCurve')
+    }
+  }, Cesium.ScreenSpaceEventType.RIGHT_CLICK)
+}
+
+function addNode(position: Cesium.Cartesian3): void {
+  if (!drawingDataSource) return
+  
+  const cartographic = Cesium.Cartographic.fromCartesian(position)
+  const longitude = Cesium.Math.toDegrees(cartographic.longitude)
+  const latitude = Cesium.Math.toDegrees(cartographic.latitude)
+  
+  const node: PipeNode = {
+    id: `node_${++nodeIdCounter}`,
+    position,
+    coordinates: [longitude, latitude]
+  }
+  
+  // 创建节点实体
+  node.entity = drawingDataSource.entities.add({
+    id: node.id,
+    position,
+    point: {
+      pixelSize: 14,
+      color: Cesium.Color.CYAN,
+      outlineColor: Cesium.Color.WHITE,
+      outlineWidth: 2,
+      heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+      disableDepthTestDistance: Number.POSITIVE_INFINITY
+    },
+    label: {
+      text: `${nodes.value.length + 1}`,
+      font: 'bold 12px sans-serif',
+      fillColor: Cesium.Color.WHITE,
+      outlineColor: Cesium.Color.BLACK,
+      outlineWidth: 2,
+      style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+      verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+      pixelOffset: new Cesium.Cartesian2(0, -18),
+      heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+      disableDepthTestDistance: Number.POSITIVE_INFINITY
+    }
+  })
+  
+  nodes.value.push(node)
+  
+  // 如果有前一个节点，自动创建连接线段
+  if (nodes.value.length >= 2) {
+    const prevNode = nodes.value[nodes.value.length - 2]
+    createSegment(prevNode, node)
+  }
+  
+  canUndo.value = nodes.value.length > 0
+}
+
+function createSegment(startNode: PipeNode, endNode: PipeNode): void {
+  if (!drawingDataSource) return
+  
+  const segment: PipeSegment = {
+    id: `segment_${++segmentIdCounter}`,
+    startNode,
+    endNode,
+    controlPoints: [], // 初始为直线，无控制点
+    width: currentWidth.value
+  }
+  
+  // 创建线段实体
+  segment.entity = drawingDataSource.entities.add({
+    id: segment.id,
+    polyline: {
+      positions: [startNode.position, endNode.position],
+      width: segment.width,
+      material: new Cesium.PolylineGlowMaterialProperty({
+        glowPower: 0.2,
+        color: Cesium.Color.CYAN.withAlpha(0.8)
+      }),
+      clampToGround: true
+    }
+  })
+  
+  segments.value.push(segment)
+}
+
+function undoLastNode(): void {
+  if (!drawingDataSource || nodes.value.length === 0) return
+  
+  // 移除最后一个节点
+  const lastNode = nodes.value.pop()
+  if (lastNode?.entity) {
+    drawingDataSource.entities.remove(lastNode.entity)
+  }
+  
+  // 移除最后一个线段
+  if (segments.value.length > 0) {
+    const lastSegment = segments.value.pop()
+    if (lastSegment?.entity) {
+      drawingDataSource.entities.remove(lastSegment.entity)
+    }
+  }
+  
+  canUndo.value = nodes.value.length > 0
+}
+
+// ==================== 曲线调整 ====================
+
+function setupCurveAdjustment(): void {
+  if (!viewer || !handler) return
+  
+  // 点击选择线段
+  handler.setInputAction((click: { position: Cesium.Cartesian2 }) => {
+    const picked = viewer!.scene.pick(click.position)
     
-    const pickedObject = viewer.scene.pick(click.position)
-    
-    if (Cesium.defined(pickedObject) && pickedObject.id) {
-      const entity = pickedObject.id as Cesium.Entity
+    if (Cesium.defined(picked) && picked.id) {
+      const entityId = picked.id.id || picked.id
+      const segment = segments.value.find(s => s.id === entityId)
       
-      // 检查是否是管道实体
-      if (entity.id && String(entity.id).startsWith('pipe_')) {
-        selectedEntity.value = entity
-        highlightEntity(entity)
+      if (segment) {
+        selectSegment(segment)
+      } else {
+        // 点击空白处，如果已选中线段，在该位置添加控制点
+        if (selectedSegment.value) {
+          const cartesian = viewer!.camera.pickEllipsoid(click.position, viewer!.scene.globe.ellipsoid)
+          if (cartesian) {
+            addControlPoint(selectedSegment.value, cartesian)
+          }
+        }
       }
-    } else {
-      // 点击空白处取消选择
-      if (selectedEntity.value) {
-        unhighlightEntity(selectedEntity.value)
-        selectedEntity.value = null
+    } else if (selectedSegment.value) {
+      // 点击空白处添加控制点
+      const cartesian = viewer!.camera.pickEllipsoid(click.position, viewer!.scene.globe.ellipsoid)
+      if (cartesian) {
+        addControlPoint(selectedSegment.value, cartesian)
       }
     }
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
+  
+  // 右键完成曲线调整，进入粗细调整
+  handler.setInputAction(() => {
+    selectedSegment.value = null
+    setDrawingMode('adjustWidth')
+  }, Cesium.ScreenSpaceEventType.RIGHT_CLICK)
 }
 
-/**
- * 高亮实体
- */
-function highlightEntity(entity: Cesium.Entity): void {
-  if (entity.polyline) {
-    // 保存原始样式
-    const originalWidth = entity.polyline.width
-    const originalMaterial = entity.polyline.material
-    
-    // 设置高亮样式
-    entity.polyline.width = new Cesium.ConstantProperty(8)
-    entity.polyline.material = new Cesium.ColorMaterialProperty(Cesium.Color.WHITE)
-    
-    // 保存原始样式以便恢复
-    ;(entity as any)._originalStyle = {
-      width: originalWidth,
-      material: originalMaterial
-    }
-  }
-}
-
-/**
- * 取消高亮
- */
-function unhighlightEntity(entity: Cesium.Entity): void {
-  if (entity.polyline && (entity as any)._originalStyle) {
-    const original = (entity as any)._originalStyle
-    entity.polyline.width = original.width
-    entity.polyline.material = original.material
-    delete (entity as any)._originalStyle
-  }
-}
-
-/**
- * 完成管道绘制 - 返回绘制数据，不创建永久实体
- * 永久管道由 pipes.ts 的 renderPipes 统一管理
- */
-function finishPipeDrawing(points: Cesium.Cartesian3[]): void {
-  if (points.length < 2) return
-  
-  // 转换为经纬度坐标
-  const coordinates: number[][] = []
-  for (const point of points) {
-    const cartographic = Cesium.Cartographic.fromCartesian(point)
-    const longitude = Cesium.Math.toDegrees(cartographic.longitude)
-    const latitude = Cesium.Math.toDegrees(cartographic.latitude)
-    coordinates.push([longitude, latitude])
+function selectSegment(segment: PipeSegment): void {
+  // 取消之前的选择
+  if (selectedSegment.value?.entity?.polyline) {
+    selectedSegment.value.entity.polyline.material = new Cesium.PolylineGlowMaterialProperty({
+      glowPower: 0.2,
+      color: Cesium.Color.CYAN.withAlpha(0.8)
+    })
   }
   
-  // 计算管道长度
-  let totalLength = 0
-  for (let i = 1; i < points.length; i++) {
-    const distance = Cesium.Cartesian3.distance(points[i - 1], points[i])
-    totalLength += distance
-  }
+  selectedSegment.value = segment
   
-  // 触发完成事件，只返回数据
-  // 永久管道实体由 pipes.ts 的 renderPipes 统一创建
-  if (onPipeDrawComplete) {
-    onPipeDrawComplete({
-      coordinates,
-      length: Math.round(totalLength),
-      pipeId: `pipe_${Date.now()}`,
-      pipeType: pipeType.value
+  // 高亮选中的线段
+  if (segment.entity?.polyline) {
+    segment.entity.polyline.material = new Cesium.PolylineGlowMaterialProperty({
+      glowPower: 0.4,
+      color: Cesium.Color.YELLOW
     })
   }
 }
 
-/**
- * 清除临时绘制
- */
-function clearDrawing(): void {
+function addControlPoint(segment: PipeSegment, position: Cesium.Cartesian3): void {
+  if (!drawingDataSource) return
+  
+  segment.controlPoints.push(position)
+  
+  // 添加控制点可视化
+  drawingDataSource.entities.add({
+    id: `ctrl_${segment.id}_${segment.controlPoints.length}`,
+    position,
+    point: {
+      pixelSize: 10,
+      color: Cesium.Color.YELLOW,
+      outlineColor: Cesium.Color.WHITE,
+      outlineWidth: 1,
+      heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+      disableDepthTestDistance: Number.POSITIVE_INFINITY
+    }
+  })
+  
+  // 更新线段为曲线
+  updateSegmentCurve(segment)
+}
+
+function updateSegmentCurve(segment: PipeSegment): void {
+  if (!segment.entity?.polyline) return
+  
+  const positions = generateCurvePositions(segment)
+  segment.entity.polyline.positions = new Cesium.ConstantProperty(positions)
+}
+
+function generateCurvePositions(segment: PipeSegment): Cesium.Cartesian3[] {
+  const { startNode, endNode, controlPoints } = segment
+  
+  if (controlPoints.length === 0) {
+    return [startNode.position, endNode.position]
+  }
+  
+  // 使用 Catmull-Rom 样条生成平滑曲线
+  const allPoints = [startNode.position, ...controlPoints, endNode.position]
+  const spline = new Cesium.CatmullRomSpline({
+    times: allPoints.map((_, i) => i / (allPoints.length - 1)),
+    points: allPoints
+  })
+  
+  // 生成曲线上的点
+  const curvePositions: Cesium.Cartesian3[] = []
+  const numSamples = 20 * allPoints.length
+  for (let i = 0; i <= numSamples; i++) {
+    const t = i / numSamples
+    curvePositions.push(spline.evaluate(t))
+  }
+  
+  return curvePositions
+}
+
+// ==================== 粗细调整 ====================
+
+function setupWidthAdjustment(): void {
+  if (!viewer || !handler) return
+  
+  // 点击选择线段
+  handler.setInputAction((click: { position: Cesium.Cartesian2 }) => {
+    const picked = viewer!.scene.pick(click.position)
+    
+    if (Cesium.defined(picked) && picked.id) {
+      const entityId = picked.id.id || picked.id
+      const segment = segments.value.find(s => s.id === entityId)
+      
+      if (segment) {
+        selectSegmentForWidth(segment)
+      }
+    }
+  }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
+  
+  // 右键完成，显示表单
+  handler.setInputAction(() => {
+    finishDrawing()
+  }, Cesium.ScreenSpaceEventType.RIGHT_CLICK)
+}
+
+function selectSegmentForWidth(segment: PipeSegment): void {
+  selectedSegment.value = segment
+  
+  // 高亮选中的线段
+  if (segment.entity?.polyline) {
+    segment.entity.polyline.material = new Cesium.PolylineGlowMaterialProperty({
+      glowPower: 0.4,
+      color: Cesium.Color.YELLOW
+    })
+  }
+}
+
+export function setSegmentWidth(width: number): void {
+  if (!selectedSegment.value?.entity?.polyline) return
+  
+  selectedSegment.value.width = width
+  selectedSegment.value.entity.polyline.width = new Cesium.ConstantProperty(width)
+}
+
+export function setAllSegmentsWidth(width: number): void {
+  currentWidth.value = width
+  for (const segment of segments.value) {
+    segment.width = width
+    if (segment.entity?.polyline) {
+      segment.entity.polyline.width = new Cesium.ConstantProperty(width)
+    }
+  }
+}
+
+// ==================== 完成绘制 ====================
+
+function finishDrawing(): void {
+  if (nodes.value.length < 2) return
+  
+  // 准备数据
+  drawnPipeData.value = {
+    nodes: [...nodes.value],
+    segments: [...segments.value],
+    totalLength: totalLength.value
+  }
+  
+  // 显示表单
+  showPipeForm.value = true
+  
+  // 清除事件
+  clearEventHandlers()
+  drawingMode.value = 'none'
+  
+  // 触发回调
+  if (onPipeDrawComplete) {
+    onPipeDrawComplete(drawnPipeData.value)
+  }
+}
+
+// ==================== 辅助函数 ====================
+
+function calculateSegmentLength(segment: PipeSegment): number {
+  const positions = generateCurvePositions(segment)
+  let length = 0
+  for (let i = 1; i < positions.length; i++) {
+    length += Cesium.Cartesian3.distance(positions[i - 1], positions[i])
+  }
+  return length
+}
+
+// ==================== 清理 ====================
+
+export function clearDrawing(): void {
   if (drawingDataSource) {
     drawingDataSource.entities.removeAll()
   }
-  drawingPoints.value = []
-  tempEntities.value = []
+  nodes.value = []
+  segments.value = []
+  selectedNode.value = null
+  selectedSegment.value = null
+  canUndo.value = false
+  drawnPipeData.value = null
+  showPipeForm.value = false
+  nodeIdCounter = 0
+  segmentIdCounter = 0
 }
 
-/**
- * 获取绘制的坐标点
- */
-export function getDrawingCoordinates(): number[][] {
-  const coordinates: number[][] = []
-  for (const point of drawingPoints.value) {
-    const cartographic = Cesium.Cartographic.fromCartesian(point)
-    const longitude = Cesium.Math.toDegrees(cartographic.longitude)
-    const latitude = Cesium.Math.toDegrees(cartographic.latitude)
-    coordinates.push([longitude, latitude])
-  }
-  return coordinates
+export function cancelDrawing(): void {
+  clearDrawing()
+  clearEventHandlers()
+  drawingMode.value = 'none'
 }
 
-/**
- * 管道绘制完成回调
- */
-let onPipeDrawComplete: ((data: { coordinates: number[][], length: number, pipeId: string, pipeType: PipeType }) => void) | null = null
+export function closePipeForm(): void {
+  showPipeForm.value = false
+}
 
-export function setOnPipeDrawComplete(callback: (data: { coordinates: number[][], length: number, pipeId: string, pipeType: PipeType }) => void): void {
+export function confirmPipeForm(): void {
+  // 保留绘制的数据，关闭表单
+  showPipeForm.value = false
+  clearDrawing()
+}
+
+export function setOnPipeDrawComplete(callback: typeof onPipeDrawComplete): void {
   onPipeDrawComplete = callback
 }
 
-/**
- * 销毁绘制工具
- */
 export function destroyDrawingTool(): void {
+  clearEventHandlers()
   if (handler) {
     handler.destroy()
     handler = null
   }
-  
   if (drawingDataSource && viewer) {
     viewer.dataSources.remove(drawingDataSource)
     drawingDataSource = null
   }
-  
   viewer = null
-  drawingMode.value = 'none'
   clearDrawing()
+  onPipeDrawComplete = null
 }
 
-/**
- * 导出 Composable
- */
+// ==================== 导出 Composable ====================
+
 export function usePipeDrawing() {
   return {
+    // 状态
     drawingMode: readonly(drawingMode),
-    drawingPoints: readonly(drawingPoints),
-    selectedEntity: readonly(selectedEntity),
-    pipeType: readonly(pipeType),
-    pipeDepth: readonly(pipeDepth),
+    nodes: readonly(nodes),
+    segments: readonly(segments),
+    selectedNode: readonly(selectedNode),
+    selectedSegment: readonly(selectedSegment),
+    currentWidth: readonly(currentWidth),
+    canUndo: readonly(canUndo),
+    showPipeForm: readonly(showPipeForm),
+    drawnPipeData: readonly(drawnPipeData),
+    totalLength,
+    
+    // 方法
     initDrawingTool,
     setDrawingMode,
-    setPipeType,
-    setPipeDepth,
-    getDrawingCoordinates,
-    setOnPipeDrawComplete,
+    setSegmentWidth,
+    setAllSegmentsWidth,
     clearDrawing,
+    cancelDrawing,
+    closePipeForm,
+    confirmPipeForm,
+    setOnPipeDrawComplete,
     destroyDrawingTool
   }
 }

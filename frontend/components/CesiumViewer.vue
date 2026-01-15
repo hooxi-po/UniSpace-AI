@@ -23,6 +23,8 @@ import {
   setupUndergroundView,
   setDefaultCamera,
   flyToPosition,
+  lock2DView,
+  unlock3DView,
   loadBuildings,
   setupPicker,
   loadAllModels,
@@ -45,7 +47,8 @@ const {
 
 const {
   initDrawingTool,
-  destroyDrawingTool
+  destroyDrawingTool,
+  drawingMode
 } = usePipeDrawing()
 
 // ==================== 响应式状态 ====================
@@ -110,7 +113,11 @@ watch(() => isEditorMode.value, (editing) => {
       UNDERGROUND_CAMERA.pitch,
       1.5
     )
+    // 锁定2D视角，禁止旋转
+    lock2DView(viewer)
   } else {
+    // 解锁视角控制
+    unlock3DView(viewer)
     // 恢复默认3D视角
     flyToPosition(
       viewer,
@@ -163,10 +170,23 @@ onMounted(async () => {
   handler.setInputAction((click: { position: Cesium.Cartesian2 }) => {
     if (!viewer) return
     
+    // 如果在绘制模式下，不处理建筑点击
+    if (drawingMode.value !== 'none') return
+    
     const pickedObject = viewer.scene.pick(click.position)
     
     if (Cesium.defined(pickedObject) && pickedObject.id) {
       const entity = pickedObject.id as Cesium.Entity
+      
+      // 跳过管道绘制相关的实体
+      if (entity.id && (
+        String(entity.id).startsWith('node_') || 
+        String(entity.id).startsWith('segment_') ||
+        String(entity.id).startsWith('ctrl_')
+      )) {
+        return
+      }
+      
       const properties = entity.properties
       
       if (properties) {

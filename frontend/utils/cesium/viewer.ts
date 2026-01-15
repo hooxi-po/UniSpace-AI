@@ -128,3 +128,60 @@ export function flyToPosition(
     duration
   })
 }
+
+/**
+ * 锁定2D视角
+ * 禁用视角旋转，只允许平移和缩放
+ * @param viewer - Cesium Viewer 实例
+ */
+export function lock2DView(viewer: Cesium.Viewer): void {
+  const controller = viewer.scene.screenSpaceCameraController
+  
+  // 禁用倾斜（中键拖拽改变俯仰角）
+  controller.enableTilt = false
+  
+  // 禁用自由视角（Ctrl + 拖拽）
+  controller.enableLook = false
+  
+  // 保留平移（左键拖拽）和缩放功能
+  controller.enableRotate = true
+  controller.enableTranslate = true
+  controller.enableZoom = true
+  
+  // 限制倾斜角度范围，锁定为俯视
+  controller.minimumZoomDistance = 100
+  controller.maximumZoomDistance = 50000
+  
+  // 通过设置 tilt 事件修饰符来完全禁用倾斜
+  controller.tiltEventTypes = []
+}
+
+/**
+ * 解锁视角
+ * 恢复所有相机控制功能
+ * @param viewer - Cesium Viewer 实例
+ */
+export function unlock3DView(viewer: Cesium.Viewer): void {
+  const controller = viewer.scene.screenSpaceCameraController
+  
+  // 恢复所有控制
+  controller.enableTilt = true
+  controller.enableRotate = true
+  controller.enableLook = true
+  controller.enableTranslate = true
+  controller.enableZoom = true
+  
+  // 恢复默认倾斜事件
+  controller.tiltEventTypes = [
+    Cesium.CameraEventType.MIDDLE_DRAG,
+    Cesium.CameraEventType.PINCH,
+    {
+      eventType: Cesium.CameraEventType.LEFT_DRAG,
+      modifier: Cesium.KeyboardEventModifier.CTRL
+    },
+    {
+      eventType: Cesium.CameraEventType.RIGHT_DRAG,
+      modifier: Cesium.KeyboardEventModifier.CTRL
+    }
+  ]
+}

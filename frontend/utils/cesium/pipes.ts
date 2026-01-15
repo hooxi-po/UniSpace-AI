@@ -100,11 +100,12 @@ function generatePipeCoordinates(baseCoords: [number, number], length: number): 
 /**
  * 获取校园区域的基准坐标
  * 根据管道ID分配不同的起始位置
+ * 坐标基于福州区域（与 config.ts 中的相机位置一致）
  */
 function getBaseCoordinates(pipeId: string): [number, number] {
-  // 校园中心坐标（从 config.ts 获取）
-  const centerLon = 116.3912
-  const centerLat = 39.9075
+  // 校园中心坐标（福州区域，与 config.ts DEFAULT_CAMERA 一致）
+  const centerLon = 119.1895
+  const centerLat = 26.0254
   
   // 根据管道ID的最后一位数字分配不同区域
   const lastDigit = parseInt(pipeId.slice(-1)) || 0
@@ -298,18 +299,19 @@ export function highlightPipe(pipeId: string): void {
   
   const entity = viewer.entities.getById(`pipe_${pipeId}`)
   if (entity && entity.polyline) {
-    // 保存原始颜色
+    // 保存原始样式
     const originalMaterial = entity.polyline.material
+    const originalWidth = entity.polyline.width
     
     // 设置高亮颜色
-    entity.polyline.material = Cesium.Color.WHITE
+    entity.polyline.material = new Cesium.ColorMaterialProperty(Cesium.Color.WHITE)
     entity.polyline.width = new Cesium.ConstantProperty(8)
     
     // 2秒后恢复
     setTimeout(() => {
       if (entity.polyline) {
         entity.polyline.material = originalMaterial
-        entity.polyline.width = new Cesium.ConstantProperty(5)
+        entity.polyline.width = originalWidth
       }
     }, 2000)
   }

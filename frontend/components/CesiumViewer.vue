@@ -11,6 +11,7 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref, nextTick, watch } from 'vue'
 import { useMapState } from '../composables/useMapState'
+import { usePipeDrawing } from '../composables/usePipeDrawing'
 import * as Cesium from 'cesium'
 import 'cesium/Build/Cesium/Widgets/widgets.css'
 
@@ -26,6 +27,9 @@ import {
   setupPicker,
   loadAllModels,
   setModelsVisibility,
+  initPipeRenderer,
+  renderPipes,
+  setPipesVisibility,
   type PropertyInfo
 } from '../utils/cesium'
 
@@ -35,8 +39,14 @@ const {
   layers, 
   showBuildingInfo, 
   closeBuildingPopup,
-  isEditorMode
+  isEditorMode,
+  pipes
 } = useMapState()
+
+const {
+  initDrawingTool,
+  destroyDrawingTool
+} = usePipeDrawing()
 
 // ==================== 响应式状态 ====================
 
@@ -60,6 +70,30 @@ watch(() => layers.value.buildings, (visible) => {
   // 模型跟随建筑图层显示/隐藏
   setModelsVisibility(modelEntities, visible)
 })
+
+// 监听管道图层变化
+watch(() => layers.value.pipes, (visible) => {
+  setPipesVisibility(visible)
+})
+
+watch(() => layers.value.waterSupply, (visible) => {
+  setPipesVisibility(visible, 'water')
+})
+
+watch(() => layers.value.pressure, (visible) => {
+  setPipesVisibility(visible, 'sewage')
+})
+
+watch(() => layers.value.power, (visible) => {
+  setPipesVisibility(visible, 'drainage')
+})
+
+// 监听管道数据变化，重新渲染
+watch(() => pipes.value, (newPipes) => {
+  if (viewer) {
+    renderPipes([...newPipes])
+  }
+}, { deep: true })
 
 // 监听编辑模式变化，切换2D/3D视角
 watch(() => isEditorMode.value, (editing) => {
@@ -168,9 +202,19 @@ onMounted(async () => {
   } catch (e) {
     console.error('加载 3D 模型失败', e)
   }
+
+  // 初始化管道渲染器
+  initPipeRenderer(viewer)
+  
+  // 初始化绘制工具
+  initDrawingTool(viewer)
+  
+  // 渲染初始管道数据
+  renderPipes([...pipes.value])
 })
 
 onBeforeUnmount(() => {
+  destroyDrawingTool()
   viewer?.destroy()
 })
 

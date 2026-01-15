@@ -1,0 +1,341 @@
+/**
+ * @file pipes.ts
+ * @description 管道渲染模块
+ * 负责在 Cesium 地图上绘制和管理管道网络
+ */
+
+import * as Cesium from 'cesium'
+
+/**
+ * 管道数据接口
+ */
+export interface PipeData {
+  id: string
+  type: 'water' | 'sewage' | 'drainage'
+  name: string
+  diameter: number
+  material: string
+  length: number
+  depth: number
+  pressure?: number
+  slope?: number
+  installDate: string
+  status: string
+  // 管道路径坐标 [经度, 纬度]
+  coordinates?: number[][]
+}
+
+/**
+ * 管道类型配置
+ */
+const PIPE_TYPE_CONFIG = {
+  water: {
+    color: Cesium.Color.fromCssColorString('#00ff7f'),
+    name: '供水管道'
+  },
+  sewage: {
+    color: Cesium.Color.fromCssColorString('#8b4513'),
+    name: '污水管道'
+  },
+  drainage: {
+    color: Cesium.Color.fromCssColorString('#4169e1'),
+    name: '排水管道'
+  }
+}
+
+/**
+ * 管道实体集合
+ */
+let pipeEntities: Cesium.Entity[] = []
+let viewer: Cesium.Viewer | null = null
+
+/**
+ * 初始化管道渲染器
+ * @param cesiumViewer - Cesium Viewer 实例
+ */
+export function initPipeRenderer(cesiumViewer: Cesium.Viewer): void {
+  viewer = cesiumViewer
+}
+
+/**
+ * 生成模拟管道坐标
+ * 在校园区域内生成随机但合理的管道路径
+ * @param baseCoords - 基准坐标 [经度, 纬度]
+ * @param length - 管道长度（米）
+ * @returns 管道坐标数组
+ */
+function generatePipeCoordinates(baseCoords: [number, number], length: number): number[][] {
+  const [baseLon, baseLat] = baseCoords
+  const coordinates: number[][] = []
+  
+  // 起点
+  coordinates.push([baseLon, baseLat])
+  
+  // 根据长度生成中间点（每50米一个点）
+  const segments = Math.max(2, Math.floor(length / 50))
+  
+  // 每度经度约111km，每度纬度约111km
+  const meterToDegree = 1 / 111000
+  
+  let currentLon = baseLon
+  let currentLat = baseLat
+  
+  for (let i = 1; i < segments; i++) {
+    // 随机方向，但偏向东西走向（更符合管道布局）
+    const angle = (Math.random() - 0.5) * Math.PI / 3 // ±30度范围
+    const segmentLength = length / segments
+    
+    const deltaLon = Math.cos(angle) * segmentLength * meterToDegree
+    const deltaLat = Math.sin(angle) * segmentLength * meterToDegree
+    
+    currentLon += deltaLon
+    currentLat += deltaLat
+    
+    coordinates.push([currentLon, currentLat])
+  }
+  
+  return coordinates
+}
+
+/**
+ * 获取校园区域的基准坐标
+ * 根据管道ID分配不同的起始位置
+ */
+function getBaseCoordinates(pipeId: string): [number, number] {
+  // 校园中心坐标（从 config.ts 获取）
+  const centerLon = 116.3912
+  const centerLat = 39.9075
+  
+  // 根据管道ID的最后一位数字分配不同区域
+  const lastDigit = parseInt(pipeId.slice(-1)) || 0
+  const offset = 0.002 // 约200米
+  
+  const positions: [number, number][] = [
+    [centerLon - offset, centerLat],           // 西
+    [centerLon + offset, centerLat],           // 东
+    [centerLon, centerLat + offset],           // 北
+    [centerLon, centerLat - offset],           // 南
+    [centerLon - offset/2, centerLat + offset/2], // 西北
+    [centerLon + offset/2, centerLat + offset/2], // 东北
+    [centerLon - offset/2, centerLat - offset/2], // 西南
+    [centerLon + offset/2, centerLat - offset/2], // 东南
+    [centerLon - offset*0.7, centerLat],       // 中西
+    [centerLon + offset*0.7, centerLat],       // 中东
+  ]
+  
+  return positions[lastDigit % positions.length]
+}
+
+/**
+ * 渲染单个管道
+ * @param pipe - 管道数据
+ * @returns 创建的 Cesium Entity
+ */
+export function renderPipe(pipe: PipeData): Cesium.Entity | null {
+  if (!viewer) {
+    console.error('管道渲染器未初始化')
+    return null
+  }
+  
+  // 如果没有坐标，生成模拟坐标
+  let coordinates = pipe.coordinates
+  if (!coordinates || coordinates.length === 0) {
+    const baseCoords = getBaseCoordinates(pipe.id)
+    coordinates = generatePipeCoordinates(baseCoords, pipe.length)
+  }
+  
+  if (coordinates.length < 2) {
+    console.warn(`管道 ${pipe.id} 坐标点不足`)
+    return null
+  }
+  
+  // 转换为 Cartesian3 数组
+  const positions: Cesium.Cartesian3[] = []
+  for (const coord of coordinates) {
+    // 管道埋在地下，使用负的深度值
+    positions.push(
+      Cesium.Cartesian3.fromDegrees(coord[0], coord[1], -pipe.depth)
+    )
+  }
+  
+  // 获取管道类型配置
+  const typeConfig = PIPE_TYPE_CONFIG[pipe.type]
+  
+  // 根据管道直径计算显示宽度（像素）
+  // 直径越大，线条越粗
+  const width = Math.max(3, Math.min(10, pipe.diameter / 50))
+  
+  // 根据状态调整颜色
+  let color = typeConfig.color.clone()
+  if (pipe.status === '维修中') {
+    color = Cesium.Color.YELLOW
+  } else if (pipe.status === '待检修') {
+    color = Cesium.Color.ORANGE
+  } else if (pipe.status === '报废') {
+    color = Cesium.Color.RED
+  }
+  
+  // 创建管道实体
+  const entity = viewer.entities.add({
+    id: `pipe_${pipe.id}`,
+    name: pipe.name,
+    polyline: {
+      positions: positions,
+      width: width,
+      material: color,
+      clampToGround: false, // 不贴地，使用实际深度
+      // 添加发光效果
+      // @ts-ignore - Cesium类型定义可能不完整
+      glowPower: 0.2
+    },
+    properties: {
+      id: pipe.id,
+      type: pipe.type,
+      typeName: typeConfig.name,
+      name: pipe.name,
+      diameter: pipe.diameter,
+      material: pipe.material,
+      length: pipe.length,
+      depth: pipe.depth,
+      pressure: pipe.pressure,
+      slope: pipe.slope,
+      installDate: pipe.installDate,
+      status: pipe.status
+    }
+  })
+  
+  pipeEntities.push(entity)
+  return entity
+}
+
+/**
+ * 渲染多个管道
+ * @param pipes - 管道数据数组
+ */
+export function renderPipes(pipes: PipeData[]): void {
+  if (!viewer) {
+    console.error('管道渲染器未初始化')
+    return
+  }
+  
+  // 清除现有管道
+  clearPipes()
+  
+  // 渲染所有管道
+  for (const pipe of pipes) {
+    renderPipe(pipe)
+  }
+  
+  console.log(`已渲染 ${pipes.length} 条管道`)
+}
+
+/**
+ * 更新单个管道
+ * @param pipe - 更新后的管道数据
+ */
+export function updatePipe(pipe: PipeData): void {
+  if (!viewer) return
+  
+  // 删除旧实体
+  const oldEntity = viewer.entities.getById(`pipe_${pipe.id}`)
+  if (oldEntity) {
+    viewer.entities.remove(oldEntity)
+    pipeEntities = pipeEntities.filter(e => e.id !== oldEntity.id)
+  }
+  
+  // 重新渲染
+  renderPipe(pipe)
+}
+
+/**
+ * 删除单个管道
+ * @param pipeId - 管道ID
+ */
+export function removePipe(pipeId: string): void {
+  if (!viewer) return
+  
+  const entity = viewer.entities.getById(`pipe_${pipeId}`)
+  if (entity) {
+    viewer.entities.remove(entity)
+    pipeEntities = pipeEntities.filter(e => e.id !== entity.id)
+  }
+}
+
+/**
+ * 清除所有管道
+ */
+export function clearPipes(): void {
+  if (!viewer) return
+  
+  for (const entity of pipeEntities) {
+    viewer.entities.remove(entity)
+  }
+  pipeEntities = []
+}
+
+/**
+ * 设置管道可见性
+ * @param visible - 是否可见
+ * @param pipeType - 管道类型（可选，不指定则应用到所有管道）
+ */
+export function setPipesVisibility(visible: boolean, pipeType?: 'water' | 'sewage' | 'drainage'): void {
+  for (const entity of pipeEntities) {
+    if (pipeType) {
+      const entityType = entity.properties?.getValue(Cesium.JulianDate.now()).type
+      if (entityType === pipeType) {
+        entity.show = visible
+      }
+    } else {
+      entity.show = visible
+    }
+  }
+}
+
+/**
+ * 高亮显示指定管道
+ * @param pipeId - 管道ID
+ */
+export function highlightPipe(pipeId: string): void {
+  if (!viewer) return
+  
+  const entity = viewer.entities.getById(`pipe_${pipeId}`)
+  if (entity && entity.polyline) {
+    // 保存原始颜色
+    const originalMaterial = entity.polyline.material
+    
+    // 设置高亮颜色
+    entity.polyline.material = Cesium.Color.WHITE
+    entity.polyline.width = new Cesium.ConstantProperty(8)
+    
+    // 2秒后恢复
+    setTimeout(() => {
+      if (entity.polyline) {
+        entity.polyline.material = originalMaterial
+        entity.polyline.width = new Cesium.ConstantProperty(5)
+      }
+    }, 2000)
+  }
+}
+
+/**
+ * 飞行到指定管道
+ * @param pipeId - 管道ID
+ */
+export function flyToPipe(pipeId: string): void {
+  if (!viewer) return
+  
+  const entity = viewer.entities.getById(`pipe_${pipeId}`)
+  if (entity) {
+    viewer.flyTo(entity, {
+      duration: 1.5,
+      offset: new Cesium.HeadingPitchRange(0, Cesium.Math.toRadians(-45), 500)
+    })
+  }
+}
+
+/**
+ * 获取所有管道实体
+ */
+export function getAllPipeEntities(): Cesium.Entity[] {
+  return pipeEntities
+}

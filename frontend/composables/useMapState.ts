@@ -6,6 +6,7 @@
 
 import { ref, readonly } from 'vue'
 import type { PropertyInfo } from '../utils/cesium'
+import type { PipeData } from '../utils/cesium/pipes'
 
 // ==================== 图层状态 ====================
 
@@ -57,6 +58,26 @@ const realtimePressure = ref({
   unit: 'MPa',
   status: '低' as '正常' | '低' | '高'
 })
+
+// ==================== 管道数据 ====================
+
+/** 管道数据列表 */
+const pipes = ref<PipeData[]>([
+  // 供水管道
+  { id: 'W001', type: 'water', name: '主供水管-1', diameter: 300, material: 'PE', length: 150, depth: 1.5, pressure: 0.45, installDate: '2020-03-15', status: '正常' },
+  { id: 'W002', type: 'water', name: '主供水管-2', diameter: 250, material: 'PE', length: 120, depth: 1.2, pressure: 0.42, installDate: '2020-05-20', status: '正常' },
+  { id: 'W003', type: 'water', name: '支线供水管-A', diameter: 150, material: 'PVC', length: 80, depth: 1.0, pressure: 0.38, installDate: '2021-02-10', status: '待检修' },
+  
+  // 污水管道
+  { id: 'S001', type: 'sewage', name: '主污水管-1', diameter: 400, material: '混凝土', length: 200, depth: 2.5, slope: 2.5, installDate: '2019-08-12', status: '正常' },
+  { id: 'S002', type: 'sewage', name: '主污水管-2', diameter: 350, material: '混凝土', length: 180, depth: 2.3, slope: 2.0, installDate: '2019-10-05', status: '正常' },
+  { id: 'S003', type: 'sewage', name: '支线污水管-A', diameter: 200, material: 'PVC', length: 100, depth: 1.8, slope: 3.0, installDate: '2020-11-22', status: '维修中' },
+  
+  // 排水管道
+  { id: 'D001', type: 'drainage', name: '雨水管-1', diameter: 500, material: '混凝土', length: 250, depth: 2.0, slope: 3.0, installDate: '2019-06-18', status: '正常' },
+  { id: 'D002', type: 'drainage', name: '雨水管-2', diameter: 400, material: '混凝土', length: 200, depth: 1.8, slope: 2.5, installDate: '2019-09-25', status: '正常' },
+  { id: 'D003', type: 'drainage', name: '排水支管-A', diameter: 300, material: 'PE', length: 120, depth: 1.5, slope: 3.5, installDate: '2021-04-08', status: '正常' }
+])
 
 // ==================== 导出 Composable ====================
 
@@ -118,6 +139,26 @@ export const useMapState = () => {
     }
   }
 
+  // 管道操作
+  const addPipe = (pipe: PipeData) => {
+    pipes.value.push(pipe)
+  }
+
+  const updatePipeData = (pipeId: string, updates: Partial<PipeData>) => {
+    const index = pipes.value.findIndex(p => p.id === pipeId)
+    if (index !== -1) {
+      pipes.value[index] = { ...pipes.value[index], ...updates }
+    }
+  }
+
+  const deletePipe = (pipeId: string) => {
+    pipes.value = pipes.value.filter(p => p.id !== pipeId)
+  }
+
+  const getPipesByType = (type: 'water' | 'sewage' | 'drainage') => {
+    return pipes.value.filter(p => p.type === type)
+  }
+
   return {
     // 图层
     layers: readonly(layers),
@@ -143,6 +184,13 @@ export const useMapState = () => {
     
     // 实时数据
     realtimePressure: readonly(realtimePressure),
-    updatePressure
+    updatePressure,
+
+    // 管道数据
+    pipes: readonly(pipes),
+    addPipe,
+    updatePipeData,
+    deletePipe,
+    getPipesByType
   }
 }

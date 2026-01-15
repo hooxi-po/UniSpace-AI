@@ -24,3 +24,6 @@ export * from './picker'
 
 // 3D 模型加载
 export * from './models'
+
+// 管道渲染
+export * from './pipes'

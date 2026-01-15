@@ -31,7 +31,6 @@ export function createViewer(options: ViewerOptions): Cesium.Viewer {
   // 创建 Viewer，禁用不需要的 UI 组件
   const viewer = new Cesium.Viewer(container, {
     baseLayerPicker: false,      // 禁用底图选择器
-    imageryProvider: false,       // 不使用默认底图
     terrain: Cesium.Terrain.fromWorldTerrain(), // 使用世界地形
     timeline: false,              // 禁用时间轴
     animation: false,             // 禁用动画控件

@@ -26,6 +26,7 @@ import {
   lock2DView,
   unlock3DView,
   loadBuildings,
+  setBuildingsVisibility,
   setupPicker,
   loadAllModels,
   setModelsVisibility,
@@ -55,7 +56,7 @@ const {
 
 const viewerEl = ref<HTMLElement | null>(null)
 let viewer: Cesium.Viewer | undefined
-let buildingDataSource: Cesium.DataSource | undefined
+let buildingsTileset: Cesium.Cesium3DTileset | undefined
 let modelEntities: Cesium.Entity[] = []
 const isUnderground = ref(false)
 
@@ -67,9 +68,7 @@ const config = useRuntimeConfig()
 
 // 监听建筑图层变化
 watch(() => layers.value.buildings, (visible) => {
-  if (buildingDataSource) {
-    buildingDataSource.show = visible
-  }
+  setBuildingsVisibility(visible)
   // 模型跟随建筑图层显示/隐藏
   setModelsVisibility(modelEntities, visible)
 })
@@ -206,15 +205,19 @@ onMounted(async () => {
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
 
   viewer.resize()
-  setDefaultCamera(viewer)
 
+  // 先加载 3D Tiles
   try {
-    buildingDataSource = await loadBuildings(viewer, '/map/map.geojson')
+    buildingsTileset = await loadBuildings(viewer)
+    console.log('Google Photorealistic 3D Tiles 加载完成')
     // 根据初始图层状态设置显示
-    buildingDataSource.show = layers.value.buildings
+    setBuildingsVisibility(layers.value.buildings)
   } catch (e) {
-    console.error('加载建筑数据失败', e)
+    console.error('加载 Google Photorealistic 3D Tiles 失败', e)
   }
+
+  // 加载完成后再设置相机位置
+  setDefaultCamera(viewer)
 
   try {
     modelEntities = loadAllModels(viewer)

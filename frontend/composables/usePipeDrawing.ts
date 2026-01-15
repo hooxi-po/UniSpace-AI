@@ -2,18 +2,22 @@
  * @file usePipeDrawing.ts
  * @description 管道交互式绘制功能
  * 提供类似 CAD 的点击绘制体验
+ * 注意：绘制完成后只返回坐标数据，永久管道由 pipes.ts 统一渲染
  */
 
 import { ref, readonly } from 'vue'
 import * as Cesium from 'cesium'
 
 export type DrawingMode = 'none' | 'node' | 'pipe' | 'edit'
+export type PipeType = 'surface' | 'underground'
 
 // 绘制状态
 const drawingMode = ref<DrawingMode>('none')
 const drawingPoints = ref<Cesium.Cartesian3[]>([])
 const tempEntities = ref<Cesium.Entity[]>([])
 const selectedEntity = ref<Cesium.Entity | null>(null)
+const pipeType = ref<PipeType>('surface')
+const pipeDepth = ref<number>(5) // 地下管道深度（米）
 
 // Cesium Viewer 实例
 let viewer: Cesium.Viewer | null = null
@@ -34,6 +38,20 @@ export function initDrawingTool(cesiumViewer: Cesium.Viewer): void {
   
   // 创建事件处理器
   handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
+}
+
+/**
+ * 设置管道类型
+ */
+export function setPipeType(type: PipeType): void {
+  pipeType.value = type
+}
+
+/**
+ * 设置地下管道深度
+ */
+export function setPipeDepth(depth: number): void {
+  pipeDepth.value = depth
 }
 
 /**
@@ -194,10 +212,8 @@ function setupPipeDrawing(): void {
   
   // 右键完成绘制
   handler.setInputAction(() => {
-    if (activePoints.length >= 2) {
-      // 触发完成事件，传递绘制的点
-      finishPipeDrawing(activePoints)
-    }
+    // 先保存点的副本，因为 clearDrawing 会清空
+    const pointsCopy = [...activePoints]
     
     // 清除预览线
     if (previewLine && drawingDataSource) {
@@ -205,9 +221,17 @@ function setupPipeDrawing(): void {
       previewLine = null
     }
     
+    // 清除临时绘制（包括临时管线和点标记）
+    clearDrawing()
+    
     // 重置状态
     activePoints = []
     activePolyline = null
+    
+    // 最后创建永久管道
+    if (pointsCopy.length >= 2) {
+      finishPipeDrawing(pointsCopy)
+    }
   }, Cesium.ScreenSpaceEventType.RIGHT_CLICK)
 }
 
@@ -275,7 +299,8 @@ function unhighlightEntity(entity: Cesium.Entity): void {
 }
 
 /**
- * 完成管道绘制
+ * 完成管道绘制 - 返回绘制数据，不创建永久实体
+ * 永久管道由 pipes.ts 的 renderPipes 统一管理
  */
 function finishPipeDrawing(points: Cesium.Cartesian3[]): void {
   if (points.length < 2) return
@@ -296,16 +321,16 @@ function finishPipeDrawing(points: Cesium.Cartesian3[]): void {
     totalLength += distance
   }
   
-  // 触发完成事件
+  // 触发完成事件，只返回数据
+  // 永久管道实体由 pipes.ts 的 renderPipes 统一创建
   if (onPipeDrawComplete) {
     onPipeDrawComplete({
       coordinates,
-      length: Math.round(totalLength)
+      length: Math.round(totalLength),
+      pipeId: `pipe_${Date.now()}`,
+      pipeType: pipeType.value
     })
   }
-  
-  // 清除临时绘制
-  clearDrawing()
 }
 
 /**
@@ -336,9 +361,9 @@ export function getDrawingCoordinates(): number[][] {
 /**
  * 管道绘制完成回调
  */
-let onPipeDrawComplete: ((data: { coordinates: number[][], length: number }) => void) | null = null
+let onPipeDrawComplete: ((data: { coordinates: number[][], length: number, pipeId: string, pipeType: PipeType }) => void) | null = null
 
-export function setOnPipeDrawComplete(callback: (data: { coordinates: number[][], length: number }) => void): void {
+export function setOnPipeDrawComplete(callback: (data: { coordinates: number[][], length: number, pipeId: string, pipeType: PipeType }) => void): void {
   onPipeDrawComplete = callback
 }
 
@@ -369,8 +394,12 @@ export function usePipeDrawing() {
     drawingMode: readonly(drawingMode),
     drawingPoints: readonly(drawingPoints),
     selectedEntity: readonly(selectedEntity),
+    pipeType: readonly(pipeType),
+    pipeDepth: readonly(pipeDepth),
     initDrawingTool,
     setDrawingMode,
+    setPipeType,
+    setPipeDepth,
     getDrawingCoordinates,
     setOnPipeDrawComplete,
     clearDrawing,

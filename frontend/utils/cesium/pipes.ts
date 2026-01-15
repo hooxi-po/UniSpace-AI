@@ -149,12 +149,11 @@ export function renderPipe(pipe: PipeData): Cesium.Entity | null {
     return null
   }
   
-  // 转换为 Cartesian3 数组
+  // 转换为 Cartesian3 数组（地表管道不需要高度）
   const positions: Cesium.Cartesian3[] = []
   for (const coord of coordinates) {
-    // 管道埋在地下，使用负的深度值
     positions.push(
-      Cesium.Cartesian3.fromDegrees(coord[0], coord[1], -pipe.depth)
+      Cesium.Cartesian3.fromDegrees(coord[0], coord[1])
     )
   }
   
@@ -162,8 +161,7 @@ export function renderPipe(pipe: PipeData): Cesium.Entity | null {
   const typeConfig = PIPE_TYPE_CONFIG[pipe.type]
   
   // 根据管道直径计算显示宽度（像素）
-  // 直径越大，线条越粗
-  const width = Math.max(3, Math.min(10, pipe.diameter / 50))
+  const width = Math.max(4, Math.min(12, pipe.diameter / 40))
   
   // 根据状态调整颜色
   let color = typeConfig.color.clone()
@@ -175,18 +173,18 @@ export function renderPipe(pipe: PipeData): Cesium.Entity | null {
     color = Cesium.Color.RED
   }
   
-  // 创建管道实体
+  // 创建地表管道实体（贴合地形）
   const entity = viewer.entities.add({
     id: `pipe_${pipe.id}`,
     name: pipe.name,
     polyline: {
       positions: positions,
       width: width,
-      material: color,
-      clampToGround: false, // 不贴地，使用实际深度
-      // 添加发光效果
-      // @ts-ignore - Cesium类型定义可能不完整
-      glowPower: 0.2
+      material: new Cesium.PolylineGlowMaterialProperty({
+        glowPower: 0.2,
+        color: color
+      }),
+      clampToGround: true // 贴合地形
     },
     properties: {
       id: pipe.id,

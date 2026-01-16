@@ -10,6 +10,7 @@
         <button class="close-button" @click="toggleLeftSidebar">×</button>
       </div>
       <div class="sidebar-content">
+        <!-- 管网类型 -->
         <template v-if="activeNavItem === '管网类型'">
           <section class="layer-section" :class="{ collapsed: collapsedSections.pipe }">
             <h4 @click="toggleSection('pipe')">
@@ -26,7 +27,9 @@
           </section>
         </template>
 
+        <!-- 管网编辑器 -->
         <template v-else-if="activeNavItem === '管网编辑器'">
+          <!-- 编辑/添加表单模式 -->
           <template v-if="showInlineEditor">
             <section class="inline-editor">
               <div class="editor-header">
@@ -121,6 +124,7 @@
               </div>
             </section>
           </template>
+          <!-- 管道列表模式 -->
           <template v-else>
             <section class="editor-actions">
               <button class="action-btn primary" @click="openAddForm">
@@ -162,6 +166,7 @@
           </template>
         </template>
 
+        <!-- 建筑模型 -->
         <template v-else-if="activeNavItem === '建筑模型'">
           <section class="layer-section">
             <h4>
@@ -174,6 +179,7 @@
           </section>
         </template>
 
+        <!-- 关联模型 -->
         <template v-else-if="activeNavItem === '关联模型'">
           <section class="info-section">
             <p class="panel-desc">管网与建筑的关联关系（开发中）</p>
@@ -184,6 +190,7 @@
           </section>
         </template>
 
+        <!-- 关联楼宇 -->
         <template v-else-if="activeNavItem === '关联楼宇'">
           <section class="info-section">
             <p class="panel-desc">选择楼宇查看关联管网（开发中）</p>
@@ -194,6 +201,7 @@
           </section>
         </template>
 
+        <!-- 实时压力 -->
         <template v-else-if="activeNavItem === '实时压力'">
           <section class="info-section">
             <div class="pressure-gauge">
@@ -231,6 +239,7 @@
     </button>
   </Transition>
 
+  <!-- 删除确认弹窗 -->
   <Teleport to="body">
     <Transition name="modal">
       <div v-if="showDeleteConfirm" class="modal-overlay" @click.self="cancelDelete">

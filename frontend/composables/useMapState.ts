@@ -59,45 +59,7 @@ const realtimePressure = ref({
 // ==================== 管道数据 ====================
 
 /** 管道数据列表 */
-const pipes = ref<PipeData[]>([
-  {
-    id: 'pipe_001',
-    type: 'water',
-    name: '主供水管道A',
-    diameter: 300,
-    material: '球墨铸铁',
-    length: 250,
-    depth: 1.8,
-    pressure: 0.5,
-    slope: 0.3,
-    installDate: '2020-05-15',
-    status: '正常'
-  },
-  {
-    id: 'pipe_002',
-    type: 'sewage',
-    name: '污水管道B',
-    diameter: 400,
-    material: 'PVC',
-    length: 180,
-    depth: 2.5,
-    slope: 0.5,
-    installDate: '2019-08-20',
-    status: '正常'
-  },
-  {
-    id: 'pipe_003',
-    type: 'drainage',
-    name: '排水管道C',
-    diameter: 200,
-    material: 'PE',
-    length: 120,
-    depth: 1.2,
-    slope: 0.8,
-    installDate: '2021-03-10',
-    status: '待检修'
-  }
-])
+const pipes = ref<PipeData[]>([])
 
 // ==================== 导出 Composable ====================
 

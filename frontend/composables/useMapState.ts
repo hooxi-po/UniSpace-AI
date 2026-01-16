@@ -47,9 +47,6 @@ export type NavItemType = '管网类型' | '管网编辑器' | '建筑模型' | 
 /** 当前激活的导航项 */
 const activeNavItem = ref<NavItemType>('管网类型')
 
-/** 是否为编辑模式（2D视角） */
-const isEditorMode = ref(false)
-
 // ==================== 实时数据（模拟） ====================
 
 /** 实时压力值 */
@@ -63,20 +60,43 @@ const realtimePressure = ref({
 
 /** 管道数据列表 */
 const pipes = ref<PipeData[]>([
-  // 供水管道
-  { id: 'W001', type: 'water', name: '主供水管-1', diameter: 300, material: 'PE', length: 150, depth: 1.5, pressure: 0.45, installDate: '2020-03-15', status: '正常' },
-  { id: 'W002', type: 'water', name: '主供水管-2', diameter: 250, material: 'PE', length: 120, depth: 1.2, pressure: 0.42, installDate: '2020-05-20', status: '正常' },
-  { id: 'W003', type: 'water', name: '支线供水管-A', diameter: 150, material: 'PVC', length: 80, depth: 1.0, pressure: 0.38, installDate: '2021-02-10', status: '待检修' },
-  
-  // 污水管道
-  { id: 'S001', type: 'sewage', name: '主污水管-1', diameter: 400, material: '混凝土', length: 200, depth: 2.5, slope: 2.5, installDate: '2019-08-12', status: '正常' },
-  { id: 'S002', type: 'sewage', name: '主污水管-2', diameter: 350, material: '混凝土', length: 180, depth: 2.3, slope: 2.0, installDate: '2019-10-05', status: '正常' },
-  { id: 'S003', type: 'sewage', name: '支线污水管-A', diameter: 200, material: 'PVC', length: 100, depth: 1.8, slope: 3.0, installDate: '2020-11-22', status: '维修中' },
-  
-  // 排水管道
-  { id: 'D001', type: 'drainage', name: '雨水管-1', diameter: 500, material: '混凝土', length: 250, depth: 2.0, slope: 3.0, installDate: '2019-06-18', status: '正常' },
-  { id: 'D002', type: 'drainage', name: '雨水管-2', diameter: 400, material: '混凝土', length: 200, depth: 1.8, slope: 2.5, installDate: '2019-09-25', status: '正常' },
-  { id: 'D003', type: 'drainage', name: '排水支管-A', diameter: 300, material: 'PE', length: 120, depth: 1.5, slope: 3.5, installDate: '2021-04-08', status: '正常' }
+  {
+    id: 'pipe_001',
+    type: 'water',
+    name: '主供水管道A',
+    diameter: 300,
+    material: '球墨铸铁',
+    length: 250,
+    depth: 1.8,
+    pressure: 0.5,
+    slope: 0.3,
+    installDate: '2020-05-15',
+    status: '正常'
+  },
+  {
+    id: 'pipe_002',
+    type: 'sewage',
+    name: '污水管道B',
+    diameter: 400,
+    material: 'PVC',
+    length: 180,
+    depth: 2.5,
+    slope: 0.5,
+    installDate: '2019-08-20',
+    status: '正常'
+  },
+  {
+    id: 'pipe_003',
+    type: 'drainage',
+    name: '排水管道C',
+    diameter: 200,
+    material: 'PE',
+    length: 120,
+    depth: 1.2,
+    slope: 0.8,
+    installDate: '2021-03-10',
+    status: '待检修'
+  }
 ])
 
 // ==================== 导出 Composable ====================
@@ -115,16 +135,6 @@ export const useMapState = () => {
     activeNavItem.value = item
     // 切换导航时自动打开左侧栏
     showLeftSidebar.value = true
-    
-    // 管网编辑器模式：隐藏建筑，切换到2D视角
-    if (item === '管网编辑器') {
-      isEditorMode.value = true
-      layers.value.buildings = false
-    } else if (isEditorMode.value) {
-      // 退出编辑器模式时恢复
-      isEditorMode.value = false
-      layers.value.buildings = true
-    }
   }
 
   // 更新实时压力（模拟数据更新）
@@ -180,14 +190,13 @@ export const useMapState = () => {
     // 导航
     activeNavItem: readonly(activeNavItem),
     setActiveNavItem,
-    isEditorMode: readonly(isEditorMode),
     
     // 实时数据
     realtimePressure: readonly(realtimePressure),
     updatePressure,
 
     // 管道数据
-    pipes: readonly(pipes),
+    pipes,
     addPipe,
     updatePipeData,
     deletePipe,

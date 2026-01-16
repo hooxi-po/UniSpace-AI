@@ -11,7 +11,6 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref, nextTick, watch } from 'vue'
 import { useMapState } from '../composables/useMapState'
-import { usePipeDrawing } from '../composables/usePipeDrawing'
 import * as Cesium from 'cesium'
 import 'cesium/Build/Cesium/Widgets/widgets.css'
 
@@ -23,16 +22,15 @@ import {
   setupUndergroundView,
   setDefaultCamera,
   flyToPosition,
-  lock2DView,
-  unlock3DView,
   loadBuildings,
   setBuildingsVisibility,
-  setupPicker,
   loadAllModels,
   setModelsVisibility,
   initPipeRenderer,
   renderPipes,
   setPipesVisibility,
+  highlightPipe,
+  flyToPipe,
   type PropertyInfo
 } from '../utils/cesium'
 
@@ -42,15 +40,8 @@ const {
   layers, 
   showBuildingInfo, 
   closeBuildingPopup,
-  isEditorMode,
   pipes
 } = useMapState()
-
-const {
-  initDrawingTool,
-  destroyDrawingTool,
-  drawingMode
-} = usePipeDrawing()
 
 // ==================== 响应式状态 ====================
 
@@ -59,6 +50,12 @@ let viewer: Cesium.Viewer | undefined
 let buildingsTileset: Cesium.Cesium3DTileset | undefined
 let modelEntities: Cesium.Entity[] = []
 const isUnderground = ref(false)
+
+// 绘制模式状态
+const isDrawingMode = ref(false)
+const drawingPoints = ref<number[][]>([])
+let drawingEntities: Cesium.Entity[] = []
+let drawingHandler: Cesium.ScreenSpaceEventHandler | null = null
 
 // ==================== 配置获取 ====================
 
@@ -97,39 +94,6 @@ watch(() => pipes.value, (newPipes) => {
   }
 }, { deep: true })
 
-// 监听编辑模式变化，切换2D/3D视角
-watch(() => isEditorMode.value, (editing) => {
-  if (!viewer) return
-  
-  if (editing) {
-    // 切换到2D俯视视角，使用 UNDERGROUND_CAMERA 配置
-    flyToPosition(
-      viewer,
-      UNDERGROUND_CAMERA.longitude,
-      UNDERGROUND_CAMERA.latitude,
-      UNDERGROUND_CAMERA.height,
-      UNDERGROUND_CAMERA.heading,
-      UNDERGROUND_CAMERA.pitch,
-      1.5
-    )
-    // 锁定2D视角，禁止旋转
-    lock2DView(viewer)
-  } else {
-    // 解锁视角控制
-    unlock3DView(viewer)
-    // 恢复默认3D视角
-    flyToPosition(
-      viewer,
-      DEFAULT_CAMERA.longitude,
-      DEFAULT_CAMERA.latitude,
-      DEFAULT_CAMERA.height,
-      DEFAULT_CAMERA.heading,
-      DEFAULT_CAMERA.pitch,
-      1.5
-    )
-  }
-})
-
 // ==================== 事件处理函数 ====================
 
 const toggleUnderground = () => {
@@ -148,6 +112,131 @@ const toggleUnderground = () => {
   )
 }
 
+// ==================== 管道绘制功能 ====================
+
+// 开始绘制模式
+const startDrawingMode = () => {
+  if (!viewer) return
+  
+  isDrawingMode.value = true
+  drawingPoints.value = []
+  clearDrawingEntities()
+  
+  // 创建绘制事件处理器
+  drawingHandler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
+  
+  // 左键点击添加点
+  drawingHandler.setInputAction((click: { position: Cesium.Cartesian2 }) => {
+    if (!viewer) return
+    
+    const cartesian = viewer.camera.pickEllipsoid(click.position, viewer.scene.globe.ellipsoid)
+    if (cartesian) {
+      const cartographic = Cesium.Cartographic.fromCartesian(cartesian)
+      const lon = Cesium.Math.toDegrees(cartographic.longitude)
+      const lat = Cesium.Math.toDegrees(cartographic.latitude)
+      
+      drawingPoints.value.push([lon, lat])
+      
+      // 添加点标记
+      addDrawingPoint(lon, lat)
+      
+      // 更新线
+      updateDrawingLine()
+      
+      // 通知 LeftSidebar
+      window.dispatchEvent(new CustomEvent('pipe-point-added', { detail: [lon, lat] }))
+    }
+  }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
+  
+  // 双击完成绘制
+  drawingHandler.setInputAction(() => {
+    if (drawingPoints.value.length >= 2) {
+      finishDrawing()
+    }
+  }, Cesium.ScreenSpaceEventType.LEFT_DOUBLE_CLICK)
+  
+  // 右键取消
+  drawingHandler.setInputAction(() => {
+    stopDrawingMode()
+  }, Cesium.ScreenSpaceEventType.RIGHT_CLICK)
+}
+
+// 添加绘制点标记
+const addDrawingPoint = (lon: number, lat: number) => {
+  if (!viewer) return
+  
+  const entity = viewer.entities.add({
+    position: Cesium.Cartesian3.fromDegrees(lon, lat),
+    point: {
+      pixelSize: 10,
+      color: Cesium.Color.CYAN,
+      outlineColor: Cesium.Color.WHITE,
+      outlineWidth: 2,
+      heightReference: Cesium.HeightReference.CLAMP_TO_GROUND
+    }
+  })
+  drawingEntities.push(entity)
+}
+
+// 更新绘制线
+const updateDrawingLine = () => {
+  if (!viewer || drawingPoints.value.length < 2) return
+  
+  // 移除旧的线实体
+  const lineEntity = drawingEntities.find(e => e.id?.startsWith('drawing_line'))
+  if (lineEntity) {
+    viewer.entities.remove(lineEntity)
+    drawingEntities = drawingEntities.filter(e => e !== lineEntity)
+  }
+  
+  // 创建新的线
+  const positions = drawingPoints.value.map(([lon, lat]) => 
+    Cesium.Cartesian3.fromDegrees(lon, lat)
+  )
+  
+  const entity = viewer.entities.add({
+    id: `drawing_line_${Date.now()}`,
+    polyline: {
+      positions: positions,
+      width: 4,
+      material: new Cesium.PolylineDashMaterialProperty({
+        color: Cesium.Color.CYAN,
+        dashLength: 16
+      }),
+      clampToGround: true
+    }
+  })
+  drawingEntities.push(entity)
+}
+
+// 完成绘制
+const finishDrawing = () => {
+  window.dispatchEvent(new CustomEvent('pipe-drawing-complete'))
+  stopDrawingMode()
+}
+
+// 停止绘制模式
+const stopDrawingMode = () => {
+  isDrawingMode.value = false
+  
+  if (drawingHandler) {
+    drawingHandler.destroy()
+    drawingHandler = null
+  }
+  
+  clearDrawingEntities()
+}
+
+// 清除绘制实体
+const clearDrawingEntities = () => {
+  if (!viewer) return
+  
+  for (const entity of drawingEntities) {
+    viewer.entities.remove(entity)
+  }
+  drawingEntities = []
+}
+
 // ==================== 生命周期钩子 ====================
 
 onMounted(async () => {
@@ -163,35 +252,24 @@ onMounted(async () => {
   addOsmImagery(viewer)
   setupUndergroundView(viewer)
 
-  // 设置点击拾取事件，传递屏幕坐标
+  // 设置点击拾取事件
   const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
   
   handler.setInputAction((click: { position: Cesium.Cartesian2 }) => {
     if (!viewer) return
     
-    // 如果在绘制模式下，不处理建筑点击
-    if (drawingMode.value !== 'none') return
+    // 绘制模式下不处理点击
+    if (isDrawingMode.value) return
     
     const pickedObject = viewer.scene.pick(click.position)
     
     if (Cesium.defined(pickedObject) && pickedObject.id) {
       const entity = pickedObject.id as Cesium.Entity
-      
-      // 跳过管道绘制相关的实体
-      if (entity.id && (
-        String(entity.id).startsWith('node_') || 
-        String(entity.id).startsWith('segment_') ||
-        String(entity.id).startsWith('ctrl_')
-      )) {
-        return
-      }
-      
       const properties = entity.properties
       
       if (properties) {
         const infoList = extractProperties(properties)
         if (infoList.length > 0) {
-          // 传递点击位置给弹窗
           showBuildingInfo(infoList, {
             x: click.position.x,
             y: click.position.y
@@ -206,17 +284,14 @@ onMounted(async () => {
 
   viewer.resize()
 
-  // 先加载 3D Tiles
+  // 加载建筑
   try {
     buildingsTileset = await loadBuildings(viewer)
-    console.log('Google Photorealistic 3D Tiles 加载完成')
-    // 根据初始图层状态设置显示
     setBuildingsVisibility(layers.value.buildings)
   } catch (e) {
-    console.error('加载 Google Photorealistic 3D Tiles 失败', e)
+    console.error('加载建筑失败', e)
   }
 
-  // 加载完成后再设置相机位置
   setDefaultCamera(viewer)
 
   try {
@@ -229,15 +304,29 @@ onMounted(async () => {
   // 初始化管道渲染器
   initPipeRenderer(viewer)
   
-  // 初始化绘制工具
-  initDrawingTool(viewer)
-  
-  // 渲染初始管道数据
+  // 渲染管道数据
   renderPipes([...pipes.value])
+  
+  // 监听绘制模式事件
+  window.addEventListener('start-pipe-drawing', startDrawingMode)
+  window.addEventListener('stop-pipe-drawing', stopDrawingMode)
+  
+  // 监听管道高亮事件
+  window.addEventListener('highlight-pipe', ((e: CustomEvent) => {
+    highlightPipe(e.detail)
+    flyToPipe(e.detail)
+  }) as EventListener)
 })
 
 onBeforeUnmount(() => {
-  destroyDrawingTool()
+  // 清理事件监听
+  window.removeEventListener('start-pipe-drawing', startDrawingMode)
+  window.removeEventListener('stop-pipe-drawing', stopDrawingMode)
+  
+  if (drawingHandler) {
+    drawingHandler.destroy()
+  }
+  
   viewer?.destroy()
 })
 
@@ -247,7 +336,6 @@ function extractProperties(properties: Cesium.PropertyBag): PropertyInfo[] {
   const infoList: PropertyInfo[] = []
   const propertyNames = properties.propertyNames
   
-  // 属性翻译映射
   const labelMap: Record<string, string> = {
     'name': '名称',
     'name:zh': '中文名',
@@ -255,7 +343,17 @@ function extractProperties(properties: Cesium.PropertyBag): PropertyInfo[] {
     'building:levels': '楼层数',
     'amenity': '设施类型',
     'addr:street': '街道',
-    'addr:housenumber': '门牌号'
+    'addr:housenumber': '门牌号',
+    // 管道属性
+    'typeName': '管道类型',
+    'diameter': '管径(mm)',
+    'material': '材质',
+    'length': '长度(m)',
+    'depth': '埋深(m)',
+    'pressure': '压力(MPa)',
+    'slope': '坡度(%)',
+    'installDate': '安装日期',
+    'status': '状态'
   }
   
   const valueMap: Record<string, Record<string, string>> = {
@@ -273,14 +371,11 @@ function extractProperties(properties: Cesium.PropertyBag): PropertyInfo[] {
     let value = properties[propName]?.getValue()
     if (value === undefined || value === null || value === '') continue
     
-    // 翻译值
     if (valueMap[propName] && valueMap[propName][String(value)]) {
       value = valueMap[propName][String(value)]
     }
     
-    // 翻译标签
     const label = labelMap[propName] || propName
-    
     infoList.push({ label, value: String(value) })
   }
   

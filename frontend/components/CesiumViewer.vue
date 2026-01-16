@@ -31,6 +31,7 @@ import {
   setPipesVisibility,
   highlightPipe,
   flyToPipe,
+  loadRoadsAsPipes,
   type PropertyInfo
 } from '../utils/cesium'
 
@@ -303,6 +304,23 @@ onMounted(async () => {
 
   // 初始化管道渲染器
   initPipeRenderer(viewer)
+  
+  // 从 GeoJSON 道路数据加载管道
+  try {
+    const roadPipes = await loadRoadsAsPipes('/map/map.geojson')
+    if (roadPipes.length > 0) {
+      // 将道路管道数据添加到状态管理
+      roadPipes.forEach(pipe => {
+        // 检查是否已存在，避免重复添加
+        if (!pipes.value.find(p => p.id === pipe.id)) {
+          pipes.value.push(pipe)
+        }
+      })
+      console.log(`已加载 ${roadPipes.length} 条道路管道数据`)
+    }
+  } catch (e) {
+    console.error('加载道路管道数据失败', e)
+  }
   
   // 渲染管道数据
   renderPipes([...pipes.value])

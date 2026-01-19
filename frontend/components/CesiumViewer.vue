@@ -41,7 +41,13 @@ const {
   layers, 
   showBuildingInfo, 
   closeBuildingPopup,
-  pipes
+  pipes,
+  pipeEditorMode,
+  addDrawingPoint,
+  finishPipeDrawing,
+  highlightedPipeId,
+  highlightPipeById,
+  upsertPipes
 } = useMapState()
 
 // ==================== 响应式状态 ====================
@@ -57,6 +63,7 @@ const isDrawingMode = ref(false)
 const drawingPoints = ref<number[][]>([])
 let drawingEntities: Cesium.Entity[] = []
 let drawingHandler: Cesium.ScreenSpaceEventHandler | null = null
+let clickHandler: Cesium.ScreenSpaceEventHandler | null = null
 
 // ==================== 配置获取 ====================
 
@@ -94,6 +101,25 @@ watch(() => pipes.value, (newPipes) => {
     renderPipes([...newPipes])
   }
 }, { deep: true })
+
+// 监听绘制模式变化
+watch(() => pipeEditorMode.value, (mode) => {
+  if (mode !== 'drawing') {
+    stopDrawingMode()
+    return
+  }
+
+  startDrawingMode()
+})
+
+// 监听管道高亮变化
+watch(() => highlightedPipeId.value, (pipeId) => {
+  highlightPipeById(pipeId)
+  if (!pipeId) return
+
+  highlightPipe(pipeId)
+  flyToPipe(pipeId)
+})
 
 // ==================== 事件处理函数 ====================
 
@@ -137,15 +163,13 @@ const startDrawingMode = () => {
       const lat = Cesium.Math.toDegrees(cartographic.latitude)
       
       drawingPoints.value.push([lon, lat])
-      
-      // 添加点标记
+      addDrawingPointEntity(lon, lat)
+
+      // 同步到全局状态，供编辑器表单使用
       addDrawingPoint(lon, lat)
       
       // 更新线
       updateDrawingLine()
-      
-      // 通知 LeftSidebar
-      window.dispatchEvent(new CustomEvent('pipe-point-added', { detail: [lon, lat] }))
     }
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
   
@@ -163,7 +187,7 @@ const startDrawingMode = () => {
 }
 
 // 添加绘制点标记
-const addDrawingPoint = (lon: number, lat: number) => {
+const addDrawingPointEntity = (lon: number, lat: number) => {
   if (!viewer) return
   
   const entity = viewer.entities.add({
@@ -212,7 +236,7 @@ const updateDrawingLine = () => {
 
 // 完成绘制
 const finishDrawing = () => {
-  window.dispatchEvent(new CustomEvent('pipe-drawing-complete'))
+  finishPipeDrawing()
   stopDrawingMode()
 }
 
@@ -254,9 +278,9 @@ onMounted(async () => {
   setupUndergroundView(viewer)
 
   // 设置点击拾取事件
-  const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
+  clickHandler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
   
-  handler.setInputAction((click: { position: Cesium.Cartesian2 }) => {
+  clickHandler.setInputAction((click: { position: Cesium.Cartesian2 }) => {
     if (!viewer) return
     
     // 绘制模式下不处理点击
@@ -309,13 +333,7 @@ onMounted(async () => {
   try {
     const roadPipes = await loadRoadsAsPipes('/map/map.geojson')
     if (roadPipes.length > 0) {
-      // 将道路管道数据添加到状态管理
-      roadPipes.forEach(pipe => {
-        // 检查是否已存在，避免重复添加
-        if (!pipes.value.find(p => p.id === pipe.id)) {
-          pipes.value.push(pipe)
-        }
-      })
+      upsertPipes(roadPipes)
       console.log(`已加载 ${roadPipes.length} 条道路管道数据`)
     }
   } catch (e) {
@@ -325,27 +343,22 @@ onMounted(async () => {
   // 渲染管道数据
   renderPipes([...pipes.value])
   
-  // 监听绘制模式事件
-  window.addEventListener('start-pipe-drawing', startDrawingMode)
-  window.addEventListener('stop-pipe-drawing', stopDrawingMode)
-  
-  // 监听管道高亮事件
-  window.addEventListener('highlight-pipe', ((e: CustomEvent) => {
-    highlightPipe(e.detail)
-    flyToPipe(e.detail)
-  }) as EventListener)
+  // 绘制/高亮由全局状态驱动（useMapState），不再使用 window 事件总线
 })
 
 onBeforeUnmount(() => {
-  // 清理事件监听
-  window.removeEventListener('start-pipe-drawing', startDrawingMode)
-  window.removeEventListener('stop-pipe-drawing', stopDrawingMode)
-  
   if (drawingHandler) {
     drawingHandler.destroy()
+    drawingHandler = null
+  }
+
+  if (clickHandler) {
+    clickHandler.destroy()
+    clickHandler = null
   }
   
   viewer?.destroy()
+  viewer = undefined
 })
 
 // ==================== 辅助函数 ====================

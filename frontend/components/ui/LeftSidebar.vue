@@ -260,11 +260,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, h, onMounted } from 'vue'
+import { ref, computed, h, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useMapState } from '../../composables/useMapState'
 import type { PipeData } from '../../utils/cesium/pipes'
 
-const { layers, toggleLayer, showLeftSidebar, toggleLeftSidebar, activeNavItem, realtimePressure, pipes, addPipe, updatePipeData, deletePipe } = useMapState()
+const { layers, toggleLayer, showLeftSidebar, toggleLeftSidebar, activeNavItem, realtimePressure, pipes, addPipe, updatePipeData, deletePipe, pipeEditorMode, drawingPoints: globalDrawingPoints, startPipeDrawing, stopPipeDrawing, highlightPipeById } = useMapState()
 
 const collapsedSections = ref({ pipe: false })
 type Section = keyof typeof collapsedSections.value
@@ -289,8 +289,7 @@ const isEditMode = ref(false)
 const editingPipeId = ref<string | null>(null)
 const showDeleteConfirm = ref(false)
 const pipeToDelete = ref<PipeData | null>(null)
-const isDrawingMode = ref(false)
-const drawingPoints = ref<number[][]>([])
+const isDrawingMode = computed(() => pipeEditorMode.value === 'drawing')
 
 const defaultPipeForm = (): Partial<PipeData> => ({ name: '', type: 'water', diameter: 200, material: 'PE', length: 100, depth: 1.5, pressure: 0.4, slope: 0.3, installDate: new Date().toISOString().split('T')[0], status: '正常', coordinates: [] })
 const pipeForm = ref<Partial<PipeData>>(defaultPipeForm())
@@ -301,7 +300,7 @@ const getStatusClass = (status: string) => ({ '正常': 'normal', '维修中': '
 
 const openAddForm = () => { isEditMode.value = false; editingPipeId.value = null; pipeForm.value = defaultPipeForm(); showInlineEditor.value = true }
 const editPipe = (pipe: PipeData) => { isEditMode.value = true; editingPipeId.value = pipe.id; pipeForm.value = { ...pipe }; showInlineEditor.value = true }
-const closeInlineEditor = () => { showInlineEditor.value = false; pipeForm.value = defaultPipeForm(); editingPipeId.value = null; if (isDrawingMode.value) { isDrawingMode.value = false; window.dispatchEvent(new CustomEvent('stop-pipe-drawing')) }; drawingPoints.value = [] }
+const closeInlineEditor = () => { showInlineEditor.value = false; pipeForm.value = defaultPipeForm(); editingPipeId.value = null; if (isDrawingMode.value) { stopPipeDrawing() } }
 
 const submitPipeForm = () => {
   if (!isFormValid.value) return
@@ -316,14 +315,21 @@ const submitPipeForm = () => {
 const confirmDeletePipe = (pipe: PipeData) => { pipeToDelete.value = pipe; showDeleteConfirm.value = true }
 const cancelDelete = () => { showDeleteConfirm.value = false; pipeToDelete.value = null }
 const doDeletePipe = () => { if (pipeToDelete.value) deletePipe(pipeToDelete.value.id); cancelDelete() }
-const selectPipe = (pipe: PipeData) => { window.dispatchEvent(new CustomEvent('highlight-pipe', { detail: pipe.id })) }
+const selectPipe = (pipe: PipeData) => { highlightPipeById(pipe.id) }
 
 const toggleDrawingMode = () => {
-  isDrawingMode.value = !isDrawingMode.value
-  if (isDrawingMode.value) { drawingPoints.value = []; pipeForm.value.coordinates = []; window.dispatchEvent(new CustomEvent('start-pipe-drawing')) }
-  else { window.dispatchEvent(new CustomEvent('stop-pipe-drawing')) }
+  if (pipeEditorMode.value === 'drawing') {
+    stopPipeDrawing()
+    return
+  }
+
+  pipeForm.value.coordinates = []
+  startPipeDrawing()
 }
-const clearCoordinates = () => { pipeForm.value.coordinates = []; drawingPoints.value = []; if (isDrawingMode.value) { window.dispatchEvent(new CustomEvent('stop-pipe-drawing')); isDrawingMode.value = false } }
+const clearCoordinates = () => {
+  pipeForm.value.coordinates = []
+  stopPipeDrawing()
+}
 
 const calculatePathLength = (coords: number[][]): number => {
   if (coords.length < 2) return 0
@@ -337,9 +343,14 @@ const calculatePathLength = (coords: number[][]): number => {
   return Math.round(total)
 }
 
+watch(globalDrawingPoints, (newPoints) => {
+  pipeForm.value.coordinates = [...newPoints]
+  if (newPoints.length >= 2) {
+    pipeForm.value.length = calculatePathLength(newPoints)
+  }
+})
+
 onMounted(() => {
-  window.addEventListener('pipe-point-added', ((e: CustomEvent) => { drawingPoints.value.push(e.detail); pipeForm.value.coordinates = [...drawingPoints.value]; if (drawingPoints.value.length >= 2) pipeForm.value.length = calculatePathLength(drawingPoints.value) }) as EventListener)
-  window.addEventListener('pipe-drawing-complete', (() => { if (drawingPoints.value.length >= 2) { isDrawingMode.value = false; pipeForm.value.coordinates = [...drawingPoints.value]; pipeForm.value.length = calculatePathLength(drawingPoints.value) } }) as EventListener)
   setTimeout(() => { pressurePoints.value = [{ name: '主入口阀门', value: '0.52', status: '正常' }, { name: '图书馆分支', value: '0.45', status: '低' }, { name: '教学区主管', value: '0.48', status: '正常' }, { name: '宿舍区分支', value: '0.38', status: '低' }, { name: '食堂供水点', value: '0.55', status: '正常' }]; isLoadingPressure.value = false }, 1500)
 })
 </script>

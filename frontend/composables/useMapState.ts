@@ -61,6 +61,15 @@ const realtimePressure = ref({
 /** 管道数据列表 */
 const pipes = ref<PipeData[]>([])
 
+// ==================== 管网编辑状态（替代 window 事件总线） ====================
+
+type PipeEditorMode = 'idle' | 'drawing'
+
+const pipeEditorMode = ref<PipeEditorMode>('idle')
+const drawingPoints = ref<number[][]>([])
+
+const highlightedPipeId = ref<string | null>(null)
+
 // ==================== 导出 Composable ====================
 
 export const useMapState = () => {
@@ -116,6 +125,17 @@ export const useMapState = () => {
     pipes.value.push(pipe)
   }
 
+  const upsertPipes = (list: PipeData[]) => {
+    for (const pipe of list) {
+      const index = pipes.value.findIndex(p => p.id === pipe.id)
+      if (index === -1) {
+        pipes.value.push(pipe)
+      } else {
+        pipes.value[index] = { ...pipes.value[index], ...pipe }
+      }
+    }
+  }
+
   const updatePipeData = (pipeId: string, updates: Partial<PipeData>) => {
     const index = pipes.value.findIndex(p => p.id === pipeId)
     if (index !== -1) {
@@ -129,6 +149,30 @@ export const useMapState = () => {
 
   const getPipesByType = (type: 'water' | 'sewage' | 'drainage') => {
     return pipes.value.filter(p => p.type === type)
+  }
+
+  // 管网编辑（替代 window 事件总线）
+  const startPipeDrawing = () => {
+    pipeEditorMode.value = 'drawing'
+    drawingPoints.value = []
+  }
+
+  const stopPipeDrawing = () => {
+    pipeEditorMode.value = 'idle'
+    drawingPoints.value = []
+  }
+
+  const addDrawingPoint = (lon: number, lat: number) => {
+    if (pipeEditorMode.value !== 'drawing') return
+    drawingPoints.value = [...drawingPoints.value, [lon, lat]]
+  }
+
+  const finishPipeDrawing = () => {
+    pipeEditorMode.value = 'idle'
+  }
+
+  const highlightPipeById = (pipeId: string | null) => {
+    highlightedPipeId.value = pipeId
   }
 
   return {
@@ -158,10 +202,23 @@ export const useMapState = () => {
     updatePressure,
 
     // 管道数据
-    pipes,
+    pipes: readonly(pipes),
     addPipe,
+    upsertPipes,
     updatePipeData,
     deletePipe,
-    getPipesByType
+    getPipesByType,
+
+    // 管网编辑（替代 window 事件总线）
+    pipeEditorMode: readonly(pipeEditorMode),
+    drawingPoints: readonly(drawingPoints),
+    startPipeDrawing,
+    stopPipeDrawing,
+    addDrawingPoint,
+    finishPipeDrawing,
+
+    // 管道高亮（替代 window 事件总线）
+    highlightedPipeId: readonly(highlightedPipeId),
+    highlightPipeById
   }
 }

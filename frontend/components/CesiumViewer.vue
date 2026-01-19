@@ -11,6 +11,7 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref, nextTick, watch } from 'vue'
 import { useMapState } from '../composables/useMapState'
+import { usePipeEditorState } from '../composables/usePipeEditorState'
 import * as Cesium from 'cesium'
 import 'cesium/Build/Cesium/Widgets/widgets.css'
 
@@ -42,13 +43,16 @@ const {
   showBuildingInfo, 
   closeBuildingPopup,
   pipes,
+  upsertPipes
+} = useMapState()
+
+const {
   pipeEditorMode,
   addDrawingPoint,
   finishPipeDrawing,
   highlightedPipeId,
-  highlightPipeById,
-  upsertPipes
-} = useMapState()
+  highlightPipeById
+} = usePipeEditorState()
 
 // ==================== 响应式状态 ====================
 
@@ -95,11 +99,24 @@ watch(() => layers.value.power, (visible) => {
   setPipesVisibility(visible, 'drainage')
 })
 
-// 监听管道数据变化，重新渲染
+// 监听管道数据变化（节流到每帧最多一次全量重绘）
+let renderPipesRafId: number | null = null
+let pendingPipesSnapshot: typeof pipes.value | null = null
+
 watch(() => pipes.value, (newPipes) => {
-  if (viewer) {
-    renderPipes([...newPipes])
-  }
+  if (!viewer) return
+
+  pendingPipesSnapshot = newPipes
+
+  if (renderPipesRafId !== null) return
+
+  renderPipesRafId = requestAnimationFrame(() => {
+    renderPipesRafId = null
+    if (!pendingPipesSnapshot) return
+
+    renderPipes([...pendingPipesSnapshot])
+    pendingPipesSnapshot = null
+  })
 }, { deep: true })
 
 // 监听绘制模式变化

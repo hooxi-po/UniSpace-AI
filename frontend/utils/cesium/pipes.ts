@@ -47,6 +47,7 @@ const PIPE_TYPE_CONFIG = {
  * 管道实体集合
  */
 let pipeEntities: Cesium.Entity[] = []
+let pipeEntityById: Map<string, Cesium.Entity> = new Map()
 let viewer: Cesium.Viewer | null = null
 
 /**
@@ -204,6 +205,7 @@ export function renderPipe(pipe: PipeData): Cesium.Entity | null {
   })
   
   pipeEntities.push(entity)
+  pipeEntityById.set(pipe.id, entity)
   return entity
 }
 
@@ -216,16 +218,34 @@ export function renderPipes(pipes: PipeData[]): void {
     console.error('管道渲染器未初始化')
     return
   }
-  
-  // 清除现有管道
-  clearPipes()
-  
-  // 渲染所有管道
+
+  // 增量同步：
+  // - 新增/更新：对输入列表中的每条管道执行 upsert
+  // - 删除：移除当前已渲染但输入列表不存在的管道
+
+  const nextIds = new Set<string>()
+
   for (const pipe of pipes) {
+    nextIds.add(pipe.id)
+
+    const oldEntity = pipeEntityById.get(pipe.id)
+    if (oldEntity) {
+      // 简单策略：存在则替换（避免手动 diff polyline/material/properties）
+      viewer.entities.remove(oldEntity)
+      pipeEntities = pipeEntities.filter(e => e.id !== oldEntity.id)
+      pipeEntityById.delete(pipe.id)
+    }
+
     renderPipe(pipe)
   }
-  
-  console.log(`已渲染 ${pipes.length} 条管道`)
+
+  for (const [pipeId, entity] of pipeEntityById.entries()) {
+    if (nextIds.has(pipeId)) continue
+
+    viewer.entities.remove(entity)
+    pipeEntities = pipeEntities.filter(e => e.id !== entity.id)
+    pipeEntityById.delete(pipeId)
+  }
 }
 
 /**
@@ -234,15 +254,14 @@ export function renderPipes(pipes: PipeData[]): void {
  */
 export function updatePipe(pipe: PipeData): void {
   if (!viewer) return
-  
-  // 删除旧实体
-  const oldEntity = viewer.entities.getById(`pipe_${pipe.id}`)
+
+  const oldEntity = pipeEntityById.get(pipe.id)
   if (oldEntity) {
     viewer.entities.remove(oldEntity)
     pipeEntities = pipeEntities.filter(e => e.id !== oldEntity.id)
+    pipeEntityById.delete(pipe.id)
   }
-  
-  // 重新渲染
+
   renderPipe(pipe)
 }
 
@@ -252,11 +271,12 @@ export function updatePipe(pipe: PipeData): void {
  */
 export function removePipe(pipeId: string): void {
   if (!viewer) return
-  
-  const entity = viewer.entities.getById(`pipe_${pipeId}`)
+
+  const entity = pipeEntityById.get(pipeId)
   if (entity) {
     viewer.entities.remove(entity)
     pipeEntities = pipeEntities.filter(e => e.id !== entity.id)
+    pipeEntityById.delete(pipeId)
   }
 }
 
@@ -265,11 +285,13 @@ export function removePipe(pipeId: string): void {
  */
 export function clearPipes(): void {
   if (!viewer) return
-  
+
   for (const entity of pipeEntities) {
     viewer.entities.remove(entity)
   }
+
   pipeEntities = []
+  pipeEntityById = new Map()
 }
 
 /**
@@ -294,25 +316,51 @@ export function setPipesVisibility(visible: boolean, pipeType?: 'water' | 'sewag
  * 高亮显示指定管道
  * @param pipeId - 管道ID
  */
+let activeHighlightTimer: ReturnType<typeof setTimeout> | null = null
+let activeHighlightedPipeId: string | null = null
+let activeHighlightOriginal: { material: any; width: any } | null = null
+
 export function highlightPipe(pipeId: string): void {
   if (!viewer) return
-  
-  const entity = viewer.entities.getById(`pipe_${pipeId}`)
+
+  // 先取消上一次高亮，避免叠加导致样式错乱
+  if (activeHighlightTimer) {
+    clearTimeout(activeHighlightTimer)
+    activeHighlightTimer = null
+  }
+
+  if (activeHighlightedPipeId && activeHighlightOriginal) {
+    const prev = pipeEntityById.get(activeHighlightedPipeId)
+    if (prev?.polyline) {
+      prev.polyline.material = activeHighlightOriginal.material
+      prev.polyline.width = activeHighlightOriginal.width
+    }
+  }
+
+  activeHighlightedPipeId = pipeId
+
+  const entity = pipeEntityById.get(pipeId)
   if (entity && entity.polyline) {
     // 保存原始样式
-    const originalMaterial = entity.polyline.material
-    const originalWidth = entity.polyline.width
-    
-    // 设置高亮颜色
+    activeHighlightOriginal = {
+      material: entity.polyline.material,
+      width: entity.polyline.width
+    }
+
+    // 设置高亮样式
     entity.polyline.material = new Cesium.ColorMaterialProperty(Cesium.Color.WHITE)
     entity.polyline.width = new Cesium.ConstantProperty(8)
-    
-    // 2秒后恢复
-    setTimeout(() => {
-      if (entity.polyline) {
-        entity.polyline.material = originalMaterial
-        entity.polyline.width = originalWidth
+
+    // 2秒后恢复（若期间又高亮了别的管道，会在上面被取消）
+    activeHighlightTimer = setTimeout(() => {
+      activeHighlightTimer = null
+      const current = pipeEntityById.get(pipeId)
+      if (current?.polyline && activeHighlightOriginal) {
+        current.polyline.material = activeHighlightOriginal.material
+        current.polyline.width = activeHighlightOriginal.width
       }
+      activeHighlightedPipeId = null
+      activeHighlightOriginal = null
     }, 2000)
   }
 }
@@ -338,4 +386,11 @@ export function flyToPipe(pipeId: string): void {
  */
 export function getAllPipeEntities(): Cesium.Entity[] {
   return pipeEntities
+}
+
+/**
+ * 获取管道实体（按 pipeId）
+ */
+export function getPipeEntity(pipeId: string): Cesium.Entity | undefined {
+  return pipeEntityById.get(pipeId)
 }

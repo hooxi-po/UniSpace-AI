@@ -262,9 +262,12 @@
 <script setup lang="ts">
 import { ref, computed, h, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useMapState } from '../../composables/useMapState'
+import { usePipeEditorState } from '../../composables/usePipeEditorState'
 import type { PipeData } from '../../utils/cesium/pipes'
 
-const { layers, toggleLayer, showLeftSidebar, toggleLeftSidebar, activeNavItem, realtimePressure, pipes, addPipe, updatePipeData, deletePipe, pipeEditorMode, drawingPoints: globalDrawingPoints, startPipeDrawing, stopPipeDrawing, highlightPipeById } = useMapState()
+const { layers, toggleLayer, showLeftSidebar, toggleLeftSidebar, activeNavItem, realtimePressure, pipes, addPipe, updatePipeData, deletePipe } = useMapState()
+
+const { pipeEditorMode, drawingPoints: globalDrawingPoints, startPipeDrawing, stopPipeDrawing, highlightPipeById } = usePipeEditorState()
 
 const collapsedSections = ref({ pipe: false })
 type Section = keyof typeof collapsedSections.value

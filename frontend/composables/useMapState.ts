@@ -61,14 +61,6 @@ const realtimePressure = ref({
 /** 管道数据列表 */
 const pipes = ref<PipeData[]>([])
 
-// ==================== 管网编辑状态（替代 window 事件总线） ====================
-
-type PipeEditorMode = 'idle' | 'drawing'
-
-const pipeEditorMode = ref<PipeEditorMode>('idle')
-const drawingPoints = ref<number[][]>([])
-
-const highlightedPipeId = ref<string | null>(null)
 
 // ==================== 导出 Composable ====================
 
@@ -151,29 +143,6 @@ export const useMapState = () => {
     return pipes.value.filter(p => p.type === type)
   }
 
-  // 管网编辑（替代 window 事件总线）
-  const startPipeDrawing = () => {
-    pipeEditorMode.value = 'drawing'
-    drawingPoints.value = []
-  }
-
-  const stopPipeDrawing = () => {
-    pipeEditorMode.value = 'idle'
-    drawingPoints.value = []
-  }
-
-  const addDrawingPoint = (lon: number, lat: number) => {
-    if (pipeEditorMode.value !== 'drawing') return
-    drawingPoints.value = [...drawingPoints.value, [lon, lat]]
-  }
-
-  const finishPipeDrawing = () => {
-    pipeEditorMode.value = 'idle'
-  }
-
-  const highlightPipeById = (pipeId: string | null) => {
-    highlightedPipeId.value = pipeId
-  }
 
   return {
     // 图层
@@ -208,17 +177,5 @@ export const useMapState = () => {
     updatePipeData,
     deletePipe,
     getPipesByType,
-
-    // 管网编辑（替代 window 事件总线）
-    pipeEditorMode: readonly(pipeEditorMode),
-    drawingPoints: readonly(drawingPoints),
-    startPipeDrawing,
-    stopPipeDrawing,
-    addDrawingPoint,
-    finishPipeDrawing,
-
-    // 管道高亮（替代 window 事件总线）
-    highlightedPipeId: readonly(highlightedPipeId),
-    highlightPipeById
   }
 }

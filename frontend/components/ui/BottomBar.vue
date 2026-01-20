@@ -99,15 +99,16 @@ const resetView = () => {
   left: 0;
   right: 25%;
   height: 60px;
-  background: rgba(10, 22, 41, 0.9);
+  background: rgba(10, 22, 41, 0.95);
   border-top: 1px solid rgba(0, 191, 255, 0.3);
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.5);
   color: white;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 20px;
   z-index: 1000;
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(12px);
   transition: right 0.3s ease;
 }
 
@@ -228,12 +229,14 @@ const resetView = () => {
 .main-nav a:hover {
   color: white;
   background: rgba(0, 191, 255, 0.15);
+  box-shadow: 0 0 10px rgba(0, 191, 255, 0.2);
 }
 
 .main-nav a.active {
   color: #00bfff;
   background: rgba(0, 191, 255, 0.2);
-  border-color: rgba(0, 191, 255, 0.4);
+  border-color: #00bfff;
+  box-shadow: 0 0 15px rgba(0, 191, 255, 0.3), inset 0 0 10px rgba(0, 191, 255, 0.1);
 }
 
 /* 窄屏下拉菜单 - 默认隐藏 */

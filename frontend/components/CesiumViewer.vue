@@ -19,7 +19,7 @@ import {
   DEFAULT_CAMERA,
   UNDERGROUND_CAMERA,
   createViewer,
-  addOsmImagery,
+  addDarkBaseLayer,
   setupUndergroundView,
   setDefaultCamera,
   flyToPosition,
@@ -294,7 +294,7 @@ onMounted(async () => {
     token: config.public.cesiumToken as string
   })
 
-  addOsmImagery(viewer)
+  addDarkBaseLayer(viewer)
   setupUndergroundView(viewer)
 
   // 设置点击拾取事件

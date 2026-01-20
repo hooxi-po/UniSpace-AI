@@ -1,6 +1,10 @@
 <template>
   <Transition name="slide-right">
     <aside v-if="showRightSidebar" class="right-sidebar">
+      <div class="corner top-left"></div>
+      <div class="corner top-right"></div>
+      <div class="corner bottom-left"></div>
+      <div class="corner bottom-right"></div>
       <button class="collapse-btn" @click="toggleRightSidebar">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
       </button>
@@ -43,29 +47,17 @@
           </div>
           <div class="details-content">
             <div class="charts">
-              <div class="chart">
+              <div class="chart-container">
                 <p>实时流量 <span class="value">{{ flowRate.toFixed(1) }} m³/h</span></p>
-                <svg viewBox="0 0 110 50" class="chart-svg">
-                  <text x="2" y="8" class="axis-label">40</text>
-                  <text x="2" y="28" class="axis-label">25</text>
-                  <text x="2" y="48" class="axis-label">10</text>
-                  <line x1="15" y1="5" x2="108" y2="5" class="grid-line" />
-                  <line x1="15" y1="25" x2="108" y2="25" class="grid-line" />
-                  <line x1="15" y1="45" x2="108" y2="45" class="grid-line" />
-                  <polyline fill="none" stroke="#00bfff" stroke-width="1.5" :points="flowChartPoints" />
-                </svg>
+                <div class="chart-wrapper">
+                  <BaseChart :options="flowChartOptions" />
+                </div>
               </div>
-              <div class="chart">
+              <div class="chart-container">
                 <p>水压监测 <span class="value">{{ realtimePressure.value.toFixed(2) }} MPa</span></p>
-                <svg viewBox="0 0 110 50" class="chart-svg">
-                  <text x="2" y="8" class="axis-label">0.6</text>
-                  <text x="2" y="28" class="axis-label">0.4</text>
-                  <text x="2" y="48" class="axis-label">0.2</text>
-                  <line x1="15" y1="5" x2="108" y2="5" class="grid-line" />
-                  <line x1="15" y1="25" x2="108" y2="25" class="grid-line" />
-                  <line x1="15" y1="45" x2="108" y2="45" class="grid-line" />
-                  <polyline fill="none" stroke="#00bfff" stroke-width="1.5" :points="pressureChartPoints" />
-                </svg>
+                <div class="chart-wrapper">
+                  <BaseChart :options="pressureChartOptions" />
+                </div>
               </div>
             </div>
           </div>
@@ -83,8 +75,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useMapState } from '../../composables/useMapState'
-import PipeStatsChart from './charts/PipeStatsChart.vue'
-import AlertList from './charts/AlertList.vue'
+import BaseChart from './charts/BaseChart.vue'
+import * as echarts from 'echarts'
 
 const { showRightSidebar, toggleRightSidebar, realtimePressure } = useMapState()
 
@@ -121,19 +113,137 @@ const stopResize = () => {
   document.removeEventListener('mouseup', stopResize)
 }
 
+// Chart Data
 const flowData = ref<number[]>([25, 28, 24, 30, 27, 32, 29, 35, 31, 28])
 const pressureData = ref<number[]>([0.45, 0.48, 0.44, 0.46, 0.42, 0.47, 0.45, 0.43, 0.46, 0.44])
 const flowRate = ref(28.5)
+const timeLabels = ref<string[]>([])
 
-const flowChartPoints = computed(() => flowData.value.map((v, i) => `${18 + i * 10},${45 - (v - 10) * 1.33}`).join(' '))
-const pressureChartPoints = computed(() => pressureData.value.map((v, i) => `${18 + i * 10},${45 - (v - 0.2) * 100}`).join(' '))
+// Initialize time labels
+const updateTimeLabels = () => {
+  const now = new Date()
+  const labels = []
+  for (let i = 9; i >= 0; i--) {
+    const t = new Date(now.getTime() - i * 2000)
+    labels.push(t.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }))
+  }
+  timeLabels.value = labels
+}
+updateTimeLabels()
+
+const flowChartOptions = computed<echarts.EChartsOption>(() => ({
+  backgroundColor: 'transparent',
+  tooltip: {
+    trigger: 'axis',
+    axisPointer: { type: 'line' }
+  },
+  grid: {
+    top: 10,
+    bottom: 20,
+    left: 40,
+    right: 10
+  },
+  xAxis: {
+    type: 'category',
+    data: timeLabels.value,
+    axisLine: { show: false },
+    axisTick: { show: false },
+    axisLabel: { show: false }
+  },
+  yAxis: {
+    type: 'value',
+    splitLine: {
+      lineStyle: {
+        color: 'rgba(255, 255, 255, 0.1)',
+        type: 'dashed'
+      }
+    },
+    axisLabel: {
+      color: '#888',
+      fontSize: 10
+    }
+  },
+  series: [{
+    data: flowData.value,
+    type: 'line',
+    smooth: true,
+    showSymbol: false,
+    lineStyle: {
+      color: '#00bfff',
+      width: 2
+    },
+    areaStyle: {
+      color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+        { offset: 0, color: 'rgba(0, 191, 255, 0.5)' },
+        { offset: 1, color: 'rgba(0, 191, 255, 0)' }
+      ])
+    }
+  }]
+}))
+
+const pressureChartOptions = computed<echarts.EChartsOption>(() => ({
+  backgroundColor: 'transparent',
+  tooltip: {
+    trigger: 'axis',
+    axisPointer: { type: 'line' }
+  },
+  grid: {
+    top: 10,
+    bottom: 20,
+    left: 40,
+    right: 10
+  },
+  xAxis: {
+    type: 'category',
+    data: timeLabels.value,
+    axisLine: { show: false },
+    axisTick: { show: false },
+    axisLabel: { show: false }
+  },
+  yAxis: {
+    type: 'value',
+    min: 0.2,
+    max: 0.7,
+    splitLine: {
+      lineStyle: {
+        color: 'rgba(255, 255, 255, 0.1)',
+        type: 'dashed'
+      }
+    },
+    axisLabel: {
+      color: '#888',
+      fontSize: 10
+    }
+  },
+  series: [{
+    data: pressureData.value,
+    type: 'line',
+    smooth: true,
+    showSymbol: false,
+    lineStyle: {
+      color: '#00ff7f',
+      width: 2
+    },
+    areaStyle: {
+      color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+        { offset: 0, color: 'rgba(0, 255, 127, 0.5)' },
+        { offset: 1, color: 'rgba(0, 255, 127, 0)' }
+      ])
+    }
+  }]
+}))
 
 let dataInterval: ReturnType<typeof setInterval>
 onMounted(() => {
   dataInterval = setInterval(() => {
+    const now = new Date()
+    const timeStr = now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    timeLabels.value = [...timeLabels.value.slice(1), timeStr]
+
     const newFlow = 25 + Math.random() * 15
     flowData.value = [...flowData.value.slice(1), newFlow]
     flowRate.value = newFlow
+
     const newPressure = 0.4 + Math.random() * 0.15
     pressureData.value = [...pressureData.value.slice(1), newPressure]
   }, 2000)
@@ -175,7 +285,7 @@ const sendMessage = async () => {
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 .expand-button { position: fixed; top: 50%; right: 20px; transform: translateY(-50%); background: rgba(10, 22, 41, 0.9); border: 1px solid rgba(0, 191, 255, 0.5); border-radius: 8px; color: #00bfff; padding: 12px; cursor: pointer; z-index: 1000; }
 .expand-button:hover { background: rgba(0, 191, 255, 0.2); }
-.right-sidebar { position: fixed; top: 0; right: 0; width: 25%; min-width: 320px; height: 100vh; background: rgba(10, 22, 41, 0.95); border-left: 1px solid rgba(0, 191, 255, 0.3); color: white; z-index: 999; backdrop-filter: blur(12px); display: flex; flex-direction: column; }
+.right-sidebar { position: fixed; top: 0; right: 0; width: 25%; min-width: 320px; height: 100vh; background: rgba(10, 22, 41, 0.95); border-left: 1px solid rgba(0, 191, 255, 0.3); color: white; z-index: 999; backdrop-filter: blur(12px); box-shadow: -4px 0 20px rgba(0, 0, 0, 0.5), inset 20px 0 20px rgba(0, 191, 255, 0.05); display: flex; flex-direction: column; }
 .collapse-btn { position: absolute; left: 0; top: 50%; transform: translate(-100%, -50%); background: rgba(10, 22, 41, 0.95); border: 1px solid rgba(0, 191, 255, 0.5); border-right: none; border-radius: 4px 0 0 4px; color: #00bfff; padding: 20px 6px; cursor: pointer; z-index: 1000; }
 .collapse-btn:hover { background: rgba(0, 191, 255, 0.2); }
 .sidebar-header { padding: 16px; border-bottom: 1px solid rgba(0, 191, 255, 0.2); text-align: center; padding-top: 30px; background: rgba(10, 22, 41, 0.8); }
@@ -212,10 +322,15 @@ const sendMessage = async () => {
 .resize-handle:hover .handle-bar { background: rgba(0, 191, 255, 0.8); }
 .details-content { padding: 8px; }
 .charts { display: flex; flex-direction: column; gap: 16px; }
-.chart { text-align: center; }
-.chart p { margin: 0 0 8px; font-size: 13px; color: #ccc; text-align: left; display: flex; justify-content: space-between; }
-.chart .value { color: #00bfff; font-weight: bold; }
-.chart-svg { width: 100%; height: 50px; background: rgba(0, 0, 0, 0.2); border-radius: 4px; }
-.axis-label { font-size: 6px; fill: #888; }
-.grid-line { stroke: rgba(255, 255, 255, 0.1); stroke-width: 0.5; stroke-dasharray: 2, 2; }
+.chart-container { text-align: center; }
+.chart-container p { margin: 0 0 8px; font-size: 13px; color: #ccc; text-align: left; display: flex; justify-content: space-between; }
+.chart-container .value { color: #00bfff; font-weight: bold; }
+.chart-wrapper { width: 100%; height: 180px; background: rgba(0, 0, 0, 0.2); border-radius: 4px; padding: 10px; box-sizing: border-box; }
+
+/* Corner decorations */
+.corner { position: absolute; width: 15px; height: 15px; border-color: #00bfff; border-style: solid; pointer-events: none; }
+.top-left { top: -1px; left: -1px; border-width: 2px 0 0 2px; }
+.top-right { top: -1px; right: -1px; border-width: 2px 2px 0 0; }
+.bottom-left { bottom: -1px; left: -1px; border-width: 0 0 2px 2px; }
+.bottom-right { bottom: -1px; right: -1px; border-width: 0 2px 2px 0; }
 </style>

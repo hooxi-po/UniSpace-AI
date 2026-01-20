@@ -359,7 +359,7 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.left-sidebar { position: fixed; top: 72px; left: 20px; width: 300px; max-height: calc(100vh - 150px); background: rgba(10, 22, 41, 0.9); border: 1px solid rgba(0, 191, 255, 0.3); border-radius: 8px; color: white; z-index: 1000; backdrop-filter: blur(10px); box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4); display: flex; flex-direction: column; }
+.left-sidebar { position: fixed; top: 72px; left: 20px; width: 300px; max-height: calc(100vh - 150px); background: rgba(10, 22, 41, 0.95); border: 1px solid rgba(0, 191, 255, 0.3); border-radius: 4px; color: white; z-index: 1000; backdrop-filter: blur(12px); box-shadow: 0 0 20px rgba(0, 0, 0, 0.5), inset 0 0 20px rgba(0, 191, 255, 0.05); display: flex; flex-direction: column; }
 .expand-button { position: fixed; top: 72px; background: rgba(10, 22, 41, 0.9); border: 1px solid rgba(0, 191, 255, 0.5); border-radius: 8px; color: #00bfff; padding: 12px; cursor: pointer; z-index: 1000; transition: all 0.3s; }
 .expand-button.left { left: 20px; }
 .expand-button:hover { background: rgba(0, 191, 255, 0.2); transform: scale(1.05); }
@@ -367,11 +367,11 @@ onMounted(() => {
 .slide-left-enter-from, .slide-left-leave-to { opacity: 0; transform: translateX(-100%); }
 .fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
-.corner { position: absolute; width: 15px; height: 15px; border-color: #00bfff; border-style: solid; }
-.top-left { top: -2px; left: -2px; border-width: 2px 0 0 2px; }
-.top-right { top: -2px; right: -2px; border-width: 2px 2px 0 0; }
-.bottom-left { bottom: -2px; left: -2px; border-width: 0 0 2px 2px; }
-.bottom-right { bottom: -2px; right: -2px; border-width: 0 2px 2px 0; }
+.corner { position: absolute; width: 15px; height: 15px; border-color: #00bfff; border-style: solid; pointer-events: none; }
+.top-left { top: -1px; left: -1px; border-width: 2px 0 0 2px; }
+.top-right { top: -1px; right: -1px; border-width: 2px 2px 0 0; }
+.bottom-left { bottom: -1px; left: -1px; border-width: 0 0 2px 2px; }
+.bottom-right { bottom: -1px; right: -1px; border-width: 0 2px 2px 0; }
 .sidebar-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid rgba(0, 191, 255, 0.3); flex-shrink: 0; }
 .sidebar-header h3 { margin: 0; font-size: 16px; display: flex; align-items: center; gap: 10px; color: #00bfff; }
 .close-button { background: none; border: none; color: #aaa; font-size: 24px; cursor: pointer; transition: color 0.2s; }

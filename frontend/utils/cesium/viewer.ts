@@ -47,14 +47,15 @@ export function createViewer(options: ViewerOptions): Cesium.Viewer {
 }
 
 /**
- * 添加 OpenStreetMap 底图图层
+ * 添加暗色底图图层 (CartoDB Dark Matter)
  * @param viewer - Cesium Viewer 实例
  */
-export function addOsmImagery(viewer: Cesium.Viewer): void {
+export function addDarkBaseLayer(viewer: Cesium.Viewer): void {
   viewer.imageryLayers.addImageryProvider(
     new Cesium.UrlTemplateImageryProvider({
-      url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-      credit: '© OpenStreetMap contributors'
+      url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+      subdomains: ['a', 'b', 'c', 'd'],
+      credit: '© CartoDB'
     })
   )
 }

@@ -1,22 +1,27 @@
 {
-  "name": "frontend",
-  "type": "module",
+  "name": "校园地下管网运维系统",
   "private": true,
+  "version": "1.0.0",
+  "type": "module",
   "scripts": {
-    "build": "nuxt build",
     "dev": "nuxt dev",
+    "build": "nuxt build",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare"
   },
   "dependencies": {
+    "@google/genai": "^1.37.0",
     "cesium": "^1.137.0",
-    "echarts": "^6.0.0",
-    "nuxt": "^4.2.2",
-    "vue": "^3.5.26",
-    "vue-router": "^4.6.4"
+    "lucide-vue-next": "^0.460.0",
+    "nuxt": "^3.15.3",
+    "vite-plugin-cesium": "^1.2.23",
+    "vue": "^3.5.13"
   },
   "devDependencies": {
-    "vite-plugin-cesium": "^1.2.23"
+    "@nuxtjs/tailwindcss": "^6.12.2",
+    "@types/node": "^22.14.0",
+    "typescript": "~5.8.2",
+    "vue-tsc": "^3.2.2"
   }
 }

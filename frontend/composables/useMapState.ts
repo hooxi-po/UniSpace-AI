@@ -13,9 +13,9 @@ import type { PipeData } from '../utils/cesium/pipes'
 /** 图层显示状态 */
 const layers = ref({
   pipes: true,
-  waterSupply: true,
-  pressure: true,
-  power: true,
+  water: true,
+  sewage: true,
+  drainage: true,
   iotDevices: false,
   buildings: true
 })

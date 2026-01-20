@@ -84,19 +84,22 @@ watch(() => layers.value.buildings, (visible) => {
 
 // 监听管道图层变化
 watch(() => layers.value.pipes, (visible) => {
-  setPipesVisibility(visible)
+  // Master switch controls all sub-layers
+  setPipesVisibility(visible && layers.value.water, 'water')
+  setPipesVisibility(visible && layers.value.sewage, 'sewage')
+  setPipesVisibility(visible && layers.value.drainage, 'drainage')
 })
 
-watch(() => layers.value.waterSupply, (visible) => {
-  setPipesVisibility(visible, 'water')
+watch(() => layers.value.water, (visible) => {
+  setPipesVisibility(layers.value.pipes && visible, 'water')
 })
 
-watch(() => layers.value.pressure, (visible) => {
-  setPipesVisibility(visible, 'sewage')
+watch(() => layers.value.sewage, (visible) => {
+  setPipesVisibility(layers.value.pipes && visible, 'sewage')
 })
 
-watch(() => layers.value.power, (visible) => {
-  setPipesVisibility(visible, 'drainage')
+watch(() => layers.value.drainage, (visible) => {
+  setPipesVisibility(layers.value.pipes && visible, 'drainage')
 })
 
 // 监听管道数据变化（节流到每帧最多一次全量重绘）

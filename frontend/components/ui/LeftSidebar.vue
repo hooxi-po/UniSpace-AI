@@ -19,10 +19,10 @@
               <span class="toggle-arrow"></span>
             </h4>
             <ul>
-              <li><label><span class="color-indicator" style="background-color: #00bfff;"></span><input type="checkbox" :checked="layers.pipes" @change="toggleLayer('pipes')"> 水量管网</label></li>
-              <li><label><span class="color-indicator" style="background-color: #00ff7f;"></span><input type="checkbox" :checked="layers.waterSupply" @change="toggleLayer('waterSupply')"> 供水管网</label></li>
-              <li><label><span class="color-indicator" style="background-color: #ffc107;"></span><input type="checkbox" :checked="layers.pressure" @change="toggleLayer('pressure')"> 压力管网</label></li>
-              <li><label><span class="color-indicator" style="background-color: #dc3545;"></span><input type="checkbox" :checked="layers.power" @change="toggleLayer('power')"> 电力管网</label></li>
+              <li><label><span class="color-indicator" style="background-color: #00bfff;"></span><input type="checkbox" :checked="layers.pipes" @change="toggleLayer('pipes')"> 管道图层</label></li>
+              <li><label><span class="color-indicator" style="background-color: #00ff7f;"></span><input type="checkbox" :checked="layers.water" @change="toggleLayer('water')"> 供水管网</label></li>
+              <li><label><span class="color-indicator" style="background-color: #8b4513;"></span><input type="checkbox" :checked="layers.sewage" @change="toggleLayer('sewage')"> 污水管网</label></li>
+              <li><label><span class="color-indicator" style="background-color: #4169e1;"></span><input type="checkbox" :checked="layers.drainage" @change="toggleLayer('drainage')"> 排水管网</label></li>
             </ul>
           </section>
         </template>

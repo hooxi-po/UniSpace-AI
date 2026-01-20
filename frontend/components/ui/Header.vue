@@ -10,6 +10,15 @@
     </div>
     
     <div class="header-controls">
+      <div class="weather-widget">
+        <div class="weather-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16.6 6A3 3 0 0 0 14 5C11.6 5 9.6 6.8 9.1 9.1A4 4 0 0 0 5 13A4 4 0 0 0 9 17h8a3.5 3.5 0 0 0 3.5-3.5 3.5 3.5 0 0 0-3.1-3.4 3 3 0 0 0-1.2-4z"></path></svg>
+        </div>
+        <div class="weather-info">
+          <span class="temp">26°C</span>
+          <span class="condition">多云</span>
+        </div>
+      </div>
       <div class="datetime">
         <span class="date">{{ currentDate }}</span>
         <span class="time">{{ currentTime }}</span>
@@ -225,6 +234,36 @@ onUnmounted(() => {
   gap: 20px;
   pointer-events: auto;
   flex-shrink: 0;
+}
+
+.weather-widget {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 16px;
+  padding-right: 16px;
+  border-right: 1px solid rgba(0, 180, 255, 0.3);
+  color: #fff;
+}
+
+.weather-icon {
+  color: #00bfff;
+}
+
+.weather-info {
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+}
+
+.temp {
+  font-size: 14px;
+  font-weight: bold;
+  color: #fff;
+}
+
+.condition {
+  color: #aaa;
 }
 
 .datetime {

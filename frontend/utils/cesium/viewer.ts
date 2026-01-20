@@ -75,6 +75,24 @@ export function setupUndergroundView(viewer: Cesium.Viewer): void {
   
   // 启用深度检测，确保建筑正确遮挡
   viewer.scene.globe.depthTestAgainstTerrain = true
+
+  // --- Digital Twin Visual Enhancements ---
+
+  // Enable FXAA (Anti-aliasing)
+  viewer.scene.postProcessStages.fxaa.enabled = true
+
+  // Enable Bloom (Glow effect)
+  const bloom = viewer.scene.postProcessStages.bloom
+  bloom.enabled = true
+  bloom.uniforms.contrast = 118.0
+  bloom.uniforms.brightness = -0.3
+  bloom.uniforms.glowOnly = false
+  bloom.uniforms.delta = 1.0
+  bloom.uniforms.sigma = 2.0
+  bloom.uniforms.stepSize = 1.0
+
+  // High Dynamic Range (HDR)
+  viewer.scene.highDynamicRange = true
 }
 
 /**

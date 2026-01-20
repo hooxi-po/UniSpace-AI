@@ -83,6 +83,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useMapState } from '../../composables/useMapState'
+import PipeStatsChart from './charts/PipeStatsChart.vue'
+import AlertList from './charts/AlertList.vue'
 
 const { showRightSidebar, toggleRightSidebar, realtimePressure } = useMapState()
 

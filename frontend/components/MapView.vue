@@ -53,14 +53,56 @@ onMounted(() => {
 
   viewer.scene.globe.depthTestAgainstTerrain = true
 
-  viewer.camera.setView({
-    destination: Cesium.Cartesian3.fromDegrees(119.1895, 26.0254, 500),
-    orientation: {
-      heading: Cesium.Math.toRadians(30),
-      pitch: Cesium.Math.toRadians(-35),
-      roll: 0,
-    },
+  // Load and render GeoJSON boundary/area
+  const geoJsonUrl = '/map/map.geojson?url=' + Date.now()
+  // eslint-disable-next-line no-console
+  console.log('Attempting to load GeoJSON from:', geoJsonUrl)
+
+  Cesium.GeoJsonDataSource.load(geoJsonUrl, {
+    clampToGround: true,
   })
+    .then((dataSource) => {
+      // eslint-disable-next-line no-console
+      console.log('GeoJSON loaded successfully.', dataSource)
+      viewer?.dataSources.add(dataSource)
+      // eslint-disable-next-line no-console
+      console.log('DataSource added to viewer.')
+
+      // Basic styling (works for Polygon/Polyline; points ignored here)
+      for (const entity of dataSource.entities.values) {
+        if (entity.polygon) {
+          entity.polygon.material = new Cesium.ColorMaterialProperty(
+            Cesium.Color.CYAN.withAlpha(0.25)
+          )
+          entity.polygon.outline = new Cesium.ConstantProperty(true)
+          entity.polygon.outlineColor = new Cesium.ConstantProperty(Cesium.Color.CYAN)
+        }
+        if (entity.polyline) {
+          entity.polyline.width = new Cesium.ConstantProperty(3)
+          entity.polyline.material = new Cesium.ColorMaterialProperty(Cesium.Color.CYAN)
+          entity.polyline.clampToGround = new Cesium.ConstantProperty(true)
+        }
+      }
+
+      // Fly camera to geojson extent
+      if (viewer && dataSource.entities.values.length > 0) {
+        // eslint-disable-next-line no-console
+        console.log('Attempting to flyTo DataSource extent.')
+        viewer.flyTo(dataSource, {
+          duration: 1.2,
+        }).then(() => {
+          // eslint-disable-next-line no-console
+          console.log('flyTo completed.')
+        })
+      } else {
+        // eslint-disable-next-line no-console
+        console.warn('Viewer not available or DataSource is empty, skipping flyTo.')
+      }
+    })
+    .catch((err) => {
+      // eslint-disable-next-line no-console
+      console.error('Failed to load geojson:', geoJsonUrl, err)
+    })
 })
 
 onBeforeUnmount(() => {

@@ -56,7 +56,7 @@ import type { PipeNode, Building } from '~/types'
 const selectedItem = ref<PipeNode | Building | null>(null)
 
 // Map Viewport State
-const viewport = ref({ x: 0, y: 0, scale: 1 })
+const viewport = ref({ x: 119.1895, y: 26.0254, scale: 500 })
 
 // Layer State
 const layers = ref({

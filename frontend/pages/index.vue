@@ -104,9 +104,48 @@ const handleSelection = (item: PipeNode | Building | GeoJsonFeature | null) => {
         building = BUILDINGS.find(b => name.includes(b.name) || b.name.includes(name))
       }
       
-      // 如果还是找不到，使用第一个建筑作为默认（用于演示）
-      if (!building && BUILDINGS.length > 0) {
-        building = BUILDINGS[0]
+      // 如果还是找不到，从 GeoJSON properties 动态创建 Building 对象
+      if (!building) {
+        const buildingName = properties.name 
+          ? String(properties.name) 
+          : properties.short_name
+          ? String(properties.short_name)
+          : `建筑 ${featureId}`
+        
+        // 根据 building 类型映射到 Building.type
+        const buildingType = String(properties.building || '').toLowerCase()
+        let mappedType: Building['type'] = 'admin'
+        if (buildingType.includes('dorm') || buildingType.includes('dormitory')) {
+          mappedType = 'dorm'
+        } else if (buildingType.includes('lab') || buildingType.includes('laboratory')) {
+          mappedType = 'lab'
+        } else if (buildingType.includes('canteen') || buildingType.includes('restaurant') || properties.amenity === 'restaurant') {
+          mappedType = 'canteen'
+        } else if (buildingType.includes('school') || buildingType.includes('university')) {
+          mappedType = 'admin'
+        }
+        
+        // 估算房间数：如果有楼层信息，每层估算 20-30 个房间
+        let estimatedRooms = 0
+        if (properties['building:levels']) {
+          const levels = parseInt(String(properties['building:levels']), 10)
+          if (!isNaN(levels)) {
+            estimatedRooms = levels * 25 // 每层估算 25 个房间
+          }
+        }
+        
+        // 创建动态 Building 对象
+        building = {
+          id: featureId,
+          name: buildingName,
+          type: mappedType,
+          status: 'normal',
+          coordinates: { x: 0, y: 0 }, // GeoJSON 坐标需要从 geometry 中提取，这里暂时使用默认值
+          connectedPipeId: 'P-UNKNOWN',
+          rooms: estimatedRooms,
+          keyEquipment: [],
+          powerConsumption: 0
+        }
       }
       
       if (building) {

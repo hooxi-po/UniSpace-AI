@@ -49,3 +49,9 @@ export interface ChatMessage {
   text: string;
   isLoading?: boolean;
 }
+
+export interface GeoJsonFeature {
+  id: string | number;
+  type: 'geojson';
+  properties?: Record<string, unknown>;
+}

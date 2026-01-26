@@ -1,0 +1,145 @@
+---
+alwaysApply: true
+---
+
+# 项目开发编码规范
+
+本规范基于项目技术栈（Nuxt.js 3 + Vue 3 + TypeScript + Tailwind CSS + Cesium + Java 21 + Spring Boot 4）和 Google 开源项目风格指南（2024 版）制定。目的是确保代码一致性、可读性、可维护性和团队协作效率。
+
+所有代码必须优先遵循一致性原则：即使某个规则不是个人偏好，也应统一遵守。
+
+## 1. 通用原则
+
+- **编码格式**：统一使用 UTF-8 编码。
+- **缩进**：前端使用 2 个空格，后端 Java 使用 4 个空格。禁止使用 Tab。
+- **行宽**：原则上不超过 100 列（Java/TypeScript 推荐 100，HTML/CSS 推荐 80）。
+- **空行**：函数/方法之间、逻辑块之间适当添加空行，提升可读性，但避免过度。
+- **注释**：使用有意义的注释解释“为什么”而非“做什么”。优先使用 JSDoc（TS/JS）或 Javadoc（Java）。
+- **命名**：清晰、描述性强，避免缩写（除常用如 id、url）。统一使用英文。
+- **Git 提交**：提交消息使用常规格式：`<type>: <subject>`（如 `feat: 添加用户登录`），并在 body 中说明细节。
+- **类型安全**：前后端均优先强类型（TypeScript + Java），避免 any/unknown（TS）或 Object（Java）。
+
+## 2. 前端规范（Nuxt.js 3 / Vue 3 / TypeScript）
+
+### 2.1 TypeScript 规则（参考 Google TypeScript Style Guide）
+
+- **命名约定**：
+  - 变量/函数：camelCase（如 `userName`）。
+  - 类/接口/类型：PascalCase（如 `UserService`）。
+  - 常量：UPPER_SNAKE_CASE（如 `MAX_RETRY_COUNT`）。
+  - 文件名：kebab-case（如 `user-profile.vue`）。
+- **类型使用**：
+  - 优先显式类型注解，尤其是函数返回值和复杂对象。
+  - 避免 `any`，优先使用 `unknown` 或具体类型。
+  - 数组类型：`number[]` 或 `Array<number>`（推荐前者）。
+  - 类型断言：避免 `as` 和 `!`，优先重构代码。
+- **格式**：
+  - 对象字面量：属性换行时逗号后置。
+  - 函数：优先箭头函数（表达式形式），但复杂逻辑使用函数声明。
+  - 导入：使用 ES6 `import`，避免 `require`。
+- **注释**：使用 JSDoc 注释导出成员、复杂函数和类。
+- **其他**：
+  - 优先 `const`，仅需可变时用 `let`，避免 `var`。
+  - Cesium 相关：3D 实体命名清晰（如 `cesiumViewer`），避免全局污染。
+
+### 2.2 Vue / Nuxt 特定规则
+
+- **组件结构**（Single File Component）：
+  ```vue
+  <script setup lang="ts">
+  // Composition API 优先
+  </script>
+
+  <template>
+  <!-- HTML -->
+  </template>
+
+  <style scoped>
+  /* Tailwind 类 */
+  </style>
+  ```
+- **Composition API 优先**：避免 Options API。
+- **组件命名**：PascalCase（如 `UserProfile.vue`），目录使用 kebab-case。
+- **Props/Emits**：显式定义类型和验证。
+- **路由**：Nuxt 页面文件使用 kebab-case，路由路径使用 kebab-case。
+- **AI 集成（Gemini）**：封装为独立 service（如 `geminiService.ts`），避免直接在组件中调用。
+
+### 2.3 Tailwind CSS / HTML 规则（参考 Google HTML/CSS Style Guide）
+
+- **HTML**：
+  - 标签/属性：小写。
+  - 缩进：2 个空格。
+  - 属性顺序：推荐 `class`、`id`、数据属性、其他。
+  - 布尔属性：无值（如 `disabled`）。
+- **Tailwind**：
+  - 类名按字母顺序排序（提升可读性）。
+  - 避免过多自定义 CSS，优先使用 Tailwind 实用类。
+  - 响应式类：mobile-first（如 `md:flex`）。
+  - 暗黑模式：使用 `dark:` 前缀。
+- **CSS 格式**：
+  - 选择器：kebab-case。
+  - 属性：每行一个，结尾无分号（可选一致）。
+  - 避免 !important。
+
+### 2.4 JavaScript 补充（Vue 中内联脚本）
+
+- 单引号优先。
+- 避免全局变量。
+- 可见性：私有属性以下划线开头（`_privateVar`）。
+
+## 3. 后端规范（Java 21 + Spring Boot）
+
+### 3.1 Java 规则（参考 Google Java Style Guide）
+
+- **源文件结构**：
+  - 每个文件只有一个顶级类。
+  - 文件名：PascalCase（如 `UserService.java`）。
+- **命名约定**：
+  - 类/接口：PascalCase。
+  - 方法/变量：camelCase。
+  - 常量：UPPER_SNAKE_CASE。
+  - 参数：避免单字符。
+- **格式**：
+  - 缩进：4 个空格。
+  - 大括号：K&R 风格（左大括号不换行）。
+  - 列宽：100 列。
+  - 导入：无通配符（`*`），按顺序分组（java、javax、第三方、项目内）。
+  - 数组：`String[] args`。
+- **注解**：
+  - Lombok：优先 `@Getter/@Setter/@Builder`，减少 boilerplate。
+  - 方法注解顺序：`@Override` > `@Deprecated` > 其他。
+- **Javadoc**：
+  - 公共类/方法必须有 Javadoc。
+  - 格式：多行时每行以 `*` 开头。
+- **其他**：
+  - 异常：优先检查参数，避免空指针。
+  - 测试：JUnit 5，命名如 `shouldReturnUserWhenIdValid`。
+
+### 3.2 Spring Boot 特定规则
+
+- **REST API**：
+  - 路径：kebab-case（如 `/api/users/{id}`）。
+  - HTTP 方法：GET/POST/PUT/DELETE 语义清晰。
+  - 返回：统一响应体（如 `{ code, message, data }`）。
+  - 版本：路径中包含 `/v1/`。
+- **分层**：Controller → Service → Repository → Entity。
+- **配置**：application.yml，使用 snake_case。
+- **日志**：使用 SLF4J，级别合理（INFO/DEBUG/ERROR）。
+
+## 4. 工具与环境规范
+
+- **包管理**：前端优先 pnpm，后备 npm。
+- **构建**：Vite/Gradle 配置统一，不随意修改。
+- **Lint/Format**：
+  - 前端：ESLint + Prettier（基于 Google TS 规则配置）。
+  - 后端：SpotBugs + Checkstyle（基于 Google Java 规则）。
+- **版本控制**：
+  - Branch：`feature/xxx`、`bugfix/xxx`、`hotfix/xxx`。
+  - PR：必须代码审查，至少一人 approve。
+
+## 5. 例外与更新
+
+- 特殊情况可讨论后豁免，但需记录在代码注释中。
+- 本规范随技术栈更新定期审视（如每年或重大版本升级时）。
+
+遵循本规范，可显著提升代码质量和团队效率。如有疑问，参考 Google 风格指南原文或讨论。

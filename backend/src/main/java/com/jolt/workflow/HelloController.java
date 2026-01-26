@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class HelloController {
 
-    @GetMapping("/api/hello")
+    @GetMapping("/api/v1/hello")
     public Map<String, String> hello() {
         return Map.of("message", "Hello, world!");
     }

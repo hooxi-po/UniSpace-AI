@@ -1,6 +1,16 @@
 import type { ChatMessage } from '~/types.ts'
 
+/**
+ * Gemini AI 聊天功能的组合式函数
+ * 提供流式聊天响应功能，支持实时接收 AI 回复
+ */
 export const useGeminiChat = () => {
+  /**
+   * 流式获取聊天响应
+   * @param history - 聊天历史记录
+   * @param onChunk - 接收到文本块时的回调函数
+   * @throws 当 API 请求失败或响应体不可用时抛出错误
+   */
   const streamChatResponse = async (
     history: ChatMessage[],
     onChunk: (text: string) => void

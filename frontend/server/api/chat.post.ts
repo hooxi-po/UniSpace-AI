@@ -19,6 +19,13 @@ const SYSTEM_INSTRUCTION = `
 - 楼宇状态：北区宿舍用水量激增（+15%）。
 `
 
+/**
+ * 处理 AI 聊天请求的 API 端点
+ * 使用 Google Gemini API 提供流式响应
+ * @param event - Nuxt 事件对象
+ * @returns ReadableStream - SSE 格式的流式响应
+ * @throws 当 API Key 未配置或请求失败时抛出错误
+ */
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig()
   const { message, history } = await readBody(event)

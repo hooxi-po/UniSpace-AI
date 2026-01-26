@@ -4,7 +4,7 @@
 
 <script setup lang="ts">
 import * as Cesium from 'cesium'
-import type { PipeNode, Building } from '~/types'
+import type { PipeNode, Building, GeoJsonFeature } from '~/types'
 
 const DEFAULT_CAMERA = {
   longitude: 119.1895,
@@ -14,18 +14,18 @@ const DEFAULT_CAMERA = {
   pitch: -35,
 }
 
-type SelectItem = PipeNode | Building | null
+type SelectItem = PipeNode | Building | GeoJsonFeature | null
 
 type Viewport = { x: number; y: number; scale: number }
 
 type MapLayers = {
-    water: boolean
-    sewage: boolean
-    drain: boolean
-    buildings: boolean
+  water: boolean
+  sewage: boolean
+  drain: boolean
+  buildings: boolean
   green?: boolean
   roads?: boolean
-  }
+}
 
 interface Props {
   selectedId: string | null
@@ -224,6 +224,10 @@ onMounted(() => {
   setupViewportSync()
 })
 
+/**
+ * 设置地图点击事件处理器，用于选择地图上的实体
+ * 当用户点击地图上的实体时，会触发 select 事件
+ */
 function setupClickHandler() {
   if (!viewer) return
   handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
@@ -231,19 +235,27 @@ function setupClickHandler() {
     const pickedObject = viewer?.scene.pick(movement.position)
     if (Cesium.defined(pickedObject) && pickedObject.id instanceof Cesium.Entity) {
       const entity = pickedObject.id
+      const properties = viewer
+        ? entity.properties?.getValue(viewer.clock.currentTime)
+        : undefined
+      
       emit('select', {
         id: entity.id,
         type: 'geojson',
-        properties: viewer
-          ? entity.properties?.getValue(viewer.clock.currentTime)
-          : undefined,
-      } as any)
+        properties: properties as Record<string, unknown> | undefined,
+      } as GeoJsonFeature)
     } else {
       emit('select', null)
     }
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
 }
 
+/**
+ * 设置视口同步功能
+ * 1. 当相机移动时，将当前视口信息发送给父组件
+ * 2. 当父组件的 viewport prop 变化时，更新相机位置
+ * 使用 requestAnimationFrame 节流以避免频繁更新
+ */
 function setupViewportSync() {
   if (!viewer) return
 
@@ -303,6 +315,11 @@ function setupViewportSync() {
   )
 }
 
+/**
+ * 加载并处理主 GeoJSON 地图数据
+ * 根据实体的属性（natural、water、building、highway 等）将其分类到不同的数据源
+ * 并应用相应的样式（水体、绿地、建筑、道路）
+ */
 function loadAndProcessGeoJson() {
   const geoJsonUrl = '/map/map_all.geojson?url=' + Date.now()
   Cesium.GeoJsonDataSource.load(geoJsonUrl, { clampToGround: true })
@@ -343,6 +360,10 @@ function loadAndProcessGeoJson() {
     })
 }
 
+/**
+ * 为水体实体应用样式
+ * @param entity - Cesium 实体对象
+ */
 function styleWaterEntity(entity: Cesium.Entity) {
   if (entity.polygon) {
     entity.polygon.material = styles.water.fill
@@ -351,6 +372,10 @@ function styleWaterEntity(entity: Cesium.Entity) {
   }
 }
 
+/**
+ * 为绿地实体应用样式
+ * @param entity - Cesium 实体对象
+ */
 function styleGreenEntity(entity: Cesium.Entity) {
   if (entity.polygon) {
     entity.polygon.material = styles.green.fill
@@ -358,6 +383,10 @@ function styleGreenEntity(entity: Cesium.Entity) {
   }
 }
 
+/**
+ * 为建筑实体应用样式，包括拉伸高度
+ * @param entity - Cesium 实体对象
+ */
 function styleBuildingEntity(entity: Cesium.Entity) {
   if (entity.polygon) {
     entity.polygon.material = styles.buildings.fill
@@ -371,6 +400,10 @@ function styleBuildingEntity(entity: Cesium.Entity) {
   }
 }
 
+/**
+ * 为道路实体应用样式
+ * @param entity - Cesium 实体对象
+ */
 function styleRoadEntity(entity: Cesium.Entity) {
   if (entity.polyline) {
     entity.polyline.material = styles.roads.stroke

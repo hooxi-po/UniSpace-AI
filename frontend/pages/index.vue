@@ -2,7 +2,7 @@
   <div class="relative w-screen h-screen bg-tech-bg text-white overflow-hidden font-sans select-none">
     <!-- 1. Background / 3D Map Layer -->
     <MapView 
-      :selected-id="selectedItem?.id || null"
+      :selected-id="selectedItem?.id ? String(selectedItem.id) : null"
       :viewport="viewport"
       :layers="layers"
       :weather-mode="weatherMode"
@@ -32,7 +32,7 @@
 
       <!-- Right Panel: Detailed Asset Management -->
       <RightSidebar 
-        :data="selectedItem" 
+        :data="isAssetItem(selectedItem) ? selectedItem : null" 
         @close="selectedItem = null" 
       />
 
@@ -51,9 +51,10 @@
 </template>
 
 <script setup lang="ts">
-import type { PipeNode, Building } from '~/types'
+import type { PipeNode, Building, GeoJsonFeature } from '~/types'
+import { BUILDINGS, PIPELINES } from '~/composables/useConstants'
 
-const selectedItem = ref<PipeNode | Building | null>(null)
+const selectedItem = ref<PipeNode | Building | GeoJsonFeature | null>(null)
 
 // Map Viewport State
 const viewport = ref({ x: 119.1895, y: 26.0254, scale: 500 })
@@ -69,8 +70,82 @@ const layers = ref({
 // Weather State
 const weatherMode = ref(false)
 
-const handleSelection = (item: PipeNode | Building | null) => {
-  selectedItem.value = item
+/**
+ * 处理地图选择事件
+ * 将 GeoJSON 特征转换为对应的资产对象（Building 或 PipeNode）
+ * @param item - 选中的项（可能是 GeoJSON 特征、Building 或 PipeNode）
+ */
+const handleSelection = (item: PipeNode | Building | GeoJsonFeature | null) => {
+  if (!item) {
+    selectedItem.value = null
+    return
+  }
+
+  // 如果已经是 Building 或 PipeNode，直接使用
+  if ('name' in item || 'diameter' in item) {
+    selectedItem.value = item
+    return
+  }
+
+  // 如果是 GeoJSON 特征，需要查找对应的资产数据
+  if ('type' in item && item.type === 'geojson') {
+    const feature = item as GeoJsonFeature
+    const properties = feature.properties || {}
+    const featureId = String(feature.id)
+    
+    // 检查是否是建筑（通过 properties.building 判断）
+    if (properties.building) {
+      // 尝试精确匹配 id
+      let building = BUILDINGS.find(b => featureId === b.id || featureId.includes(b.id))
+      
+      // 如果找不到，尝试根据 properties 中的 name 匹配
+      if (!building && properties.name) {
+        const name = String(properties.name)
+        building = BUILDINGS.find(b => name.includes(b.name) || b.name.includes(name))
+      }
+      
+      // 如果还是找不到，使用第一个建筑作为默认（用于演示）
+      if (!building && BUILDINGS.length > 0) {
+        building = BUILDINGS[0]
+      }
+      
+      if (building) {
+        selectedItem.value = building
+        return
+      }
+    }
+    
+    // 检查是否是管道（通过 properties.highway 判断）
+    if (properties.highway) {
+      // 尝试精确匹配 id
+      let pipeline = PIPELINES.find(p => featureId === p.id || featureId.includes(p.id))
+      
+      // 如果找不到，使用第一个管道作为默认（用于演示）
+      if (!pipeline && PIPELINES.length > 0) {
+        pipeline = PIPELINES[0]
+      }
+      
+      if (pipeline) {
+        selectedItem.value = pipeline
+        return
+      }
+    }
+    
+    // 如果找不到对应的资产，保留 GeoJSON 特征（不显示右侧弹窗）
+    selectedItem.value = feature
+  } else {
+    selectedItem.value = item
+  }
+}
+
+/**
+ * 类型守卫：判断选中的项是否为管道或建筑（而非 GeoJSON 特征）
+ * @param item - 选中的项
+ * @returns 是否为管道或建筑
+ */
+const isAssetItem = (item: PipeNode | Building | GeoJsonFeature | null): item is PipeNode | Building => {
+  if (!item) return false
+  return 'name' in item || 'diameter' in item
 }
 
 const toggleLayer = (layer: keyof typeof layers.value) => {

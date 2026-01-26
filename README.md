@@ -1,569 +1,366 @@
 # UniSpace-AI
 
-> 基于 GIS 和数字孪生技术的校园地下管网运维系统
+基于 GIS / 数字孪生的校园地下管网运维系统。
 
-一个集成了 3D 可视化、智能管理和实时监控的校园地下管网综合运维平台。前后端分离架构，采用 [Nuxt.js](https://nuxt.com/) + [Cesium](https://cesium.com/) 构建前端，[Spring Boot](https://spring.io/projects/spring-boot) 构建后端服务。
+- 前端：Nuxt 3（Vue 3）+ Cesium（3D 地图）+ TailwindCSS + AI 助手（Gemini，SSE 流式输出）
+- 后端：Spring Boot 4 + PostgreSQL/PostGIS + Flyway（空间要素表 `geo_features`）
 
----
-
-## ✨ 核心功能
-
-### 🗺️ 三维地图可视化
-- **Cesium 3D 地球引擎**：高性能 WebGL 渲染，支持海量数据加载
-- **OSM 建筑模型**：自动加载 OpenStreetMap 建筑数据，支持点击查看详细信息
-- **多视角切换**：支持地上/地下视角切换，地下管网透视显示
-- **视觉增强**：集成 FXAA 抗锯齿、Bloom 辉光效果、HDR 渲染
-
-### 🔧 管网管理系统
-- **三类管网支持**：供水管网（绿色）、污水管网（棕色）、排水管网（蓝色）
-- **管道属性管理**：管径、材质、长度、埋深、压力、坡度、安装日期、运行状态
-- **智能数据转换**：自动从 GeoJSON 道路数据生成管道网络
-- **图层控制**：独立控制各类管网的显示/隐藏
-
-### ✏️ 交互式编辑器
-- **地图绘制工具**：在 3D 地图上直接绘制管道路径
-- **表单编辑**：完整的管道信息录入和编辑界面
-- **管道列表**：查、编辑、删除管道，支持高亮和定位
-- **实时同步**：编辑操作实时反映到 3D 地图
-
-### 📊 实时监控与分析
-- **压力监测**：实时显示管网压力数据，支持多监测点
-- **流量统计**：动态图表展示实时流量变化
-- **状态预警**：自动识别异常状态（低压、高压、维修中）
-- **数据可视化**：ECharts 图表展示管网统计信息
-
-### 🤖 AI 智能助手
-- **智能问答**：支持管网故障诊断、应急处置建议
-- **关键词识别**：自动识别"泄漏"、"压力"、"流量"等关键词
-- **实时对话**：模拟真实 AI 助手交互体验
-
-### 🎨 现代化 UI 设计
-- **科技感界面**：深色主题 + 蓝色辉光效果
-- **响应式布局**：适配桌面、平板、移动设备
-- **侧边栏系统**：左侧控制面板 + 右侧信息中心
-- **动画效果**：流畅的过渡动画和交互反馈
+> 当前版本说明：前端地图默认加载 **`frontend/public/map/*.geojson` 静态文件**；后端已经具备 PostGIS 表结构与 GeoJSON API（`/api/v1/features`），但前端尚未切换为按 `bbox/layers` 从后端拉取。
 
 ---
 
-## 📁 项目结构
+## 目录
+
+- [项目结构](#项目结构)
+- [技术栈](#技术栈)
+- [快速开始](#快速开始)
+- [环境变量与配置](#环境变量与配置)
+- [前端说明（Nuxt + Cesium）](#前端说明-nuxt--cesium)
+- [后端说明（Spring Boot + PostGIS）](#后端说明-spring-boot--postgis)
+- [数据准备：GeoJSON 拆分](#数据准备-geojson-拆分)
+- [数据导入：GeoJSON -> PostGIS（建议流程）](#数据导入-geojson---postgis建议流程)
+- [API 列表（后端）](#api-列表后端)
+- [常见问题](#常见问题)
+- [下一步建议](#下一步建议)
+
+---
+
+## 项目结构
 
 ```
 UniSpace-AI/
-├── backend/                          # Spring Boot 后端服务
-│   ├── src/
-│   │   ├── main/
-│   │   │   ├── java/com/jolt/workflow/
-│   │   │   │   ├── WorkflowApplication.java    # 应用入口
-│   │   │   │   └── HelloController.java        # 示例 REST API
-│   │   │   └── resources/
-│   │   │       └── application.properties      # 应用配置
-│   │   └── test/                               # 测试代码
-│   ├── build.gradle.kts                        # Gradle 构建配置
-           # Gradle 包装器
-│
-└── frontend/                         # Nuxt.js 前端应用
-    ├── app/
-    │   └── app.vue                             # 根组件
+├── start.sh                    # 一键启动（前端 + 后端）
+├── docker-compose.yml          # PostGIS（PostgreSQL 16 + PostGIS 3.4）
+├── backend/                    # Spring Boot 后端
+│   ├── build.gradle.kts
+│   ├── src/main/java/com/jolt/workflow/
+│   │   ├── WorkflowApplication.java
+│   │   ├── HelloController.java
+│   │   ├── config/CorsConfig.java
+│   │   └── geo/
+│   │       ├── GeoFeatureController.java
+│   │       └── GeoFeatureRow.java
+│   └── src/main/resources/
+│       ├── application.properties
+│       └── db/migration/
+│           └── V1__init_postgis_and_features.sql
+└── frontend/                   # Nuxt 3 前端
+    ├── nuxt.config.ts
+    ├── pages/
+    │   ├── index.vue           # 主页面（Map + UI Overlay）
+    │   └── admin.vue           # 后台大厅（GeoJSON/Mock 数据中心）
     ├── components/
-    │   ├── CesiumViewer.vue                    # Cesium 3D 地图主组件
-    │   └── ui/
-    │       ├── Header.vue                      # 顶部标题栏
-    │       ├── LeftSidebar.vue                 # 左侧控制面板
-    │       ├── RightSidebar.vue                # 右侧信息中心
-    │       ├── BottomBar.vue                   # 底部导航栏
-    │       # 建筑信息弹窗
-    │       └── charts/
-    │           ├── PipeStatsChart.vue          # 管网统计图表
-    │           └── AlertList.vue               # 告警列表
+    │   ├── MapView.vue         # Cesium Viewer + GeoJSON 图层加载/拾取
+    │   ├── MapControls.vue     # 底部图层切换
+    │   ├── LayerToggle.vue
+    │   ├── TopNav.vue
+    │   ├── SidebarLeft.vue
+    │   ├── RightSidebar.vue
+    │   └── ChatInterface.vue   # AI 聊天浮窗
     ├── composables/
-    │   ├── useMapState.ts                      # 全局状态管理
-    │   └── usePipeEditorState.ts               # 管道编辑器状态
-    ├── utils/cesium/
-    │   ├── index.ts                            # 统一导出
-    │   ├── config.ts                           # 配置常量
-    │   ├── viewer.ts                           # Viewer 初始化
-       # 建筑数据处理
-    │   ├── pipes.ts                            # 管道渲染
-    │   ├── roads.ts                            # 道路数据转换
-    │   ├── models.ts                           # 3D 模型加载
-    │   ├── styles.ts                           # 样式配置
-    │   ├── picker.ts                           # 点击拾取
-    │   └── i18n.ts                             # 中文翻译
-    ├── plugins/
-    │   └── cesium-ion.client.ts                # Cesium Ion 配置
-    ├── public/
-    │   ├── cesium/                             # Cesium 静态资源
-├── map/
-    │   │   └── map.geojson                     # 福建理工大学地图数据
-    │   └── model/                              # 3D 模型文件
-    ├── nuxt.config.ts                          # Nuxt 配置
-    ├── package.json                            # 依赖管理
-    └── tsconfig.json                           # TypeScript 配置
+    │   ├── useConstants.ts     # Mock 资产/告警/工单数据
+    │   └── useGeminiChat.ts    # 与 /api/chat 的 SSE 流式交互
+    ├── server/api/
+    │   └── chat.post.ts        # Gemini API 代理（SSE）
+    └── public/map/
+        ├── map_all.geojson
+        ├── water.geojson
+        ├── green.geojson
+        ├── buildings.geojson
+        ├── roads.geojson
+        └── split_geojson.py    # GeoJSON 拆分脚本
 ```
 
 ---
 
-## 🛠️ 技术栈
+## 技术栈
 
-### 前端技术
-| 技术 | 版本 | 用途 |
-----|
-| **Nuxt.js** | 4.2.2 | Vue 3 全栈框架，提供 SSR/SSG 支持 |
-| **Vue 3** | 3.5.26 | 渐进式 JavaScript 框架 |
-| **Cesium** | 1.137.0 | 3D 地球和地图可视化引擎 |
-| **ECharts** | 6.0.0 | 数据可视化图表库 |
-| **TypeScript** | - | 类型安全的 JavaScript 超集 |
-| **vite-plugin-cesium** | 1.2.23 | Cesium 集成插件 |
+### 前端
 
-### 后端技术
-| 技术 | 版本 | 用途 |
-|------|------|------|
-| **Spring Boot** | 4.0.1 | Java 应用开发框架 |
-| **Spring Web** | - | RESTful API 开发 |
-| **Lombok** | - | 简化 Java 代码 |
-| **JDK** | 21 | Java 开发工具包 |
-| **Gradle**  |
+- Nuxt 3 / Vue 3
+- Cesium
+- TailwindCSS
+- `vite-plugin-cesium`
+- AI：`@google/genai`（通过 Nuxt server route 代理）
 
-### 开发工具
-- **Node.js** ≥ 18
-- **npm** / **pnpm**
-- **Git**
+### 后端
+
+- Spring Boot 4
+- Spring Web
+- Spring Data JPA（当前主要用于初始化/数据源管理；Geo 查询使用 `JdbcTemplate`）
+- Flyway
+- PostgreSQL + PostGIS
 
 ---
 
-## 🚀 快速开始
+## 快速开始
 
 ### 环境要求
 
-- **Node.js** ≥ 18.0.0
-- **JDK** 21
-- **npm** 或 **pnpm**
+- Node.js >= 18
+- JDK 21
+- Docker（可选：用于启动 PostGIS 容器）
 
-### 1. 克隆项目
-
-```bash
-git clone https://github.com/your-org/UniSpace-AI.git
-//spring.io/projects/spring-boot) - 企业级 Java 框架
-- [ECharts](https://echarts.apache.org/) - 数据可视化库
-
----
-
-## 📮 联系方式
-
-- 项目主页：[GitHub](https://github.com/your-org/UniSpace-AI)
-- 问题反馈：[Issues](https://github.com/your-org/UniSpace-AI/issues)
-- 邮箱：team@unispace.edu.cn
-
----
-
-**⭐ 如果这个项目对你有帮助，请给我们一个 Star！**
-Conventional Commits）
-
----
-
-## 📝 更新日志
-
-### v1.0.0 (2026-01-20)
-
-**新功能**：
-- ✨ 完整的 3D 地图可视化系统
-- ✨ 管道绘制和编辑功能
-- ✨ 道路数据自动转换为管道
-- ✨ 实时监控和数据可视化
-- ✨ AI 智能助手
-- ✨ 响应式 UI 设计
-
-**技术栈**：
-- Nuxt.js 4.2.2
-- Vue 3.5.26
-- Cesium 1.137.0
-- Spring Boot 4.0.1
-
----
-
-## 📄 许可证
-
-本项目采用 [MIT](LICENSE) 许可证。
-
----
-
-## 👥 团队
-
-**UniSpace Team** - 福建理工大学
-
----
-
-## 🙏 致谢
-
-- [Cesium](https://cesium.com/) - 强大的 3D 地球引擎
-- [OpenStreetMap](https://www.openstreetmap.org/) - 开放地图数据
-- [Nuxt.js](https://nuxt.com/) - 优秀的 Vue 框架
-- [Spring Boot](https:压力（MPa）
-  slope?: number                // 坡度（%）
-  installDate: string           // 安装日期
-  status: string                // 状态
-  coordinates?: number[][]      // 路径坐标 [[lon, lat], ...]
-}
-```
-
----
-
-## 🤝 贡献指南
-
-欢迎贡献代码、报告问题或提出建议！
-
-### 开发流程
-
-1. Fork 本仓库
-2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 开启 Pull Request
-
-### 代码规范
-
-- 前端：遵循 Vue 3 和 TypeScript 最佳实践
-- 后端：遵循 Spring Boot 和 Java 编码规范
-- 提交信息：使用语义化提交信息（  "type": "LineString",
-        "coordinates": [
-          [119.1895, 26.0254],
-          [119.1905, 26.0264]
-        ]
-      }
-    }
-  ]
-}
-```
-
-### 管道数据接口
-
-```typescript
-interface PipeData {
-  id: string                    // 管道唯一标识
-  type: 'water' | 'sewage' | 'drainage'  // 管道类型
-  name: string                  // 管道名称
-  diameter: number              // 管径（mm）
-  material: string              // 材质
-  length: number                // 长度（m）
-  depth: number                 // 埋深（m）
-  pressure?: number             // taSourceAutoConfiguration,\
-  org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
-
-# 服务器端口（默认 8080）
-# server.port=8080
-
-# CORS 配置（如需跨域）
-# spring.web.cors.allowed-origins=http://localhost:3000
-```
-
----
-
-## 📊 数据格式
-
-### GeoJSON 地图数据
-
-```json
-{
-  "type": "FeatureCollection",
-  "features": [
-    {
-      "type": "Feature",
-      "id": "way/123456",
-      "properties": {
-        "highway": "secondary",
-        "name": "校园主干道",
-        "surface": "asphalt"
-      },
-      "geometry": {
-      um/')
-    }
-  },
-  
-  // 运行时配置
-  runtimeConfig: {
-    public: {
-      cesiumToken: process.env.NUXT_PUBLIC_CESIUM_TOKEN || ''
-    }
-  }
-})
-```
-
-#### 环境变量
-
-创建 `frontend/.env` 文件：
-
-```env
-# Cesium Ion Access Token
-NUXT_PUBLIC_CESIUM_TOKEN=your_token_here
-
-# API 基础 URL（可选）
-NUXT_PUBLIC_API_BASE_URL=http://localhost:8080
-```
-
-### 后端配置
-
-#### application.properties
-
-```properties
-# 应用名称
-spring.application.name=workflow
-
-# 禁用数据库自动配置（当前版本无需数据库）
-spring.autoconfigure.exclude=\
-  org.springframework.boot.autoconfigure.jdbc.Da   }]
-  },
-  
-  // Vite 配置
-  vite: {
-    plugins: [cesium()],
-    define: {
-      CESIUM_BASE_URL: JSON.stringify('/cesiium'
- kerfile 示例
-FROM eclipse-temurin:21-jre
-COPY build/libs/workflow-0.0.1-SNAPSHOT.jar app.jar
-EXPOSE 8080
-ENTRYPOINT ["java", "-jar", "/app.jar"]
-```
+### 方式 A：一键启动（推荐）
 
 ```bash
-docker build -t unispace-backend .
-docker run -p 8080:8080 unispace-backend
+chmod +x start.sh
+./start.sh
 ```
 
----
+启动后：
 
-## 🔧 配置说明
+- 前端：http://localhost:3000
+- 后端：http://localhost:8080
 
-### 前端配置
+### 方式 B：分别启动
 
-#### nuxt.config.ts
+#### 1) 启动数据库（建议）
 
-```typescript
-export default defineNuxtConfig({
-  // Cesium 静态资源配置
-  nitro: {
-    publicAssets: [{
-      dir: 'node_modules/cesium/Build/Cesium',
-      baseURL: '/ces// HDR 高动态范围
-viewer.scene.highDynamicRange = true
-```
-
----
-
-## 🏗️ 生产部署
-
-### 前端构建
+项目提供 `docker-compose.yml` 用于启动 PostGIS：
 
 ```bash
-cd frontend
-npm run build
+docker compose up -d
 ```
 
-构建产物位于 `frontend/.output/` 目录。
+默认数据库参数：
 
-#### 预览构建结果
+- Host：`localhost`
+- Port：`5432`
+- Database：`unispace`
+- Username：`postgres`
+- Password：`postgres`
 
-```bash
-npm run preview
-```
-
-#### 部署到静态托管
-
-```bash
-# 部署到 Vercel
-vercel deploy
-
-# 部署到 Netlify
-netlify deploy --prod
-```
-
-### 后端构建
-
-```bash
-cd backend
-./gradlew bootJar
-```
-
-生成的 JAR 文件位于 `backend/build/libs/workflow-0.0.1-SNAPSHOT.jar`
-
-#### 运行生产环境
-
-```bash
-java -jar build/libs/workflow-0.0.1-SNAPSHOT.jar
-```
-
-#### Docker 部署（可选）
-
-```dockerfile
-# Doc- 报废：红色
-
-**性能优化**：
-- 增量渲染：只更新变化的管道
-- 使用 `requestAnimationFrame` 节流批量更新
-- Entity 缓存和复用
-
-### 状态管理架构
-
-采用 Vue 3 Composition API 实现全局状态管理：
-
-**useMapState.ts**：
-- 图层显示状态
-- 建筑信息弹窗
-- 侧边栏显示状态
-- 管道数据 CRUD
-- 实时监控数据
-
-**usePipeEditorState.ts**：
-- 绘制模式状态
-- 绘制点坐标
-- 管道高亮状态
-
-### 视觉增强技术
-
-**后处理效果**：
-```typescript
-// FXAA 抗锯齿
-viewer.scene.postProcessStages.fxaa.enabled = true
-
-// Bloom 辉光效果
-const bloom = viewer.scene.postProcessStages.bloom
-bloom.enabled = true
-bloom.uniforms.contrast = 118.0
-bloom.uniforms.brightness = -0.3
-
-数据并转换为管道：
-
-| 道路类型 (highway) | 转换为管道类型 | 显示颜色 | 默认管径 |
-|-------------------|--------------|---------|---------|
-| secondary, primary, tertiary | 供水管道 | 🟢 绿色 | 300mm |
-| unclassified, residential, service | 排水管道 | 🔵 蓝色 | 500mm |
-| footway, path, pedestrian, track | 污水管道 | 🟤 棕色 | 400mm |
-
-**转换逻辑**：
-- 自动计算管道长度（基于地理坐标）
-- 根据道路类型分配管道属性
-- 保留原始道路坐标作为管道路径
-
-### 管道渲染系统
-
-**技术实现**：
-- 使用 Cesium `PolylineGlowMaterialProperty` 实现辉光效果
-- `clampToGround` 确保管道贴合地形
-- 根据管径动态调整显示宽度
-- 状态颜色映射：
-  - 正常：类型默认颜色
-  - 维修中：黄色
-  - 待检修：橙色
-  息
-- 点击任意建筑物，弹出信息窗口
-- 显示建筑名称、类型、楼层数等属性
-
-### 管道管理
-
-#### 添加管道
-1. 点击底部导航栏「管网编辑器」
-2. 点击「添加管道」按钮
-3. 填写管道信息（名称、类型、管径等）
-4. 点击「在地图上绘制」按钮
-5. 在地图上点击添加路径节点
-6. 双击完成绘制
-7. 点击「添加」保存
-
-#### 编辑管道
-1. 在管道列表中点击「编辑」按钮
-2. 修改管道信息
-3. 点击「保存」
-
-#### 删除管道
-1. 在管道列表中点击「删除」按钮
-2. 确认删除操作
-
-#### 查看管道详情
-- 点击管道列表中的管道项
-- 地图自动定位并高亮显示该管道
-
-### 实时监控
-
-#### 查看压力数据
-1. 点击底部导航栏「实时压力」
-2. 查看主压力表和各监测点数据
-3. 点击底部栏的压力显示可快速跳转
-
-#### AI 助手
-1. 在右侧边栏找到「AI 智能助手」
-2. 输入问题（如"泄漏如何处置"）
-3. 查看 AI 回复和建议
-
----
-
-## 🎯 核心功能详解
-
-### 道路数据自动转换
-
-系统启动时会自动从 `public/map/map.geojson` 加载道路h
-```
-
-脚本会自动：
-- 安装前端依赖
-- 并行启动后端和前端服务
-- 后端运行在 `http://localhost:8080`
-- 前端运行在 `http://localhost:3000`
-
-按 `Ctrl+C` 停止所有服务。
-
-### 4. 手动启动
-
-#### 启动后端
+#### 2) 启动后端
 
 ```bash
 cd backend
 ./gradlew bootRun
 ```
 
-后端服务将运行在 `http://localhost:8080`
-
-#### 启动前端
+#### 3) 启动前端
 
 ```bash
 cd frontend
-npm install  # 或 pnpm install
-npm run dev  # 或 pnpm dev
+npm install
+npm run dev
 ```
-
-前端应用将运行在 `http://localhost:3000`
 
 ---
 
-## 📖 使用指南
+## 环境变量与配置
 
-### 基础操作
+### 后端（backend）
 
-#### 地图导航
-- **左键拖拽**：平移地图
-- **右键拖拽**：旋转视角
-- **滚轮**：缩放地图
-- **中键拖拽**：调整俯仰角
+`backend/src/main/resources/application.properties` 中支持如下变量（均有默认值）：
 
-#### 图层控制
-1. 点击左侧边栏展开按钮
-2. 选择「管网类型」
-3. 勾选/取消勾选图层复选框
+- `DB_URL`（默认：`jdbc:postgresql://localhost:5432/unispace`）
+- `DB_USER`（默认：`postgres`）
+- `DB_PASSWORD`（默认：`postgres`）
 
-#### 查看建筑信cd UniSpace-AI
-```
+### 前端（frontend）
 
-### 2. 配置 Cesium Ion Token
+`frontend/nuxt.config.ts` 中：
 
-在 `frontend/.env` 文件中配置你的 Cesium Ion Token：
+- `GEMINI_API_KEY`：Nuxt server 侧读取的 Gemini API Key（**必需**，否则 `/api/chat` 会 500）
 
-```env
-NUXT_PUBLIC_CESIUM_TOKEN=your_cesium_ion_token_here
-```
-
-> 💡 **获取 Token**：访问 [Cesium Ion](https://ion.cesium.com/) 注册账号并创建 Access Token
-
-### 3. 一键启动（推荐）
+示例：
 
 ```bash
-chmod +x start.sh
-./start.s
+export GEMINI_API_KEY=YOUR_KEY
+```
+
+---
+
+## 前端说明（Nuxt + Cesium）
+
+### 页面入口
+
+- `pages/index.vue`
+  - 作为全局状态“源头”维护：
+    - `selectedItem`：当前选中对象（建筑/管网/GeoJSON feature）
+    - `viewport`：视口（经纬度 + 相机高度）
+    - `layers`：图层开关（water/green/buildings/roads 等）
+  - 将状态通过 props 传给 `MapView`、`MapControls`、`RightSidebar` 等组件。
+
+- `pages/admin.vue`
+  - 后台大厅/数据中心：
+    - 读取 `/public/map/*.geojson`，统计 features 数量、几何类型分布、bbox、属性 key 频次等
+    - 提供 GeoJSON 预览与 JSON 详情抽屉（可复制）
+    - 展示 Mock 资产、告警、工单（来自 `useConstants.ts`）
+
+### 地图核心（`components/MapView.vue`）
+
+- 使用 `Cesium.Viewer` 初始化场景，采用深色底图（Carto dark）
+- 为每个图层维护一个 `Cesium.CustomDataSource`：
+  - `water` / `green` / `buildings` / `roads`（以及预留的 `sewage`/`drain`）
+- 图层数据加载：
+  - 使用 `Cesium.GeoJsonDataSource.load('/map/*.geojson')`
+  - 加载后会移除默认 label/billboard/point，并按图层应用不同风格
+- 图层显隐：
+  - 通过 `dataSource.show = props.layers.xxx` 控制
+- 拾取：
+  - `ScreenSpaceEventHandler` + `viewer.scene.pick`，拾取到 entity 后 emit `select` 给父组件
+
+### 图层与样式
+
+当前前端使用“未来主义/赛博朋克”风格：
+
+- 水体（polygon）深蓝填充 + 边缘线
+- 绿地（polygon）深绿填充
+- 建筑（polygon）半透明浅蓝 + outline + extrusion（固定 extrudedHeight）
+- 道路（polyline）浅蓝发光 `PolylineGlowMaterialProperty`
+
+> 注：目前 `MapControls.vue` UI 展示了“供水/污水/雨水/绿地/建筑”，但 `MapView.vue` 实际加载的静态 GeoJSON 图层是 `water/green/buildings/roads`。`sewage/drain` 在 `MapView.vue` 中存在数据源占位，但当前未加载对应 GeoJSON 文件。
+
+### 资产台账（Mock）
+
+- `composables/useConstants.ts` 提供 mock：
+  - `BUILDINGS` / `PIPELINES` / `WORK_ORDERS` / `MOCK_ALERTS` / `PRESSURE_DATA`
+- `index.vue` 的 `handleSelection(...)` 会尝试将选中的 GeoJSON feature 匹配到 mock 资产（或兜底生成 Building）。
+
+### AI 聊天（Gemini）
+
+- UI：`components/ChatInterface.vue`
+- 客户端：`composables/useGeminiChat.ts`
+  - 请求 `POST /api/chat`
+  - 读取 `ReadableStream`，解析 `data: {"text":"..."}` 的 SSE 分片
+- 服务端：`server/api/chat.post.ts`
+  - 使用 `@google/genai`
+  - 需要 `GEMINI_API_KEY`
+
+---
+
+## 后端说明（Spring Boot + PostGIS）
+
+### 数据库迁移（Flyway）
+
+`backend/src/main/resources/db/migration/V1__init_postgis_and_features.sql`：
+
+- 启用扩展：`postgis`
+- 创建表：`geo_features`
+
+字段：
+
+- `id TEXT PRIMARY KEY`
+- `layer TEXT NOT NULL`
+- `geom geometry(GEOMETRY, 4326) NOT NULL`
+- `properties JSONB NOT NULL DEFAULT '{}'::jsonb`
+- `created_at TIMESTAMPTZ NOT NULL DEFAULT now()`
+- `updated_at TIMESTAMPTZ NOT NULL DEFAULT now()`
+
+并包含索引与 `updated_at` 触发器。
+
+### 后端 GeoJSON API 的实现方式
+
+`GeoFeatureController` 使用 `JdbcTemplate` + Postgres JSONB 函数构造 GeoJSON：
+
+- `jsonb_build_object` / `jsonb_agg`
+- `ST_AsGeoJSON(geom)::jsonb` 将 geometry 输出为 GeoJSON
+
+这样可以避免在 Java 侧大量拼装 GeoJSON，提高查询与序列化效率。
+
+---
+
+## 数据准备：GeoJSON 拆分
+
+`frontend/public/map/split_geojson.py` 用于将 `map_all.geojson` 按规则拆分为：
+
+- `water.geojson`
+- `green.geojson`
+- `buildings.geojson`
+- `roads.geojson`
+
+分类规则（核心逻辑）：
+
+- Point 类型直接跳过
+- 水体：`properties.natural == 'water'` 或存在 `properties.water`
+- 绿地：`natural == 'wood' | 'wetland'` 或 `landuse == 'cemetery'`
+- 建筑：存在 `properties.building`
+- 道路：存在 `properties.highway`
+
+---
+
+## 数据导入：GeoJSON -> PostGIS（建议流程）
+
+当前仓库尚未提供一键导入脚本，但已具备目标表结构 `geo_features`。
+
+建议导入流程（可按你后续需求实现自动化）：
+
+1. 选择导入来源：
+   - `frontend/public/map/water.geojson` -> `layer='water'`
+   - `frontend/public/map/green.geojson` -> `layer='green'`
+   - `frontend/public/map/buildings.geojson` -> `layer='buildings'`
+   - `frontend/public/map/roads.geojson` -> `layer='roads'`
+
+2. 将每个 feature 写入：
+   - `id`：优先使用 GeoJSON feature 的 `id`（若缺失可生成）
+   - `properties`：直接保存为 JSONB
+   - `geom`：由 `geometry` 转换（`ST_GeomFromGeoJSON`），并确保 SRID=4326
+
+3. 导入后，即可通过后端 API `GET /api/v1/features?layers=water,roads&bbox=...` 查询。
+
+如果你希望我把这部分落地为“可直接执行的 SQL/脚本”，你只需要告诉我：
+
+- 你要导入的文件（一个还是全部四个）
+- GeoJSON 中 `feature.id` 是否总是存在
+
+---
+
+## API 列表（后端）
+
+> 路径前缀：`/api/v1`
+
+### `GET /api/v1/features`
+
+Query 参数：
+
+- `bbox`（可选）：`minLon,minLat,maxLon,maxLat`（EPSG:4326）
+- `layers`（可选）：逗号分隔图层名（对应 `geo_features.layer`）
+- `limit`（可选，默认 `2000`）
+
+返回：GeoJSON `FeatureCollection`。
+
+示例：
+
+```bash
+curl -s "http://localhost:8080/api/v1/features?layers=water&limit=10" | cat
+```
+
+### `GET /api/v1/features/{id}`
+
+返回：单个 GeoJSON `Feature`。
+
+---
+
+## 常见问题
+
+### 1) 后端启动提示 8080 端口占用
+
+临时换端口：
+
+```bash
+cd backend
+./gradlew bootRun --args='--server.port=8081'
+```
+
+### 2) AI 聊天接口报错（未设置 `GEMINI_API_KEY`）
+
+```bash
+export GEMINI_API_KEY=YOUR_KEY
+```
+
+### 3) GeoJSON 很大导致前端卡顿
+
+当前是静态一次性加载。后续建议：
+
+- 后端按 `bbox` 分页/裁剪返回
+- 前端按视口动态加载（camera changed -> 请求 bbox）
+
+---
+
+## 下一步建议
+
+- **数据统一**：将 `frontend/public/map/*.geojson` 导入 `geo_features`，前端切换为从 `/api/v1/features` 加载。
+- **接口鲁棒性**：让 `/api/v1/features` 在无数据时也返回合法 FeatureCollection（而不是 500）。
+- **台账/告警/工单接口化**：逐步替换 `useConstants.ts` 的 mock 数据为后端真实数据。

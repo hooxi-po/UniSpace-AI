@@ -79,7 +79,7 @@ const styles = {
   },
   buildings: {
     fill: new Cesium.ColorMaterialProperty(
-      Cesium.Color.fromCssColorString('rgb(40, 40, 45)').withAlpha(0.85) // 深灰色
+      Cesium.Color.fromCssColorString('rgb(100, 180, 255)').withAlpha(0.6)
     ),
     outline: Cesium.Color.fromCssColorString('rgb(100, 180, 255)').withAlpha(0.6), // 发光浅蓝色边缘
     outlineWidth: 2,

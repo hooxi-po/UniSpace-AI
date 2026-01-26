@@ -1,0 +1,16 @@
+services:
+  postgis:
+    image: postgis/postgis:16-3.4
+    container_name: unispace-postgis
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: unispace
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - unispace_postgis_data:/var/lib/postgresql/data
+
+volumes:
+  unispace_postgis_data:

@@ -65,6 +65,7 @@ const layers = ref({
   sewage: true,
   drain: true,
   buildings: true,
+  green: true,
 })
 
 // Weather State

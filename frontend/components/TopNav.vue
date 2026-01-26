@@ -13,6 +13,12 @@
 
     <!-- Status Indicators -->
     <div class="flex items-center gap-6">
+      <NuxtLink
+        to="/admin"
+        class="flex items-center gap-2 px-3 py-1 rounded border border-tech-cyan/30 bg-white/5 hover:bg-white/10 text-xs text-gray-300 font-mono transition-colors"
+      >
+        <span class="text-tech-cyan">后台大厅</span>
+      </NuxtLink>
       <div class="flex items-center gap-2">
         <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
         <span class="text-xs text-gray-400 font-mono">系统在线</span>

@@ -38,6 +38,13 @@
             @click="emit('toggle-layer', 'drain')" 
           />
           <LayerToggle 
+            label="绿地" 
+            :active="layers.green" 
+            color="bg-tech-cyan" 
+            text-color="text-tech-cyan"
+            @click="emit('toggle-layer', 'green')" 
+          />
+          <LayerToggle 
             label="建筑" 
             :active="layers.buildings" 
             color="bg-white" 
@@ -64,12 +71,13 @@ interface Props {
     sewage: boolean
     drain: boolean
     buildings: boolean
+    green: boolean
   }
 }
 
 defineProps<Props>()
 
 const emit = defineEmits<{
-  'toggle-layer': [layer: 'water' | 'sewage' | 'drain' | 'buildings']
+  'toggle-layer': [layer: 'water' | 'sewage' | 'drain' | 'green' | 'buildings']
 }>()
 </script>

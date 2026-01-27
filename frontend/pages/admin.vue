@@ -230,15 +230,37 @@
           <TechPanel title="地图数据中心（GeoJSON）">
             <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div class="text-xs text-gray-400 font-mono">
-                数据源：/public/map/*.geojson（通过浏览器 fetch 加载）
+                数据源：
+                <span v-if="geoDataSource === 'static'">/public/map/*.geojson（浏览器 fetch）</span>
+                <span v-else>后端 API（/api/v1/features）</span>
               </div>
-              <button
-                @click="loadAllGeo()"
-                class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono rounded bg-white/5 hover:bg-white/10 border border-tech-cyan/30 text-tech-cyan transition-colors"
-              >
-                <RefreshCw :size="14" :class="{ 'animate-spin': geoLoadState === 'loading' }" />
-                重新加载 GeoJSON
-              </button>
+              <div class="flex items-center gap-2">
+                <button
+                  @click="geoDataSource = 'static'; refreshData()"
+                  class="px-3 py-1.5 text-xs font-mono rounded border transition-colors"
+                  :class="geoDataSource === 'static'
+                    ? 'bg-white/10 border-tech-cyan/40 text-tech-cyan'
+                    : 'bg-white/5 border-white/10 text-gray-400 hover:text-white hover:bg-white/10'"
+                >
+                  静态文件
+                </button>
+                <button
+                  @click="geoDataSource = 'backend'; refreshData()"
+                  class="px-3 py-1.5 text-xs font-mono rounded border transition-colors"
+                  :class="geoDataSource === 'backend'
+                    ? 'bg-white/10 border-tech-cyan/40 text-tech-cyan'
+                    : 'bg-white/5 border-white/10 text-gray-400 hover:text-white hover:bg-white/10'"
+                >
+                  后端 API
+                </button>
+                <button
+                  @click="loadAllGeo()"
+                  class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono rounded bg-white/5 hover:bg-white/10 border border-tech-cyan/30 text-tech-cyan transition-colors"
+                >
+                  <RefreshCw :size="14" :class="{ 'animate-spin': geoLoadState === 'loading' }" />
+                  重新加载
+                </button>
+              </div>
             </div>
 
             <div class="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -610,6 +632,8 @@ const geoFiles: { key: GeoKey; label: string; url: string }[] = [
   { key: 'roads', label: 'Roads（道路）', url: '/map/roads.geojson' },
 ]
 
+const geoDataSource = ref<'static' | 'backend'>('static')
+
 const geoLoadState = ref<'idle' | 'loading' | 'loaded' | 'error'>('idle')
 const geoLoadStateLabel = computed(() => {
   if (geoLoadState.value === 'idle') return '未加载'
@@ -777,10 +801,33 @@ async function loadGeo(key: GeoKey) {
   geoSummary.value[key] = buildGeoSummary(json)
 }
 
+async function loadGeoFromBackend(key: GeoKey) {
+  if (key === 'water' || key === 'green') {
+    geoData.value[key] = { type: 'FeatureCollection', features: [] }
+    geoSummary.value[key] = buildGeoSummary(geoData.value[key] as GeoCollection)
+    return
+  }
+
+  const backendUrl = `http://localhost:8080/api/v1/features?layers=${encodeURIComponent(key)}&limit=2000`
+  const res = await fetch(backendUrl)
+  if (!res.ok) throw new Error(`Failed to fetch ${backendUrl}`)
+  const json = (await res.json()) as GeoCollection
+  geoData.value[key] = json
+  geoSummary.value[key] = buildGeoSummary(json)
+}
+
+async function loadAllGeoFromBackend() {
+  await Promise.all(geoFiles.map(f => loadGeoFromBackend(f.key)))
+}
+
 async function loadAllGeo() {
   geoLoadState.value = 'loading'
   try {
-    await Promise.all(geoFiles.map(f => loadGeo(f.key)))
+    if (geoDataSource.value === 'static') {
+      await Promise.all(geoFiles.map(f => loadGeo(f.key)))
+    } else {
+      await loadAllGeoFromBackend()
+    }
     geoLoadState.value = 'loaded'
   } catch (e) {
     geoLoadState.value = 'error'

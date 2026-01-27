@@ -38,13 +38,6 @@ export default defineNuxtConfig({
   },
 
   vite: {
-    plugins: [cesium()],
-    css: {
-      preprocessorOptions: {
-        scss: {
-          additionalData: '@use "~/assets/scss/variables.scss" as *;'
-        }
-      }
-    }
+    plugins: [cesium()]
   }
 })

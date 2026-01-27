@@ -5,7 +5,7 @@
 - 前端：Nuxt 3（Vue 3）+ Cesium（3D 地图）+ TailwindCSS + AI 助手（Gemini，SSE 流式输出）
 - 后端：Spring Boot 4 + PostgreSQL/PostGIS + Flyway（空间要素表 `geo_features`）
 
-> 当前版本说明：前端地图默认加载 **`frontend/public/map/*.geojson` 静态文件**；后端已经具备 PostGIS 表结构与 GeoJSON API（`/api/v1/features`），但前端尚未切换为按 `bbox/layers` 从后端拉取。
+> 当前版本说明：主地图仍默认加载 **`frontend/public/map/*.geojson` 静态文件**；后端已经具备 PostGIS 表结构与 GeoJSON API（`/api/v1/features`）。后台大厅（`/admin`）已支持从后端 API 拉取 `buildings/roads` 并做统计预览（可在“地图数据中心”切换数据源）。
 
 ---
 
@@ -18,7 +18,7 @@
 - [前端说明（Nuxt + Cesium）](#前端说明-nuxt--cesium)
 - [后端说明（Spring Boot + PostGIS）](#后端说明-spring-boot--postgis)
 - [数据准备：GeoJSON 拆分](#数据准备-geojson-拆分)
-- [数据导入：GeoJSON -> PostGIS（建议流程）](#数据导入-geojson---postgis建议流程)
+- [数据导入：GeoJSON -> PostGIS（buildings/roads 实操流程）](#数据导入-geojson---postgisbuildingsroads-实操流程)
 - [API 列表（后端）](#api-列表后端)
 - [常见问题](#常见问题)
 - [下一步建议](#下一步建议)
@@ -79,7 +79,8 @@ UniSpace-AI/
 
 - Nuxt 3 / Vue 3
 - Cesium
-- TailwindCSS
+- TailwindCSS（全局样式/主地图仍使用）
+- 后台大厅（`/admin`）：浅色字节后台风格（纯 CSS，组件化在 `frontend/components/admin/`）
 - `vite-plugin-cesium`
 - AI：`@google/genai`（通过 Nuxt server route 代理）
 
@@ -184,10 +185,13 @@ export GEMINI_API_KEY=YOUR_KEY
   - 将状态通过 props 传给 `MapView`、`MapControls`、`RightSidebar` 等组件。
 
 - `pages/admin.vue`
-  - 后台大厅/数据中心：
-    - 读取 `/public/map/*.geojson`，统计 features 数量、几何类型分布、bbox、属性 key 频次等
-    - 提供 GeoJSON 预览与 JSON 详情抽屉（可复制）
-    - 展示 Mock 资产、告警、工单（来自 `useConstants.ts`）
+  - 后台大厅/数据中心（浅色字节后台风格）：
+    - 使用左侧菜单布局（组件：`components/admin/AdminLayout.vue`、`components/admin/AdminSider.vue`）
+    - GeoJSON 数据中心支持数据源切换：
+      - 静态：`/public/map/*.geojson`
+      - 后端：`GET http://localhost:8080/api/v1/features?layers=buildings|roads`
+    - 统计 features 数量、几何类型、bbox、properties key 频次，提供预览与详情抽屉
+    - 资产/告警/工单仍为 mock（来自 `useConstants.ts`）
 
 ### 地图核心（`components/MapView.vue`）
 

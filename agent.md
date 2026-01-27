@@ -282,6 +282,8 @@ public record GeoFeatureRow(String id, String layer, String geomGeoJson, JsonNod
   - public：`appName`
 - vite：`plugins: [cesium()]`
 
+> 注意：仓库曾配置过 `vite.css.preprocessorOptions.scss`（注入 `~/assets/scss/variables.scss`），会导致开发机必须安装 `sass`/`sass-embedded`。目前已移除该配置，避免强制 SCSS 预处理依赖。
+
 ### `frontend/tailwind.config.js`
 
 - Tailwind 配置（未展开阅读内容；若需要可补充）。
@@ -431,13 +433,19 @@ public record GeoFeatureRow(String id, String layer, String geomGeoJson, JsonNod
 
 ### `frontend/pages/admin.vue`
 
-- 用于查看 mock 资产与 GeoJSON 文件的统计/预览。
-- Tabs：概览 / 地图数据中心 / 资产中心 / 告警&工单
-- GeoJSON 加载：fetch `/map/*.geojson`，统计：
+- 后台大厅（浅色字节后台风格）。
+- UI 采用左侧菜单布局：
+  - `frontend/components/admin/AdminLayout.vue`
+  - `frontend/components/admin/AdminSider.vue`
+- Tab：概览 / 地图数据中心 / 资产中心 / 告警&工单（由左侧菜单切换）
+- GeoJSON 数据中心支持数据源切换：
+  - 静态：fetch `/map/*.geojson`
+  - 后端：`GET http://localhost:8080/api/v1/features?layers=buildings|roads&limit=...`
+- 统计维度：
   - featureCount
   - geomTypes
   - bbox（递归扫描 coordinates）
-  - properties key 出现次数与 top keys
+  - properties key 频次与 top keys
 - 提供搜索：`key:value` 或任意 value 模糊搜索
 - 详情抽屉：展示 JSON，支持复制
 

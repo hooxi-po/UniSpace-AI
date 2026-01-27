@@ -281,29 +281,106 @@ export GEMINI_API_KEY=YOUR_KEY
 
 ---
 
-## 数据导入：GeoJSON -> PostGIS（建议流程）
+## 数据导入：GeoJSON -> PostGIS（buildings/roads 实操流程）
 
-当前仓库尚未提供一键导入脚本，但已具备目标表结构 `geo_features`。
+目标：将前端静态文件中的 **建筑/道路** 导入到后端 PostGIS 表 `geo_features`，并通过后端 GeoJSON API 验证。
 
-建议导入流程（可按你后续需求实现自动化）：
+### 0) 启动数据库容器
 
-1. 选择导入来源：
-   - `frontend/public/map/water.geojson` -> `layer='water'`
-   - `frontend/public/map/green.geojson` -> `layer='green'`
-   - `frontend/public/map/buildings.geojson` -> `layer='buildings'`
-   - `frontend/public/map/roads.geojson` -> `layer='roads'`
+```bash
+docker compose up -d
+```
 
-2. 将每个 feature 写入：
-   - `id`：优先使用 GeoJSON feature 的 `id`（若缺失可生成）
-   - `properties`：直接保存为 JSONB
-   - `geom`：由 `geometry` 转换（`ST_GeomFromGeoJSON`），并确保 SRID=4326
+默认数据库：`postgres/postgres@localhost:5432/unispace`
 
-3. 导入后，即可通过后端 API `GET /api/v1/features?layers=water,roads&bbox=...` 查询。
+### 1) 初始化数据库表（Flyway 迁移）
 
-如果你希望我把这部分落地为“可直接执行的 SQL/脚本”，你只需要告诉我：
+如果你还没启动过后端导致迁移未自动执行，可以手动执行仓库内迁移 SQL：
 
-- 你要导入的文件（一个还是全部四个）
-- GeoJSON 中 `feature.id` 是否总是存在
+```bash
+docker exec -i unispace-postgis psql -U postgres -d unispace < backend/src/main/resources/db/migration/V1__init_postgis_and_features.sql
+```
+
+验证表存在：
+
+```bash
+docker exec -it unispace-postgis psql -U postgres -d unispace -c "\d geo_features"
+```
+
+### 2) 将 GeoJSON 拷贝进容器
+
+```bash
+docker cp frontend/public/map/roads.geojson unispace-postgis:/tmp/roads.geojson
+docker cp frontend/public/map/buildings.geojson unispace-postgis:/tmp/buildings.geojson
+```
+
+### 3) 导入 roads
+
+```bash
+docker exec -i unispace-postgis psql -U postgres -d unispace -c "
+WITH gj AS (
+  SELECT pg_read_file('/tmp/roads.geojson')::jsonb AS fc
+),
+feat AS (
+  SELECT jsonb_array_elements(fc->'features') AS f
+  FROM gj
+)
+INSERT INTO geo_features (id, layer, geom, properties)
+SELECT
+  COALESCE(NULLIF(f->>'id',''), md5((f->'geometry')::text || (f->'properties')::text)) AS id,
+  'roads' AS layer,
+  ST_SetSRID(ST_GeomFromGeoJSON((f->'geometry')::text), 4326) AS geom,
+  COALESCE(f->'properties', '{}'::jsonb) AS properties
+FROM feat
+WHERE f ? 'geometry'
+ON CONFLICT (id) DO UPDATE
+SET layer = EXCLUDED.layer,
+    geom = EXCLUDED.geom,
+    properties = EXCLUDED.properties,
+    updated_at = now();
+"
+```
+
+### 4) 导入 buildings
+
+```bash
+docker exec -i unispace-postgis psql -U postgres -d unispace -c "
+WITH gj AS (
+  SELECT pg_read_file('/tmp/buildings.geojson')::jsonb AS fc
+),
+feat AS (
+  SELECT jsonb_array_elements(fc->'features') AS f
+  FROM gj
+)
+INSERT INTO geo_features (id, layer, geom, properties)
+SELECT
+  COALESCE(NULLIF(f->>'id',''), md5((f->'geometry')::text || (f->'properties')::text)) AS id,
+  'buildings' AS layer,
+  ST_SetSRID(ST_GeomFromGeoJSON((f->'geometry')::text), 4326) AS geom,
+  COALESCE(f->'properties', '{}'::jsonb) AS properties
+FROM feat
+WHERE f ? 'geometry'
+ON CONFLICT (id) DO UPDATE
+SET layer = EXCLUDED.layer,
+    geom = EXCLUDED.geom,
+    properties = EXCLUDED.properties,
+    updated_at = now();
+"
+```
+
+### 5) 验证导入结果
+
+```bash
+docker exec -i unispace-postgis psql -U postgres -d unispace -c "select layer, count(*) from geo_features where layer in ('buildings','roads') group by layer order by layer;"
+```
+
+### 6) 验证后端 API
+
+后端启动后：
+
+```bash
+curl "http://localhost:8080/api/v1/features?layers=buildings,roads&limit=5" | head -c 400
+```
 
 ---
 

@@ -64,23 +64,26 @@
                 <thead>
                   <tr>
                     <th>ID</th>
-                    <th>类型</th>
-                    <th>状态</th>
-                    <th class="ta-r">压力</th>
-                    <th class="ta-r">流量</th>
+                    <th>道路类型</th>
+                    <th>名称</th>
+                    <th>几何</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="p in filteredPipelines" :key="p.id" class="row-click" @click="openAssetDetail(p)">
-                    <td class="mono">{{ p.id }}</td>
-                    <td class="mono">{{ p.type }}</td>
-                    <td>
-                      <span class="badge" :class="badgeClassByPipelineStatus(p.status)">
-                        {{ p.status }}
-                      </span>
-                    </td>
-                    <td class="ta-r mono">{{ p.pressure }}</td>
-                    <td class="ta-r mono">{{ p.flowRate }}</td>
+                  <tr v-if="roadLoading">
+                    <td colspan="4" class="empty">加载中...</td>
+                  </tr>
+                  <tr v-else-if="roadError">
+                    <td colspan="4" class="empty">加载失败：{{ roadError }}</td>
+                  </tr>
+                  <tr v-else-if="filteredPipelines.length === 0">
+                    <td colspan="4" class="empty">暂无数据</td>
+                  </tr>
+                  <tr v-else v-for="r in filteredPipelines" :key="r.id" class="row-click" @click="openAssetDetail(r.raw)">
+                    <td class="mono">{{ r.id }}</td>
+                    <td class="mono">{{ r.highway }}</td>
+                    <td>{{ r.name }}</td>
+                    <td class="mono">{{ r.geomType }}</td>
                   </tr>
                 </tbody>
               </table>
@@ -123,11 +126,10 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { ArrowLeft } from 'lucide-vue-next'
-import type { PipeNode } from '~/types'
 import AdminLayout from '~/components/admin/AdminLayout.vue'
 
 const searchPlaceholder = computed(() => {
-  return activeSubTab.value === 'assets_buildings' ? '搜索 id / name' : '搜索 id / type'
+  return activeSubTab.value === 'assets_buildings' ? '搜索 id / name' : '搜索 id / name'
 })
 
 const tabs = [{ key: 'assets', label: '资产中心' }] as const
@@ -218,7 +220,52 @@ async function fetchBuildings() {
 }
 
 const buildings = computed<BuildingRow[]>(() => buildingRows.value)
-const pipelines = computed<PipeNode[]>(() => PIPELINES)
+type RoadRow = {
+  id: string
+  highway: string
+  name: string
+  geomType: string
+  raw: GeoJsonFeature
+}
+
+const roadLoading = ref(false)
+const roadError = ref<string | null>(null)
+const roadRows = ref<RoadRow[]>([])
+
+async function fetchRoads() {
+  roadLoading.value = true
+  roadError.value = null
+
+  try {
+    const res = await fetch(`${backendBaseUrl}/api/v1/features?layers=roads&limit=5000`)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const json = (await res.json()) as FeatureCollection
+    const feats = Array.isArray(json?.features) ? json.features : []
+
+    roadRows.value = feats
+      .filter(f => f && typeof f.id === 'string')
+      .map((f): RoadRow => {
+        const p = (f.properties || {}) as Record<string, unknown>
+        const highway = String(p.highway ?? p.road ?? p.type ?? '')
+        const name = String(p.name ?? p.ref ?? '')
+
+        return {
+          id: f.id,
+          highway: highway || '—',
+          name: name || '—',
+          geomType: String(f.geometry?.type ?? '—'),
+          raw: f,
+        }
+      })
+  } catch (e: any) {
+    roadError.value = e?.message ? String(e.message) : '请求失败'
+    roadRows.value = []
+  } finally {
+    roadLoading.value = false
+  }
+}
+
+const pipelines = computed<RoadRow[]>(() => roadRows.value)
 
 const filteredBuildings = computed(() => {
   const q = assetSearch.value.trim().toLowerCase()
@@ -229,21 +276,16 @@ const filteredBuildings = computed(() => {
 const filteredPipelines = computed(() => {
   const q = assetSearch.value.trim().toLowerCase()
   if (!q) return pipelines.value
-  return pipelines.value.filter(p => p.id.toLowerCase().includes(q) || String(p.type).toLowerCase().includes(q))
+  return pipelines.value.filter(r => r.id.toLowerCase().includes(q) || r.name.toLowerCase().includes(q))
 })
 
 watch(activeSubTab, (v) => {
   if (v === 'assets_buildings') {
     fetchBuildings()
+  } else if (v === 'assets_pipelines') {
+    fetchRoads()
   }
 }, { immediate: true })
-
-function badgeClassByPipelineStatus(status: string) {
-  if (status === 'normal') return 'badge--success'
-  if (status === 'warning') return 'badge--warning'
-  if (status === 'critical') return 'badge--danger'
-  return 'badge--default'
-}
 
 const detailOpen = ref(false)
 const detailObj = ref<unknown>(null)

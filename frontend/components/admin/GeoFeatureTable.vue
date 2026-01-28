@@ -131,14 +131,6 @@ const filteredRows = computed(() => {
   })
 })
 
-watch(
-  () => rows.value.length,
-  (n) => {
-    // @ts-expect-error runtime emit exists
-    ;(getCurrentInstance() as any)?.emit?.('count', n)
-  },
-  { immediate: true }
-)
 </script>
 
 <style scoped>

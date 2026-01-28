@@ -33,22 +33,29 @@
                   <tr>
                     <th>ID</th>
                     <th>名称</th>
-                    <th>类型</th>
-                    <th>状态</th>
-                    <th class="ta-r">房间数</th>
+                    <th>建筑类型</th>
+                    <th class="ta-r">楼层</th>
+                    <th>用途</th>
+                    <th>几何</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="b in filteredBuildings" :key="b.id" class="row-click" @click="openAssetDetail(b)">
+                  <tr v-if="buildingLoading">
+                    <td colspan="6" class="empty">加载中...</td>
+                  </tr>
+                  <tr v-else-if="buildingError">
+                    <td colspan="6" class="empty">加载失败：{{ buildingError }}</td>
+                  </tr>
+                  <tr v-else-if="filteredBuildings.length === 0">
+                    <td colspan="6" class="empty">暂无数据</td>
+                  </tr>
+                  <tr v-else v-for="b in filteredBuildings" :key="b.id" class="row-click" @click="openAssetDetail(b.raw)">
                     <td class="mono">{{ b.id }}</td>
                     <td>{{ b.name }}</td>
-                    <td class="mono">{{ b.type }}</td>
-                    <td>
-                      <span class="badge" :class="b.status === 'normal' ? 'badge--success' : 'badge--warning'">
-                        {{ b.status }}
-                      </span>
-                    </td>
-                    <td class="ta-r mono">{{ b.rooms }}</td>
+                    <td class="mono">{{ b.buildingType }}</td>
+                    <td class="ta-r mono">{{ b.levels ?? '—' }}</td>
+                    <td class="mono">{{ b.amenity }}</td>
+                    <td class="mono">{{ b.geomType }}</td>
                   </tr>
                 </tbody>
               </table>
@@ -114,9 +121,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { ArrowLeft } from 'lucide-vue-next'
-import type { Building, PipeNode } from '~/types'
+import type { PipeNode } from '~/types'
 import AdminLayout from '~/components/admin/AdminLayout.vue'
 
 const searchPlaceholder = computed(() => {
@@ -138,7 +145,79 @@ const activeSubTab = ref<AssetSubKey>('assets_buildings')
 
 const assetSearch = ref('')
 
-const buildings = computed<Building[]>(() => BUILDINGS)
+type GeoJsonGeometry = {
+  type: string
+  coordinates: unknown
+}
+
+type GeoJsonFeature = {
+  type: 'Feature'
+  id: string
+  properties: Record<string, unknown>
+  geometry: GeoJsonGeometry
+}
+
+type FeatureCollection = {
+  type: 'FeatureCollection'
+  features: GeoJsonFeature[]
+}
+
+type BuildingRow = {
+  id: string
+  name: string
+  buildingType: string
+  levels: number | null
+  amenity: string
+  geomType: string
+  raw: GeoJsonFeature
+}
+
+const backendBaseUrl = 'http://localhost:8080'
+
+const buildingLoading = ref(false)
+const buildingError = ref<string | null>(null)
+const buildingRows = ref<BuildingRow[]>([])
+
+async function fetchBuildings() {
+  buildingLoading.value = true
+  buildingError.value = null
+
+  try {
+    const res = await fetch(`${backendBaseUrl}/api/v1/features?layers=buildings&limit=5000`)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const json = (await res.json()) as FeatureCollection
+    const feats = Array.isArray(json?.features) ? json.features : []
+
+    buildingRows.value = feats
+      .filter(f => f && typeof f.id === 'string')
+      .map((f): BuildingRow => {
+        const p = (f.properties || {}) as Record<string, unknown>
+        const name = String(p.name ?? p.short_name ?? '')
+        const buildingType = String(p.building ?? p.type ?? '')
+        const levelsRaw = p['building:levels']
+        const levelsNum = levelsRaw == null || levelsRaw === '' ? null : Number(levelsRaw)
+        const levels = Number.isFinite(levelsNum) ? (levelsNum as number) : null
+        const amenity = String(p.amenity ?? p.office ?? p.shop ?? '')
+
+        return {
+          id: f.id,
+          name: name || '—',
+          buildingType: buildingType || '—',
+          levels,
+          amenity: amenity || '—',
+          geomType: String(f.geometry?.type ?? '—'),
+          raw: f,
+        }
+      })
+  } catch (e: any) {
+    buildingError.value = e?.message ? String(e.message) : '请求失败'
+    buildingRows.value = []
+  } finally {
+    buildingLoading.value = false
+  }
+}
+
+const buildings = computed<BuildingRow[]>(() => buildingRows.value)
 const pipelines = computed<PipeNode[]>(() => PIPELINES)
 
 const filteredBuildings = computed(() => {
@@ -152,6 +231,12 @@ const filteredPipelines = computed(() => {
   if (!q) return pipelines.value
   return pipelines.value.filter(p => p.id.toLowerCase().includes(q) || String(p.type).toLowerCase().includes(q))
 })
+
+watch(activeSubTab, (v) => {
+  if (v === 'assets_buildings') {
+    fetchBuildings()
+  }
+}, { immediate: true })
 
 function badgeClassByPipelineStatus(status: string) {
   if (status === 'normal') return 'badge--success'

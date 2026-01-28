@@ -2,7 +2,9 @@
   <div class="admin-layout" :class="{ 'admin-layout--collapsed': siderCollapsed }">
     <AdminSider
       v-model="activeTab"
+      v-model:subValue="activeSubTab"
       :tabs="tabs"
+      :sub-tabs="subTabs"
       :collapsed="siderCollapsed"
       @toggle="siderCollapsed = !siderCollapsed"
     />
@@ -32,13 +34,17 @@ import AdminSider from './AdminSider.vue'
 
 type TabKey = 'overview' | 'geo' | 'assets' | 'ops'
 
+type SubKey = 'assets_buildings' | 'assets_pipelines'
+
 defineProps<{
   title: string
   subtitle?: string
   tabs: { key: TabKey; label: string }[]
+  subTabs?: { key: SubKey; label: string }[]
 }>()
 
 const activeTab = defineModel<TabKey>({ required: true })
+const activeSubTab = defineModel<SubKey>('subValue')
 
 const siderCollapsed = ref(false)
 </script>

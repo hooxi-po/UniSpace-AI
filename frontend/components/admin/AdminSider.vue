@@ -18,6 +18,18 @@
       >
         <span class="admin-sider__item-label">{{ t.label }}</span>
       </button>
+
+      <div v-if="modelValue === 'assets' && subTabs && subTabs.length && !collapsed" class="admin-sider__sub">
+        <button
+          v-for="st in subTabs"
+          :key="st.key"
+          class="admin-sider__sub-item"
+          :class="{ 'admin-sider__sub-item--active': subValue === st.key }"
+          @click="$emit('update:subValue', st.key)"
+        >
+          {{ st.label }}
+        </button>
+      </div>
     </nav>
 
     <div class="admin-sider__footer">
@@ -31,14 +43,19 @@
 <script setup lang="ts">
 type TabKey = 'overview' | 'geo' | 'assets' | 'ops'
 
+type SubKey = 'assets_buildings' | 'assets_pipelines'
+
 defineProps<{
   modelValue: TabKey
   tabs: { key: TabKey; label: string }[]
   collapsed: boolean
+  subValue?: SubKey
+  subTabs?: { key: SubKey; label: string }[]
 }>()
 
 defineEmits<{
   (e: 'update:modelValue', v: TabKey): void
+  (e: 'update:subValue', v: SubKey): void
   (e: 'toggle'): void
 }>()
 </script>
@@ -97,6 +114,35 @@ defineEmits<{
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.admin-sider__sub {
+  margin-top: 4px;
+  padding-left: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.admin-sider__sub-item {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.admin-sider__sub-item:hover {
+  background: #f5f6f7;
+}
+
+.admin-sider__sub-item--active {
+  background: rgba(22, 100, 255, 0.08);
+  color: var(--primary);
 }
 
 .admin-sider__item {

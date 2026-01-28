@@ -48,7 +48,7 @@ UniSpace-AI/
     ├── nuxt.config.ts
     ├── pages/
     │   ├── index.vue           # 主页面（Map + UI Overlay）
-    │   └── admin.vue           # 后台大厅（GeoJSON/Mock 数据中心）
+    │   └── admin.vue           # 后台大厅（资产中心：buildings/roads）
     ├── components/
     │   ├── MapView.vue         # Cesium Viewer + GeoJSON 图层加载/拾取
     │   ├── MapControls.vue     # 底部图层切换
@@ -185,13 +185,11 @@ export GEMINI_API_KEY=YOUR_KEY
   - 将状态通过 props 传给 `MapView`、`MapControls`、`RightSidebar` 等组件。
 
 - `pages/admin.vue`
-  - 后台大厅/数据中心（浅色字节后台风格）：
-    - 使用左侧菜单布局（组件：`components/admin/AdminLayout.vue`、`components/admin/AdminSider.vue`）
-    - GeoJSON 数据中心支持数据源切换：
-      - 静态：`/public/map/*.geojson`
-      - 后端：`GET http://localhost:8080/api/v1/features?layers=buildings|roads`
-    - 统计 features 数量、几何类型、bbox、properties key 频次，提供预览与详情抽屉
-    - 资产/告警/工单仍为 mock（来自 `useConstants.ts`）
+  - 后台大厅（浅色字节后台风格）：
+    - 使用左侧菜单布局（组件：`components/admin/AdminLayout.vue`、`components/admin/AdminSider.vue`），资产中心包含二级菜单：建筑 / 道路
+    - 资产中心：从后端 GeoJSON API 拉取真实数据（`GET http://localhost:8080/api/v1/features?layers=buildings|roads`），并支持搜索、行点击查看原始 Feature JSON
+    - 组件化：`components/admin/GeoFeatureTable.vue`（通用图层表格） + `components/admin/JsonDrawer.vue`（详情抽屉）
+    - `useConstants.ts` 中的资产/告警/工单仍为 mock（主地图与右侧详情面板仍会用到）
 
 ### 地图核心（`components/MapView.vue`）
 

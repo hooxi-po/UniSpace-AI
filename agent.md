@@ -29,7 +29,7 @@
 ### 1.2 当前数据现状（非常关键）
 
 - **前端地图默认加载静态 GeoJSON**：`frontend/public/map/{water,green,buildings,roads}.geojson`
-- **后端 API** 已实现 `GET /api/v1/features`、`GET /api/v1/features/{id}`，但前端目前未接入后端 API。
+- **后端 API** 已实现 `GET /api/v1/features`、`GET /api/v1/features/{id}`；前端后台大厅（`/admin`）的资产中心已接入该 API（buildings/roads）。
 - 前端的“资产台账/告警/工单/压力数据”目前为 **mock 常量**：`frontend/composables/useConstants.ts`
 
 ---
@@ -429,25 +429,34 @@ public record GeoFeatureRow(String id, String layer, String geomGeoJson, JsonNod
 
 - 已废弃组件（模板写死 `v-if=false`），备注被 RightSidebar 替代。
 
-## 4C.6 后台大厅（数据中心）
+## 4C.6 后台大厅（资产中心）
 
 ### `frontend/pages/admin.vue`
 
-- 后台大厅（浅色字节后台风格）。
+- 后台大厅（浅色字节后台风格），当前聚焦“资产中心”。
 - UI 采用左侧菜单布局：
   - `frontend/components/admin/AdminLayout.vue`
   - `frontend/components/admin/AdminSider.vue`
-- Tab：概览 / 地图数据中心 / 资产中心 / 告警&工单（由左侧菜单切换）
-- GeoJSON 数据中心支持数据源切换：
-  - 静态：fetch `/map/*.geojson`
-  - 后端：`GET http://localhost:8080/api/v1/features?layers=buildings|roads&limit=...`
-- 统计维度：
-  - featureCount
-  - geomTypes
-  - bbox（递归扫描 coordinates）
-  - properties key 频次与 top keys
-- 提供搜索：`key:value` 或任意 value 模糊搜索
-- 详情抽屉：展示 JSON，支持复制
+- 资产中心包含二级菜单（左侧展开）：
+  - 建筑数据（`layer=buildings`）
+  - 管道数据（当前映射为道路数据 `layer=roads`）
+- 数据来源：直接调用后端 GeoJSON API：
+  - `GET http://localhost:8080/api/v1/features?layers=buildings|roads&limit=...`
+- 搜索：页面顶部搜索框，按当前表格配置的 `searchKeys` 做模糊匹配。
+- 详情：点击行打开 JSON 抽屉，展示并支持复制原始 GeoJSON Feature。
+
+### 相关组件（admin）
+
+- `frontend/components/admin/GeoFeatureTable.vue`
+  - 通用图层表格组件
+  - 输入：`backendBaseUrl`、`layer`、`limit`、`columns`、`mapRow`、`search/searchKeys`
+  - 行点击：`emit('select', rawFeature)`
+  - 条数回传：`emit('count', n)`
+
+- `frontend/components/admin/JsonDrawer.vue`
+  - 通用 JSON 抽屉
+  - 输入：`open`、`obj`、`metaLabel`
+  - 内置复制 JSON
 
 ## 4C.7 AI 聊天
 
@@ -516,7 +525,7 @@ public record GeoFeatureRow(String id, String layer, String geomGeoJson, JsonNod
 3. 数据库层用 JSONB + `ST_AsGeoJSON` 组合 FeatureCollection
 4. Java 用 `tools.jackson ObjectMapper` parse 成 `JsonNode` 返回
 
-> 前端目前未消费该 API。
+> 前端后台大厅（`/admin`）已消费该 API（buildings/roads）；主地图仍默认加载静态 GeoJSON。
 
 ---
 

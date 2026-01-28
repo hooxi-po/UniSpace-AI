@@ -27,106 +27,54 @@
             </div>
           </div>
           <div class="panel__body">
-            <div class="table-wrap">
-              <table v-if="activeSubTab === 'assets_buildings'" class="table">
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>名称</th>
-                    <th>建筑类型</th>
-                    <th class="ta-r">楼层</th>
-                    <th>用途</th>
-                    <th>几何</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-if="buildingLoading">
-                    <td colspan="6" class="empty">加载中...</td>
-                  </tr>
-                  <tr v-else-if="buildingError">
-                    <td colspan="6" class="empty">加载失败：{{ buildingError }}</td>
-                  </tr>
-                  <tr v-else-if="filteredBuildings.length === 0">
-                    <td colspan="6" class="empty">暂无数据</td>
-                  </tr>
-                  <tr v-else v-for="b in filteredBuildings" :key="b.id" class="row-click" @click="openAssetDetail(b.raw)">
-                    <td class="mono">{{ b.id }}</td>
-                    <td>{{ b.name }}</td>
-                    <td class="mono">{{ b.buildingType }}</td>
-                    <td class="ta-r mono">{{ b.levels ?? '—' }}</td>
-                    <td class="mono">{{ b.amenity }}</td>
-                    <td class="mono">{{ b.geomType }}</td>
-                  </tr>
-                </tbody>
-              </table>
+            <GeoFeatureTable
+              v-if="activeSubTab === 'assets_buildings'"
+              :active="activeSubTab === 'assets_buildings'"
+              :backend-base-url="backendBaseUrl"
+              layer="buildings"
+              :search="assetSearch"
+              :search-keys="['id', 'name', 'buildingType', 'amenity', 'geomType']"
+              :columns="buildingColumns"
+              :map-row="mapBuildingRow"
+              @select="openAssetDetail"
+              @count="currentCount = $event"
+            />
 
-              <table v-else class="table">
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>道路类型</th>
-                    <th>名称</th>
-                    <th>几何</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-if="roadLoading">
-                    <td colspan="4" class="empty">加载中...</td>
-                  </tr>
-                  <tr v-else-if="roadError">
-                    <td colspan="4" class="empty">加载失败：{{ roadError }}</td>
-                  </tr>
-                  <tr v-else-if="filteredPipelines.length === 0">
-                    <td colspan="4" class="empty">暂无数据</td>
-                  </tr>
-                  <tr v-else v-for="r in filteredPipelines" :key="r.id" class="row-click" @click="openAssetDetail(r.raw)">
-                    <td class="mono">{{ r.id }}</td>
-                    <td class="mono">{{ r.highway }}</td>
-                    <td>{{ r.name }}</td>
-                    <td class="mono">{{ r.geomType }}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+            <GeoFeatureTable
+              v-else
+              :active="activeSubTab === 'assets_pipelines'"
+              :backend-base-url="backendBaseUrl"
+              layer="roads"
+              :search="assetSearch"
+              :search-keys="['id', 'name', 'highway', 'geomType']"
+              :columns="roadColumns"
+              :map-row="mapRoadRow"
+              @select="openAssetDetail"
+              @count="currentCount = $event"
+            />
 
-            <div class="footer-note">当前显示：{{ activeSubTab === 'assets_buildings' ? filteredBuildings.length : filteredPipelines.length }} 条</div>
+            <div class="footer-note">当前显示：{{ currentCount }} 条</div>
           </div>
         </section>
       </div>
 
-      <div v-if="detailOpen" class="drawer">
-        <div class="drawer__mask" @click="closeDetail"></div>
-        <div class="drawer__panel">
-          <div class="drawer__header">
-            <div class="drawer__title">详情</div>
-            <button class="admin-btn admin-btn--link" @click="closeDetail">关闭</button>
-          </div>
-          <div class="drawer__body">
-            <div class="kv">
-              <div class="kv__row">
-                <div class="kv__key">类型</div>
-                <div class="kv__val mono">{{ detailType }}</div>
-              </div>
-            </div>
-
-            <div class="code">
-              <pre>{{ detailJson }}</pre>
-            </div>
-
-            <div class="drawer__footer">
-              <button class="admin-btn" @click="copyDetail">复制 JSON</button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <JsonDrawer
+        :open="detailOpen"
+        title="详情"
+        :meta-label="detailType"
+        :obj="detailObj"
+        @close="closeDetail"
+      />
     </template>
   </AdminLayout>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed } from 'vue'
 import { ArrowLeft } from 'lucide-vue-next'
 import AdminLayout from '~/components/admin/AdminLayout.vue'
+import GeoFeatureTable from '~/components/admin/GeoFeatureTable.vue'
+import JsonDrawer from '~/components/admin/JsonDrawer.vue'
 
 const searchPlaceholder = computed(() => {
   return activeSubTab.value === 'assets_buildings' ? '搜索 id / name' : '搜索 id / name'
@@ -147,6 +95,10 @@ const activeSubTab = ref<AssetSubKey>('assets_buildings')
 
 const assetSearch = ref('')
 
+const backendBaseUrl = 'http://localhost:8080'
+
+const currentCount = ref(0)
+
 type GeoJsonGeometry = {
   type: string
   coordinates: unknown
@@ -159,11 +111,6 @@ type GeoJsonFeature = {
   geometry: GeoJsonGeometry
 }
 
-type FeatureCollection = {
-  type: 'FeatureCollection'
-  features: GeoJsonFeature[]
-}
-
 type BuildingRow = {
   id: string
   name: string
@@ -174,52 +121,6 @@ type BuildingRow = {
   raw: GeoJsonFeature
 }
 
-const backendBaseUrl = 'http://localhost:8080'
-
-const buildingLoading = ref(false)
-const buildingError = ref<string | null>(null)
-const buildingRows = ref<BuildingRow[]>([])
-
-async function fetchBuildings() {
-  buildingLoading.value = true
-  buildingError.value = null
-
-  try {
-    const res = await fetch(`${backendBaseUrl}/api/v1/features?layers=buildings&limit=5000`)
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const json = (await res.json()) as FeatureCollection
-    const feats = Array.isArray(json?.features) ? json.features : []
-
-    buildingRows.value = feats
-      .filter(f => f && typeof f.id === 'string')
-      .map((f): BuildingRow => {
-        const p = (f.properties || {}) as Record<string, unknown>
-        const name = String(p.name ?? p.short_name ?? '')
-        const buildingType = String(p.building ?? p.type ?? '')
-        const levelsRaw = p['building:levels']
-        const levelsNum = levelsRaw == null || levelsRaw === '' ? null : Number(levelsRaw)
-        const levels = Number.isFinite(levelsNum) ? (levelsNum as number) : null
-        const amenity = String(p.amenity ?? p.office ?? p.shop ?? '')
-
-        return {
-          id: f.id,
-          name: name || '—',
-          buildingType: buildingType || '—',
-          levels,
-          amenity: amenity || '—',
-          geomType: String(f.geometry?.type ?? '—'),
-          raw: f,
-        }
-      })
-  } catch (e: any) {
-    buildingError.value = e?.message ? String(e.message) : '请求失败'
-    buildingRows.value = []
-  } finally {
-    buildingLoading.value = false
-  }
-}
-
-const buildings = computed<BuildingRow[]>(() => buildingRows.value)
 type RoadRow = {
   id: string
   highway: string
@@ -228,75 +129,59 @@ type RoadRow = {
   raw: GeoJsonFeature
 }
 
-const roadLoading = ref(false)
-const roadError = ref<string | null>(null)
-const roadRows = ref<RoadRow[]>([])
+const buildingColumns = [
+  { key: 'id', label: 'ID', mono: true },
+  { key: 'name', label: '名称' },
+  { key: 'buildingType', label: '建筑类型', mono: true },
+  { key: 'levels', label: '楼层', mono: true, class: 'ta-r' },
+  { key: 'amenity', label: '用途', mono: true },
+  { key: 'geomType', label: '几何', mono: true },
+]
 
-async function fetchRoads() {
-  roadLoading.value = true
-  roadError.value = null
+const roadColumns = [
+  { key: 'id', label: 'ID', mono: true },
+  { key: 'highway', label: '道路类型', mono: true },
+  { key: 'name', label: '名称' },
+  { key: 'geomType', label: '几何', mono: true },
+]
 
-  try {
-    const res = await fetch(`${backendBaseUrl}/api/v1/features?layers=roads&limit=5000`)
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    const json = (await res.json()) as FeatureCollection
-    const feats = Array.isArray(json?.features) ? json.features : []
+function mapBuildingRow(f: GeoJsonFeature): BuildingRow {
+  const p = (f.properties || {}) as Record<string, unknown>
+  const name = String(p.name ?? p.short_name ?? '')
+  const buildingType = String(p.building ?? p.type ?? '')
+  const levelsRaw = p['building:levels']
+  const levelsNum = levelsRaw == null || levelsRaw === '' ? null : Number(levelsRaw)
+  const levels = Number.isFinite(levelsNum) ? (levelsNum as number) : null
+  const amenity = String(p.amenity ?? p.office ?? p.shop ?? '')
 
-    roadRows.value = feats
-      .filter(f => f && typeof f.id === 'string')
-      .map((f): RoadRow => {
-        const p = (f.properties || {}) as Record<string, unknown>
-        const highway = String(p.highway ?? p.road ?? p.type ?? '')
-        const name = String(p.name ?? p.ref ?? '')
-
-        return {
-          id: f.id,
-          highway: highway || '—',
-          name: name || '—',
-          geomType: String(f.geometry?.type ?? '—'),
-          raw: f,
-        }
-      })
-  } catch (e: any) {
-    roadError.value = e?.message ? String(e.message) : '请求失败'
-    roadRows.value = []
-  } finally {
-    roadLoading.value = false
+  return {
+    id: f.id,
+    name: name || '—',
+    buildingType: buildingType || '—',
+    levels,
+    amenity: amenity || '—',
+    geomType: String(f.geometry?.type ?? '—'),
+    raw: f,
   }
 }
 
-const pipelines = computed<RoadRow[]>(() => roadRows.value)
+function mapRoadRow(f: GeoJsonFeature): RoadRow {
+  const p = (f.properties || {}) as Record<string, unknown>
+  const highway = String(p.highway ?? p.road ?? p.type ?? '')
+  const name = String(p.name ?? p.ref ?? '')
 
-const filteredBuildings = computed(() => {
-  const q = assetSearch.value.trim().toLowerCase()
-  if (!q) return buildings.value
-  return buildings.value.filter(b => b.id.toLowerCase().includes(q) || b.name.toLowerCase().includes(q))
-})
-
-const filteredPipelines = computed(() => {
-  const q = assetSearch.value.trim().toLowerCase()
-  if (!q) return pipelines.value
-  return pipelines.value.filter(r => r.id.toLowerCase().includes(q) || r.name.toLowerCase().includes(q))
-})
-
-watch(activeSubTab, (v) => {
-  if (v === 'assets_buildings') {
-    fetchBuildings()
-  } else if (v === 'assets_pipelines') {
-    fetchRoads()
+  return {
+    id: f.id,
+    highway: highway || '—',
+    name: name || '—',
+    geomType: String(f.geometry?.type ?? '—'),
+    raw: f,
   }
-}, { immediate: true })
+}
 
 const detailOpen = ref(false)
 const detailObj = ref<unknown>(null)
 const detailType = ref('')
-const detailJson = computed(() => {
-  try {
-    return JSON.stringify(detailObj.value, null, 2)
-  } catch {
-    return String(detailObj.value)
-  }
-})
 
 function closeDetail() {
   detailOpen.value = false
@@ -318,13 +203,6 @@ function detectType(obj: unknown) {
   return 'unknown'
 }
 
-async function copyDetail() {
-  try {
-    await navigator.clipboard.writeText(detailJson.value)
-  } catch {
-    // ignore
-  }
-}
 </script>
 
 <style scoped>

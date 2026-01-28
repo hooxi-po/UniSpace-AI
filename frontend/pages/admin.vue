@@ -186,13 +186,11 @@
               <div class="panel__title">地图数据中心</div>
               <div class="panel__subtitle">
                 数据源：
-                <span v-if="geoDataSource === 'static'">静态文件 /public/map/*.geojson</span>
-                <span v-else>后端 API /api/v1/features</span>
+                <span>后端 API /api/v1/features</span>
               </div>
             </div>
             <div class="toolbar">
-              <button class="admin-btn" :class="{ 'admin-btn--primary': geoDataSource === 'static' }" @click="geoDataSource = 'static'; refreshData()">静态文件</button>
-              <button class="admin-btn" :class="{ 'admin-btn--primary': geoDataSource === 'backend' }" @click="geoDataSource = 'backend'; refreshData()">后端 API</button>
+
               <button class="admin-btn" @click="loadAllGeo()">重新加载</button>
             </div>
           </div>
@@ -430,7 +428,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { RefreshCw, ArrowLeft } from 'lucide-vue-next'
 import type { Alert, WorkOrder, Building, PipeNode } from '~/types'
-import { MOCK_ALERTS, WORK_ORDERS, BUILDINGS, PIPELINES } from '~/composables/useConstants'
+import { MOCK_ALERTS, WORK_ORDERS } from '~/composables/useConstants'
 import AdminLayout from '~/components/admin/AdminLayout.vue'
 
 type GeoKey = 'water' | 'green' | 'buildings' | 'roads'
@@ -470,8 +468,55 @@ const activeTab = ref<TabKey>('overview')
 
 const alerts = ref<Alert[]>(MOCK_ALERTS)
 const workOrders = ref<WorkOrder[]>(WORK_ORDERS)
-const buildings = ref<Building[]>(BUILDINGS)
-const pipelines = ref<PipeNode[]>(PIPELINES)
+const buildings = computed<Building[]>(() => {
+  if (geoDataSource.value === 'backend') {
+    const col = geoData.value['buildings']
+    if (!col) return []
+    return (col.features || []).map((ft): Building => {
+      const props = ft.properties || {}
+      return {
+        id: String(ft.id ?? ''),
+        name: typeof props.name === 'string' ? (props.name as string) : String(ft.id ?? 'unknown'),
+        type: 'lab',
+        status: 'normal',
+        coordinates: { x: 0, y: 0 },
+        connectedPipeId: '',
+        rooms: 0,
+        keyEquipment: [],
+        powerConsumption: 0,
+      }
+    })
+  }
+  return BUILDINGS
+})
+const pipelines = computed<PipeNode[]>(() => {
+  const col = geoData.value['roads']
+  if (!col) return []
+  return (col.features || []).map((ft): PipeNode => {
+    const coords = ft.geometry?.coordinates as any
+    const flat = Array.isArray(coords) ? coords.flat(Infinity) : []
+    const coordPairs: { x: number; y: number }[] = []
+    for (let i = 0; i < flat.length; i += 2) {
+      const lon = flat[i]
+      const lat = flat[i + 1]
+      if (typeof lon === 'number' && typeof lat === 'number') coordPairs.push({ x: lon, y: lat })
+    }
+    return {
+      id: String(ft.id ?? ''),
+      type: 'water',
+      status: 'normal',
+      pressure: 0,
+      flowRate: 0,
+      coordinates: coordPairs,
+      diameter: '',
+      material: '',
+      depth: 0,
+      installDate: '',
+      lastMaintain: '',
+      connectedBuildingIds: [],
+    }
+  })
+})
 
 const stats = computed(() => ({
   buildings: buildings.value.length,
@@ -488,7 +533,7 @@ const geoFiles: { key: GeoKey; label: string; url: string }[] = [
   { key: 'roads', label: 'Roads（道路）', url: '/map/roads.geojson' },
 ]
 
-const geoDataSource = ref<'static' | 'backend'>('static')
+const geoDataSource = ref<'backend'>('backend')
 
 const geoLoadState = ref<'idle' | 'loading' | 'loaded' | 'error'>('idle')
 const geoLoadStateLabel = computed(() => {

@@ -3,8 +3,10 @@
     <AdminSider
       v-model="activeTab"
       v-model:subValue="activeSubTab"
+      v-model:thirdValue="activeThirdTab"
       :tabs="tabs"
       :sub-tabs="subTabs"
+      :third-tabs="thirdTabs"
       :collapsed="siderCollapsed"
       @toggle="siderCollapsed = !siderCollapsed"
     />
@@ -22,7 +24,7 @@
       </header>
 
       <main class="admin-layout__main">
-        <slot :activeTab="activeTab" />
+        <slot :activeTab="activeTab" :activeSubTab="activeSubTab" :activeThirdTab="activeThirdTab" />
       </main>
     </div>
   </div>
@@ -32,19 +34,19 @@
 import { ref } from 'vue'
 import AdminSider from './AdminSider.vue'
 
-type TabKey = 'overview' | 'geo' | 'assets' | 'ops'
-
-type SubKey = 'assets_buildings' | 'assets_pipelines'
+import type { TabKey, SubKey, ThirdKey } from '~/types/admin'
 
 defineProps<{
   title: string
   subtitle?: string
   tabs: { key: TabKey; label: string }[]
   subTabs?: { key: SubKey; label: string }[]
+  thirdTabs?: { key: ThirdKey; label: string }[]
 }>()
 
 const activeTab = defineModel<TabKey>({ required: true })
 const activeSubTab = defineModel<SubKey>('subValue')
+const activeThirdTab = defineModel<ThirdKey>('thirdValue')
 
 const siderCollapsed = ref(false)
 </script>
@@ -68,6 +70,10 @@ const siderCollapsed = ref(false)
 .admin-layout__body {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-height: 0;
 }
 
 .admin-layout__header {
@@ -99,5 +105,8 @@ const siderCollapsed = ref(false)
 
 .admin-layout__main {
   padding: 16px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
 }
 </style>

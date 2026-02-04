@@ -2,10 +2,12 @@
   <AdminLayout
     v-model="activeTab"
     v-model:subValue="activeSubTab"
+    v-model:thirdValue="activeThirdTab"
     title="后台大厅"
-    subtitle="资产中心"
-    :tabs="tabs as unknown as { key: 'assets'; label: string }[]"
-    :sub-tabs="assetSubTabs as unknown as { key: 'assets_buildings' | 'assets_pipelines'; label: string }[]"
+    :subtitle="activeTab === 'assets' ? '资产中心' : activeTab === 'property' ? '房产管理' : ''"
+    :tabs="tabs"
+    :sub-tabs="currentSubTabs"
+    :third-tabs="currentThirdTabs"
   >
     <template #actions>
       <NuxtLink class="admin-btn admin-btn--default" to="/">
@@ -16,7 +18,9 @@
 
     <template #default>
       <div class="page">
-        <section class="panel">
+        <component v-if="activeThirdTab && compMap[activeThirdTab]" :is="compMap[activeThirdTab]" />
+
+        <section v-else-if="activeTab === 'assets'" class="panel">
           <div class="panel__header panel__header--row">
             <div>
               <div class="panel__title">资产中心（Mock）</div>
@@ -34,8 +38,8 @@
               layer="buildings"
               :search="assetSearch"
               :search-keys="['id', 'name', 'buildingType', 'amenity', 'geomType']"
-              :columns="buildingColumns"
-              :map-row="mapBuildingRow"
+              :columns="buildingColumns as any"
+              :map-row="mapBuildingRow as any"
               @select="openAssetDetail"
               @count="currentCount = $event"
             />
@@ -47,9 +51,34 @@
               layer="roads"
               :search="assetSearch"
               :search-keys="['id', 'name', 'highway', 'geomType']"
-              :columns="roadColumns"
-              :map-row="mapRoadRow"
+              :columns="roadColumns as any"
+              :map-row="mapRoadRow as any"
               @select="openAssetDetail"
+              @count="currentCount = $event"
+            />
+
+            <div class="footer-note">当前显示：{{ currentCount }} 条</div>
+          </div>
+        </section>
+
+        <section v-else class="panel" v-show="!activeThirdTab">
+          <div class="panel__header panel__header--row">
+            <div>
+              <div class="panel__title">房产管理（Mock）</div>
+              <div class="panel__subtitle">当前展示 mock 数据</div>
+            </div>
+            <div class="toolbar">
+              <input class="admin-input" v-model="assetSearch" :placeholder="searchPlaceholder" />
+            </div>
+          </div>
+
+          <div class="panel__body">
+            <PropertyTable
+              :active="activeTab === 'property'"
+              :search="assetSearch"
+              :search-keys="['id', 'name', 'type', 'status', 'location']"
+              :columns="propertyColumns"
+              @select="openPropertyDetail"
               @count="currentCount = $event"
             />
 
@@ -70,139 +99,70 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { ArrowLeft } from 'lucide-vue-next'
+import type { ThirdKey } from '~/types/admin'
+
 import AdminLayout from '~/components/admin/AdminLayout.vue'
 import GeoFeatureTable from '~/components/admin/GeoFeatureTable.vue'
+import PropertyTable from '~/components/admin/PropertyTable.vue'
 import JsonDrawer from '~/components/admin/JsonDrawer.vue'
 
+import { adminCompMap } from '~/config/admin-comp-map'
+import { getTabs, getSubTabs, getThirdTabs } from '~/config/admin-menu'
+import {
+  buildingColumns,
+  roadColumns,
+  propertyColumns,
+  mapBuildingRow,
+  mapRoadRow,
+} from '~/utils/admin-tables'
+import { useAdminDetail } from '~/composables/useAdminDetail'
+
+const compMap = adminCompMap
+
 const searchPlaceholder = computed(() => {
+  if (activeTab.value === 'property') return '搜索 id / 名称 / 类型'
   return activeSubTab.value === 'assets_buildings' ? '搜索 id / name' : '搜索 id / name'
 })
 
-const tabs = [{ key: 'assets', label: '资产中心' }] as const
+const tabs = computed(() => getTabs())
 
-const assetSubTabs = [
-  { key: 'assets_buildings', label: '建筑数据' },
-  { key: 'assets_pipelines', label: '管道数据' },
-] as const
-
-type TabKey = typeof tabs[number]['key']
-type AssetSubKey = typeof assetSubTabs[number]['key']
+type TabKey = typeof tabs.value[number]['key']
 
 const activeTab = ref<TabKey>('assets')
-const activeSubTab = ref<AssetSubKey>('assets_buildings')
+const activeSubTab = ref<any>('assets_buildings')
+const activeThirdTab = ref<ThirdKey | undefined>(undefined)
+
+const currentSubTabs = computed(() => getSubTabs(activeTab.value))
+const currentThirdTabs = computed(() => getThirdTabs(activeTab.value, activeSubTab.value))
+
+watch(activeTab, () => {
+  const subs = currentSubTabs.value
+  if (subs.length && !subs.some(s => s.key === activeSubTab.value)) {
+    activeSubTab.value = subs[0].key
+  }
+})
+
+watch([activeTab, activeSubTab], () => {
+  activeThirdTab.value = undefined
+})
+
+watch(currentThirdTabs, (tabs) => {
+  if (!tabs.length) {
+    activeThirdTab.value = undefined
+    return
+  }
+  if (!activeThirdTab.value || !tabs.some(t => t.key === activeThirdTab.value)) {
+    activeThirdTab.value = tabs[0].key
+  }
+}, { immediate: true })
 
 const assetSearch = ref('')
-
 const backendBaseUrl = 'http://localhost:8080'
-
 const currentCount = ref(0)
 
-type GeoJsonGeometry = {
-  type: string
-  coordinates: unknown
-}
-
-type GeoJsonFeature = {
-  type: 'Feature'
-  id: string
-  properties: Record<string, unknown>
-  geometry: GeoJsonGeometry
-}
-
-type BuildingRow = {
-  id: string
-  name: string
-  buildingType: string
-  levels: number | null
-  amenity: string
-  geomType: string
-  raw: GeoJsonFeature
-}
-
-type RoadRow = {
-  id: string
-  highway: string
-  name: string
-  geomType: string
-  raw: GeoJsonFeature
-}
-
-const buildingColumns = [
-  { key: 'id', label: 'ID', mono: true },
-  { key: 'name', label: '名称' },
-  { key: 'buildingType', label: '建筑类型', mono: true },
-  { key: 'levels', label: '楼层', mono: true, class: 'ta-r' },
-  { key: 'amenity', label: '用途', mono: true },
-  { key: 'geomType', label: '几何', mono: true },
-]
-
-const roadColumns = [
-  { key: 'id', label: 'ID', mono: true },
-  { key: 'highway', label: '道路类型', mono: true },
-  { key: 'name', label: '名称' },
-  { key: 'geomType', label: '几何', mono: true },
-]
-
-function mapBuildingRow(f: GeoJsonFeature): BuildingRow {
-  const p = (f.properties || {}) as Record<string, unknown>
-  const name = String(p.name ?? p.short_name ?? '')
-  const buildingType = String(p.building ?? p.type ?? '')
-  const levelsRaw = p['building:levels']
-  const levelsNum = levelsRaw == null || levelsRaw === '' ? null : Number(levelsRaw)
-  const levels = Number.isFinite(levelsNum) ? (levelsNum as number) : null
-  const amenity = String(p.amenity ?? p.office ?? p.shop ?? '')
-
-  return {
-    id: f.id,
-    name: name || '—',
-    buildingType: buildingType || '—',
-    levels,
-    amenity: amenity || '—',
-    geomType: String(f.geometry?.type ?? '—'),
-    raw: f,
-  }
-}
-
-function mapRoadRow(f: GeoJsonFeature): RoadRow {
-  const p = (f.properties || {}) as Record<string, unknown>
-  const highway = String(p.highway ?? p.road ?? p.type ?? '')
-  const name = String(p.name ?? p.ref ?? '')
-
-  return {
-    id: f.id,
-    highway: highway || '—',
-    name: name || '—',
-    geomType: String(f.geometry?.type ?? '—'),
-    raw: f,
-  }
-}
-
-const detailOpen = ref(false)
-const detailObj = ref<unknown>(null)
-const detailType = ref('')
-
-function closeDetail() {
-  detailOpen.value = false
-  detailObj.value = null
-  detailType.value = ''
-}
-
-function openAssetDetail(obj: unknown) {
-  detailObj.value = obj
-  detailType.value = detectType(obj)
-  detailOpen.value = true
-}
-
-function detectType(obj: unknown) {
-  const o = obj as any
-  if (!o) return 'unknown'
-  if (typeof o.id === 'string' && typeof o.name === 'string') return 'building'
-  if (typeof o.id === 'string' && typeof o.diameter === 'string') return 'pipeline'
-  return 'unknown'
-}
-
+const { detailOpen, detailObj, detailType, closeDetail, openAssetDetail, openPropertyDetail } = useAdminDetail()
 </script>
 
 <style scoped>

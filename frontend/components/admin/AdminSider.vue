@@ -9,26 +9,52 @@
     </div>
 
     <nav class="admin-sider__nav">
-      <button
+      <div
         v-for="t in tabs"
         :key="t.key"
+        class="admin-sider__group"
+      >
+        <button
         class="admin-sider__item"
         :class="{ 'admin-sider__item--active': modelValue === t.key }"
-        @click="$emit('update:modelValue', t.key)"
+          @click="handleTabClick(t.key)"
       >
         <span class="admin-sider__item-label">{{ t.label }}</span>
       </button>
 
-      <div v-if="modelValue === 'assets' && subTabs && subTabs.length && !collapsed" class="admin-sider__sub">
-        <button
+        <div
+          v-if="modelValue === t.key && expandedTabs.has(t.key) && subTabs && subTabs.length && !collapsed"
+          class="admin-sider__sub"
+        >
+          <div
           v-for="st in subTabs"
           :key="st.key"
+            class="admin-sider__sub-group"
+          >
+            <button
           class="admin-sider__sub-item"
           :class="{ 'admin-sider__sub-item--active': subValue === st.key }"
-          @click="$emit('update:subValue', st.key)"
+              @click="handleSubClick(st.key)"
         >
           {{ st.label }}
         </button>
+
+            <div
+              v-if="subValue === st.key && expandedSubs.has(st.key) && thirdTabs && thirdTabs.length && !collapsed"
+              class="admin-sider__third"
+            >
+          <button
+            v-for="tt in thirdTabs"
+            :key="tt.key"
+            class="admin-sider__third-item"
+            :class="{ 'admin-sider__third-item--active': thirdValue === tt.key }"
+            @click="$emit('update:thirdValue', tt.key)"
+          >
+            {{ tt.label }}
+          </button>
+            </div>
+          </div>
+        </div>
       </div>
     </nav>
 
@@ -41,23 +67,68 @@
 </template>
 
 <script setup lang="ts">
-type TabKey = 'overview' | 'geo' | 'assets' | 'ops'
+import { ref, watch } from 'vue'
+import type { TabKey, SubKey, ThirdKey } from '~/types/admin'
 
-type SubKey = 'assets_buildings' | 'assets_pipelines'
-
-defineProps<{
+const props = defineProps<{
   modelValue: TabKey
   tabs: { key: TabKey; label: string }[]
   collapsed: boolean
   subValue?: SubKey
   subTabs?: { key: SubKey; label: string }[]
+  thirdValue?: ThirdKey
+  thirdTabs?: { key: ThirdKey; label: string }[]
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   (e: 'update:modelValue', v: TabKey): void
   (e: 'update:subValue', v: SubKey): void
+  (e: 'update:thirdValue', v: ThirdKey): void
   (e: 'toggle'): void
 }>()
+
+const expandedTabs = ref<Set<TabKey>>(new Set())
+const expandedSubs = ref<Set<SubKey>>(new Set())
+
+watch(() => props.modelValue, (newKey, oldKey) => {
+  if (newKey !== oldKey) {
+    expandedSubs.value.clear()
+  }
+}, { immediate: true })
+
+watch(() => props.subValue, (newKey, oldKey) => {
+  if (newKey !== oldKey) {
+    // no-op: keep expanded state controlled by click
+  }
+}, { immediate: true })
+
+function handleTabClick(key: TabKey) {
+  if (props.modelValue === key) {
+    if (expandedTabs.value.has(key)) {
+      expandedTabs.value.delete(key)
+    } else {
+      expandedTabs.value.add(key)
+    }
+  } else {
+    emit('update:modelValue', key)
+    expandedTabs.value.clear()
+    expandedTabs.value.add(key)
+  }
+}
+
+function handleSubClick(key: SubKey) {
+  if (props.subValue === key) {
+    if (expandedSubs.value.has(key)) {
+      expandedSubs.value.delete(key)
+    } else {
+      expandedSubs.value.add(key)
+    }
+  } else {
+    emit('update:subValue', key)
+    expandedSubs.value.clear()
+    expandedSubs.value.add(key)
+  }
+}
 </script>
 
 <style scoped>
@@ -114,9 +185,26 @@ defineEmits<{
   display: flex;
   flex-direction: column;
   gap: 4px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
 }
 
 .admin-sider__sub {
+  margin-top: 4px;
+  padding-left: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.admin-sider__sub-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.admin-sider__third {
   margin-top: 4px;
   padding-left: 10px;
   display: flex;
@@ -141,6 +229,27 @@ defineEmits<{
 }
 
 .admin-sider__sub-item--active {
+  background: rgba(22, 100, 255, 0.08);
+  color: var(--primary);
+}
+
+.admin-sider__third-item {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: 8px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.admin-sider__third-item:hover {
+  background: #f5f6f7;
+}
+
+.admin-sider__third-item--active {
   background: rgba(22, 100, 255, 0.08);
   color: var(--primary);
 }

@@ -40,6 +40,7 @@
               :search-keys="['id', 'name', 'buildingType', 'amenity', 'geomType']"
               :columns="buildingColumns as any"
               :map-row="mapBuildingRow as any"
+              :cell="assetBuildingCell"
               @select="openAssetDetail"
               @count="currentCount = $event"
             />
@@ -99,7 +100,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, h } from 'vue'
 import { ArrowLeft } from 'lucide-vue-next'
 import type { ThirdKey } from '~/types/admin'
 
@@ -163,6 +164,43 @@ const backendBaseUrl = 'http://localhost:8080'
 const currentCount = ref(0)
 
 const { detailOpen, detailObj, detailType, closeDetail, openAssetDetail, openPropertyDetail } = useAdminDetail()
+
+function assetBuildingCell(row: any, colKey: string) {
+  if (colKey === 'visible') {
+    return h('label', { class: 'switch' }, [
+      h('input', {
+        type: 'checkbox',
+        checked: !!row.visible,
+        onChange: async (e: Event) => {
+          const target = e.target as HTMLInputElement
+          const newVisible = target.checked
+
+          // optimistic UI
+          const old = !!row.visible
+          row.visible = newVisible
+
+          try {
+            const res = await fetch(
+              `${backendBaseUrl}/api/v1/features/visibility`,
+              {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: row.id, visible: newVisible }),
+              }
+            )
+            if (!res.ok) throw new Error(`HTTP ${res.status}`)
+          } catch (err) {
+            console.error('Failed to update visibility:', err)
+            row.visible = old
+            target.checked = old
+          }
+        },
+      }),
+      h('span'),
+    ])
+  }
+  return null
+}
 </script>
 
 <style scoped>

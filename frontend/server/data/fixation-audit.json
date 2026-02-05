@@ -1,0 +1,134 @@
+{
+  "list": [
+    {
+      "id": "PRJ-2025-001",
+      "name": "综合体育馆建设工程",
+      "contractor": "福建建工集团",
+      "contractAmount": 10000000,
+      "auditAmount": 9500000,
+      "auditReductionRate": 5,
+      "status": "DisposalPending",
+      "completionDate": "2025-12-31",
+      "hasCadData": false,
+      "fundSource": "Fiscal",
+      "location": "旗山校区东侧",
+      "plannedArea": 8500,
+      "floorCount": 6,
+      "roomCount": 120,
+      "plannedStartDate": "2025-01-01",
+      "plannedEndDate": "2025-12-31",
+      "actualStartDate": "2025-01-15",
+      "projectManager": "张工",
+      "supervisor": "李监理",
+      "milestones": [
+        {
+          "milestone": "Approval",
+          "date": "2024-12-01",
+          "operator": "当前用户",
+          "notes": "项目立项"
+        }
+      ],
+      "attachments": [
+        {
+          "id": "ATT-001",
+          "name": "施工合同.pdf",
+          "type": "contract",
+          "uploadDate": "2025-01-10",
+          "uploadedByDept": "二级学院",
+          "reviewStatus": "Pending"
+        },
+        {
+          "id": "ATT-002",
+          "name": "竣工图纸.pdf",
+          "type": "drawing",
+          "uploadDate": "2025-01-12",
+          "uploadedByDept": "二级学院",
+          "reviewStatus": "Approved",
+          "reviewedBy": "审核员A",
+          "reviewedAt": "2025-01-13"
+        }
+      ],
+      "splitItems": [
+        {
+          "id": "SPLIT-001",
+          "category": "Building",
+          "name": "主体建筑",
+          "amount": 8000000,
+          "area": 8000,
+          "depreciationYears": 50,
+          "depreciationMethod": "StraightLine"
+        },
+        {
+          "id": "SPLIT-002",
+          "category": "Equipment",
+          "name": "体育设备",
+          "amount": 2000000,
+          "quantity": 50,
+          "depreciationYears": 10,
+          "depreciationMethod": "Accelerated"
+        }
+      ],
+      "roomFunctionPlan": [],
+      "isOverdue": false,
+      "isArchived": false,
+      "source": "project"
+    },
+    {
+      "id": "STOCK-BLD-001",
+      "name": "理科实验楼A座",
+      "contractor": "未指定",
+      "contractAmount": 15000000,
+      "status": "PendingReview",
+      "completionDate": "2024-06-30",
+      "hasCadData": true,
+      "fundSource": "Fiscal",
+      "location": "旗山校区西侧",
+      "plannedArea": 12000,
+      "floorCount": 8,
+      "roomCount": 200,
+      "plannedStartDate": "",
+      "plannedEndDate": "",
+      "actualStartDate": "",
+      "actualEndDate": "",
+      "projectManager": "",
+      "supervisor": "",
+      "milestones": [],
+      "attachments": [
+        {
+          "id": "ATT-003",
+          "name": "验收报告.pdf",
+          "type": "acceptance",
+          "uploadDate": "2024-07-01",
+          "uploadedByDept": "后勤处",
+          "reviewStatus": "Approved",
+          "reviewedBy": "审核员B",
+          "reviewedAt": "2024-07-02"
+        }
+      ],
+      "splitItems": [
+        {
+          "id": "SPLIT-003",
+          "category": "Building",
+          "name": "实验楼主体",
+          "amount": 12000000,
+          "area": 11500,
+          "depreciationYears": 50,
+          "depreciationMethod": "StraightLine"
+        },
+        {
+          "id": "SPLIT-004",
+          "category": "Equipment",
+          "name": "实验设备",
+          "amount": 3000000,
+          "quantity": 100,
+          "depreciationYears": 8,
+          "depreciationMethod": "Accelerated"
+        }
+      ],
+      "roomFunctionPlan": [],
+      "isOverdue": false,
+      "isArchived": false,
+      "source": "stock"
+    }
+  ]
+}

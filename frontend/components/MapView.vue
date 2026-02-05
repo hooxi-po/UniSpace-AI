@@ -324,7 +324,8 @@ function setupViewportSync() {
 const layerFiles: Record<string, string> = {
   water: '/map/water.geojson',
   green: '/map/green.geojson',
-  buildings: '/map/buildings.geojson',
+  // Buildings now served by backend (GeoJSON)
+  buildings: 'http://localhost:8080/api/v1/features?layers=buildings&visible=true',
   roads: '/map/roads.geojson',
 }
 
@@ -346,7 +347,10 @@ function loadLayer(layerName: string) {
   const fileUrl = layerFiles[layerName]
   if (!fileUrl) return
 
-  const geoJsonUrl = `${fileUrl}?t=${Date.now()}`
+  // For backend API, add cache busting; for static files, keep existing behavior
+  const geoJsonUrl = fileUrl.startsWith('http') 
+    ? `${fileUrl}&t=${Date.now()}`
+    : `${fileUrl}?t=${Date.now()}`
   
   Cesium.GeoJsonDataSource.load(geoJsonUrl, { clampToGround: true })
     .then(layerDataSource => {

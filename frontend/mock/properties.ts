@@ -116,3 +116,4 @@ export const mockProperties = [
 ]
 
 export type Property = typeof mockProperties[0]
+

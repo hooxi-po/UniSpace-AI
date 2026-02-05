@@ -24,8 +24,13 @@
           @click="$emit('select', r.raw)"
         >
           <td v-for="c in columns" :key="c.key" :class="c.class">
-            <span v-if="c.mono" class="mono">{{ r[c.key] }}</span>
-            <span v-else>{{ r[c.key] }}</span>
+            <template v-if="props.cell && props.cell(r, c.key)">
+              <component :is="props.cell(r, c.key)" @click.stop />
+            </template>
+            <template v-else>
+              <span v-if="c.mono" class="mono">{{ r[c.key] }}</span>
+              <span v-else>{{ r[c.key] }}</span>
+            </template>
           </td>
         </tr>
       </tbody>
@@ -71,6 +76,7 @@ const props = defineProps<{
   searchKeys?: string[]
   columns: Column<Row>[]
   mapRow: (f: GeoJsonFeature) => Row
+  cell?: (row: Row, colKey: string) => any
 }>()
 
 defineEmits<{

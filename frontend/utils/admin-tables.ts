@@ -29,6 +29,7 @@ export type BuildingRow = {
   levels: number | null
   amenity: string
   geomType: string
+  visible: boolean
   raw: GeoJsonFeature
 }
 
@@ -47,6 +48,7 @@ export const buildingColumns: Column<BuildingRow>[] = [
   { key: 'levels', label: '楼层', mono: true, class: 'ta-r' },
   { key: 'amenity', label: '用途', mono: true },
   { key: 'geomType', label: '几何', mono: true },
+  { key: 'visible', label: '显示' },
 ]
 
 export const roadColumns: Column<RoadRow>[] = [
@@ -82,6 +84,7 @@ export function mapBuildingRow(f: GeoJsonFeature): BuildingRow {
     levels,
     amenity: amenity || '—',
     geomType: String(f.geometry?.type ?? '—'),
+    visible: Boolean((p as any).visible ?? true),
     raw: f,
   }
 }

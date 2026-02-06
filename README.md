@@ -5,7 +5,7 @@
 - 前端：Nuxt 3（Vue 3）+ Cesium（3D 地图）+ TailwindCSS + AI 助手（Gemini，SSE 流式输出）
 - 后端：Spring Boot 4 + PostgreSQL/PostGIS + Flyway（空间要素表 `geo_features`）
 
-> 当前版本说明：主地图仍默认加载 **`frontend/public/map/*.geojson` 静态文件**；后端已经具备 PostGIS 表结构与 GeoJSON API（`/api/v1/features`）。后台大厅（`/admin`）已支持从后端 API 拉取 `buildings/roads` 并做统计预览（可在“地图数据中心”切换数据源）。
+> 当前版本说明：主地图目前为 **静态 GeoJSON 数据源**——`water/green/buildings/roads` 均从 `frontend/public/map/*.geojson` 加载（见 `frontend/components/MapView.vue`）。后台大厅（`/admin`）的“资产中心”会从后端 GeoJSON API 拉取 `buildings/roads` 进行展示，并支持在表格中切换 `visible`（写入后端 `geo_features.visible`）。
 
 ---
 
@@ -21,6 +21,7 @@
 - [数据导入：GeoJSON -> PostGIS（buildings/roads 实操流程）](#数据导入-geojson---postgisbuildingsroads-实操流程)
 - [API 列表（后端）](#api-列表后端)
 - [常见问题](#常见问题)
+- [Git 工作流（推荐）](#git-工作流推荐)
 - [下一步建议](#下一步建议)
 
 ---
@@ -397,6 +398,7 @@ Query 参数：
 - `bbox`（可选）：`minLon,minLat,maxLon,maxLat`（EPSG:4326）
 - `layers`（可选）：逗号分隔图层名（对应 `geo_features.layer`）
 - `limit`（可选，默认 `2000`）
+- `visible`（可选）：`true | false`（后端会按 `geo_features.visible` 过滤；返回的 `properties` 也会附加 `visible` 字段）
 
 返回：GeoJSON `FeatureCollection`。
 
@@ -409,6 +411,30 @@ curl -s "http://localhost:8080/api/v1/features?layers=water&limit=10" | cat
 ### `GET /api/v1/features/{id}`
 
 返回：单个 GeoJSON `Feature`。
+
+### `PUT /api/v1/features/visibility`
+
+用途：按请求体中的 `id` 更新要素可见性（后台大厅的开关会调用该接口）。
+
+Body：
+
+```json
+{"id":"...","visible":true}
+```
+
+返回：`{"ok":true}`（或 400/404）。
+
+### `PUT /api/v1/features/{id}/visibility`（兼容接口）
+
+用途：按路径 `id` 更新可见性。
+
+Body：
+
+```json
+{"visible":true}
+```
+
+返回：`{"ok":true}`（或 400/404）。
 
 ---
 
@@ -438,8 +464,72 @@ export GEMINI_API_KEY=YOUR_KEY
 
 ---
 
+## Git 工作流（推荐）
+
+本仓库推荐使用以 `develop` 为主干的 **GitHub Flow**（功能分支 + PR + Squash 合并），原则是：**不要在 `develop`/`main` 上直接改代码**。
+
+### 1) 开发前同步（确保本地最新）
+
+```bash
+git checkout develop
+git pull origin develop
+```
+
+### 2) 为每个任务创建分支（任务隔离）
+
+```bash
+git checkout -b feature/your-feature-name
+```
+
+分支命名建议：
+
+- **feature**：`feature/...`
+- **bugfix**：`fix/...`
+- **文档**：`docs/...`
+
+### 3) 迭代开发与提交（小步提交）
+
+```bash
+git status
+git add .
+git commit -m "feat: your message"
+```
+
+提交信息建议前缀：`feat`、`fix`、`docs`、`style`。
+
+### 4) 推送前先同步 develop（减少冲突）
+
+```bash
+git pull origin develop
+# 有冲突则解决后再 commit
+git push -u origin feature/your-feature-name
+```
+
+### 5) 发起 PR 并合并
+
+- **发起 PR**：在 GitHub 上对你的分支点击 *Compare & pull request*
+- **评审**：多人协作时走 Code Review
+- **合并策略**：建议使用 **Squash and merge** 保持提交历史整洁
+
+### 6) 合并后清理分支
+
+```bash
+git checkout develop
+git pull origin develop
+git branch -d feature/your-feature-name
+git fetch -p
+```
+
+### 7) 常用命令速查
+
+- **查看状态**：`git status`
+- **查看提交图**：`git log --oneline --graph`
+- **查看分支**：`git branch -a`
+- **查看 diff**：`git diff`
+
 ## 下一步建议
 
 - **数据统一**：将 `frontend/public/map/*.geojson` 导入 `geo_features`，前端切换为从 `/api/v1/features` 加载。
 - **接口鲁棒性**：让 `/api/v1/features` 在无数据时也返回合法 FeatureCollection（而不是 500）。
 - **台账/告警/工单接口化**：逐步替换 `useConstants.ts` 的 mock 数据为后端真实数据。
+- **房产管理模块**：`/admin` 下的“房产管理”目前为 mock，可对接真实业务数据与权限体系。

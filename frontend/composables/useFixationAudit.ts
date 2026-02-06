@@ -1,31 +1,30 @@
+import { computed, onMounted } from 'vue'
 import type { AssetCategory, AssetSplitItem, Attachment, Project } from '~/server/utils/fixation-audit-db'
+import { fixationService } from '~/services/fixation'
+import { useListFetcher } from '~/composables/shared/useListFetcher'
 
 export function useFixationAudit() {
-  const projects = ref<Project[]>([])
-  const loading = ref(false)
-  const error = ref<string>()
+  const {
+    list,
+    loading,
+    error,
+    fetchList,
+    updateItem,
+  } = useListFetcher<Project>(async () => {
+    const res = await fixationService.fetchAuditProjects()
+    return res.list
+  }, { immediate: false })
+
+  const projects = computed(() => list.value)
 
   async function fetchProjects() {
-    loading.value = true
-    error.value = undefined
-    try {
-      const res = await $fetch<{ list: Project[] }>('/api/fixation/audit')
-      projects.value = res.list
-    } catch (e: any) {
-      error.value = e.message || '获取转固申请数据失败'
-      console.error(e)
-    } finally {
-      loading.value = false
-    }
+    return fetchList()
   }
 
   async function patch(body: any) {
-    const res = await $fetch<{ project: Project | null }>('/api/fixation/audit', {
-      method: 'PATCH',
-      body,
-    })
+    const res = await fixationService.patchAudit(body)
     if (!res.project) throw new Error('Project not found')
-    projects.value = projects.value.map(p => (p.id === res.project!.id ? res.project! : p))
+    updateItem(res.project.id, res.project)
     return res.project
   }
 
@@ -105,9 +104,9 @@ export function useFixationAudit() {
   })
 
   return {
-    projects: readonly(projects),
-    loading: readonly(loading),
-    error: readonly(error),
+    projects,
+    loading,
+    error,
     fetchProjects,
     updateStatus,
     addAttachment,
@@ -120,5 +119,3 @@ export function useFixationAudit() {
     getAssetStatusBadgeClass,
   }
 }
-
-

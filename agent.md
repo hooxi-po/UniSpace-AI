@@ -28,13 +28,82 @@
 
 ### 1.2 当前数据现状（非常关键）
 
-- **前端地图默认加载静态 GeoJSON**：`frontend/public/map/{water,green,buildings,roads}.geojson`
-- **后端 API** 已实现 `GET /api/v1/features`、`GET /api/v1/features/{id}`；前端后台大厅（`/admin`）的资产中心已接入该 API（buildings/roads）。
-- 前端的“资产台账/告警/工单/压力数据”目前为 **mock 常量**：`frontend/composables/useConstants.ts`
+- **前端地图为静态 GeoJSON 数据源**：
+  - `water/green/buildings/roads`：均从 `frontend/public/map/*.geojson` 静态文件加载（见 `frontend/components/MapView.vue`）
+  - 后端 GeoJSON API 目前主要由后台大厅（`/admin`）消费，用于资产中心的 `buildings/roads` 展示与 `visible` 开关
+- **后端 API** 已实现：
+  - `GET /api/v1/features`（支持 `bbox`、`layers`、`limit`、`visible` 过滤）
+  - `GET /api/v1/features/{id}`
+  - `PUT /api/v1/features/visibility` 与 `PUT /api/v1/features/{id}/visibility`（用于后台大厅的可见性开关）
+- 前端后台大厅（`/admin`）包含两大模块：
+  - **资产中心**：接入后端 GeoJSON API（`buildings/roads`），支持搜索、查看原始 Feature JSON，并可在表格中直接切换 `visible`（写入后端 `geo_features.visible`）。
+  - **房产管理**：当前为 mock/本地数据与前端页面（包含分配、公寓、收费、经营、报表、维修等子模块），未对接真实后端。
+- 前端主地图的“资产台账/告警/工单/压力数据”目前为 **mock 常量**：`frontend/composables/useConstants.ts`
 
 ---
 
-## 2. 启动方式与端口
+## 2. Git 工作流（协作规范）
+
+本仓库推荐使用以 `develop` 为主干的 **GitHub Flow**（功能分支 + PR + Squash 合并）。核心原则：**不要在 `develop`/`main` 上直接改代码**。
+
+### 2.1 开发前同步
+
+```bash
+git checkout develop
+git pull origin develop
+```
+
+### 2.2 创建任务分支
+
+```bash
+git checkout -b feature/your-feature-name
+```
+
+分支命名建议：
+
+- **功能**：`feature/...`
+- **修复**：`fix/...`
+- **文档**：`docs/...`
+
+### 2.3 小步提交（一个 commit 做一件事）
+
+```bash
+git status
+git add .
+git commit -m "feat: your message"
+```
+
+### 2.4 推送前先同步 develop（处理冲突）
+
+```bash
+git pull origin develop
+# 如有冲突：解决后再 commit
+git push -u origin feature/your-feature-name
+```
+
+### 2.5 PR 与合并策略
+
+- **发起 PR**：GitHub 上 *Compare & pull request*
+- **评审**：多人协作时走 Code Review
+- **合并策略**：建议 **Squash and merge** 保持提交历史整洁
+
+### 2.6 合并后清理
+
+```bash
+git checkout develop
+git pull origin develop
+git branch -d feature/your-feature-name
+git fetch -p
+```
+
+### 2.7 常用命令速查
+
+- `git status`
+- `git log --oneline --graph`
+- `git branch -a`
+- `git diff`
+
+## 3. 启动方式与端口
 
 ### 2.1 一键启动（推荐）
 
@@ -429,21 +498,23 @@ public record GeoFeatureRow(String id, String layer, String geomGeoJson, JsonNod
 
 - 已废弃组件（模板写死 `v-if=false`），备注被 RightSidebar 替代。
 
-## 4C.6 后台大厅（资产中心）
+## 4C.6 后台大厅（资产中心 / 房产管理）
 
 ### `frontend/pages/admin.vue`
 
-- 后台大厅（浅色字节后台风格），当前聚焦“资产中心”。
+- 后台大厅（浅色字节后台风格），包含两大模块：
+  - **资产中心**（`assets`）：对接后端 GeoJSON API，展示 `buildings/roads`，并支持 `visible` 开关。
+  - **房产管理**（`property`）：当前为 mock/本地数据与前端页面，包含分配、公寓、收费、经营、库存、报表、维修等子模块（见 `frontend/views/admin/property`）。
 - UI 采用左侧菜单布局：
   - `frontend/components/admin/AdminLayout.vue`
   - `frontend/components/admin/AdminSider.vue`
-- 资产中心包含二级菜单（左侧展开）：
-  - 建筑数据（`layer=buildings`）
-  - 管道数据（当前映射为道路数据 `layer=roads`）
-- 数据来源：直接调用后端 GeoJSON API：
-  - `GET http://localhost:8080/api/v1/features?layers=buildings|roads&limit=...`
-- 搜索：页面顶部搜索框，按当前表格配置的 `searchKeys` 做模糊匹配。
-- 详情：点击行打开 JSON 抽屉，展示并支持复制原始 GeoJSON Feature。
+
+资产中心（`assets`）实现要点：
+- 二级菜单：建筑数据（`layer=buildings`）、管道数据（`layer=roads`）
+- 数据来源：`GET http://localhost:8080/api/v1/features?layers=buildings|roads&limit=...`
+- 搜索：页面顶部搜索框，按 `searchKeys` 模糊匹配。
+- 详情：点击行打开 JSON 抽屉，支持复制原始 Feature。
+- `visible` 开关：调用 `PUT /api/v1/features/visibility` 写入后端。
 
 ### 相关组件（admin）
 
@@ -457,6 +528,29 @@ public record GeoFeatureRow(String id, String layer, String geomGeoJson, JsonNod
   - 通用 JSON 抽屉
   - 输入：`open`、`obj`、`metaLabel`
   - 内置复制 JSON
+
+- `frontend/components/admin/PropertyTable.vue`
+  - 房产管理模块的通用表格组件（当前使用本地 mock 数据）
+  - 输入：`active`、`search`、`searchKeys`、`columns`
+  - 行点击：`emit('select', row)`
+
+### 房产管理页面（`frontend/views/admin/property`）
+
+- 包含多级三级菜单与页面，用于房产全生命周期管理（目前均为 UI 框架，未对接后端）：
+  - 分配（allocation）：调房、分析、审批、指派、记录
+  - 公寓（apartments）：申请、分配、押金、房间、水电
+  - 收费（charging）：账单、个人、记录、催缴
+  - 经营（operating）：分析、合同、物业、租金
+  - 库存（inventory）：统计、任务、差异
+  - 报表（reports）：自定义、日志、上报
+  - 维修（fixation）：申请、审核、项目、库存、日志、映射、房间功能、导入
+
+### 配置与工具（admin）
+
+- `frontend/config/admin-comp-map.ts`：三级菜单到组件的映射
+- `frontend/config/admin-menu.ts`：菜单结构定义
+- `frontend/utils/admin-tables.ts`：表格列定义与行映射函数
+- `frontend/composables/useAdminDetail.ts`：详情抽屉状态管理
 
 ## 4C.7 AI 聊天
 

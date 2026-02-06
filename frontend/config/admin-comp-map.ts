@@ -1,126 +1,126 @@
 import type { ThirdKey } from '~/types/admin'
 
 // Fixation
-import FixNewProject from '~/components/admin/property/fixation/FixNewProject.vue'
-import FixStockImport from '~/components/admin/property/fixation/FixStockImport.vue'
-import FixApply from '~/components/admin/property/fixation/FixApply.vue'
-import FixAudit from '~/components/admin/property/fixation/FixAudit.vue'
-import FixMapping from '~/components/admin/property/fixation/FixMapping.vue'
-import FixRoomFunction from '~/components/admin/property/fixation/FixRoomFunction.vue'
-import FixLogs from '~/components/admin/property/fixation/FixLogs.vue'
+import FixNewProjectView from '~/views/admin/property/fixation/FixNewProjectView.vue'
+import FixStockImportView from '~/views/admin/property/fixation/FixStockImportView.vue'
+import FixApplyView from '~/views/admin/property/fixation/FixApplyView.vue'
+import FixAuditView from '~/views/admin/property/fixation/FixAuditView.vue'
+import FixMappingView from '~/views/admin/property/fixation/FixMappingView.vue'
+import FixRoomFunctionView from '~/views/admin/property/fixation/FixRoomFunctionView.vue'
+import FixLogsView from '~/views/admin/property/fixation/FixLogsView.vue'
 
 // Allocation
-import AllocationApproval from '~/components/admin/property/allocation/AllocationApproval.vue'
-import AllocationAssignment from '~/components/admin/property/allocation/AllocationAssignment.vue'
-import AllocationAdjustment from '~/components/admin/property/allocation/AllocationAdjustment.vue'
-import AllocationRecords from '~/components/admin/property/allocation/AllocationRecords.vue'
-import AllocationAnalysis from '~/components/admin/property/allocation/AllocationAnalysis.vue'
+import AllocationApprovalView from '~/views/admin/property/allocation/AllocationApprovalView.vue'
+import AllocationAssignmentView from '~/views/admin/property/allocation/AllocationAssignmentView.vue'
+import AllocationAdjustmentView from '~/views/admin/property/allocation/AllocationAdjustmentView.vue'
+import AllocationRecordsView from '~/views/admin/property/allocation/AllocationRecordsView.vue'
+import AllocationAnalysisView from '~/views/admin/property/allocation/AllocationAnalysisView.vue'
 
 // Charging
-import ChargingOverview from '~/components/admin/property/charging/ChargingOverview.vue'
-import ChargingPersonal from '~/components/admin/property/charging/ChargingPersonal.vue'
-import ChargingBills from '~/components/admin/property/charging/ChargingBills.vue'
-import ChargingRecords from '~/components/admin/property/charging/ChargingRecords.vue'
-import ChargingUrge from '~/components/admin/property/charging/ChargingUrge.vue'
+import ChargingOverviewView from '~/views/admin/property/charging/OverviewView.vue'
+import ChargingPersonalView from '~/views/admin/property/charging/PersonalView.vue'
+import ChargingBillsView from '~/views/admin/property/charging/BillsView.vue'
+import ChargingRecordsView from '~/views/admin/property/charging/RecordsView.vue'
+import ChargingUrgeView from '~/views/admin/property/charging/UrgeView.vue'
 
 // Operating
-import OperatingOverview from '~/components/admin/property/operating/OperatingOverview.vue'
-import OperatingProperties from '~/components/admin/property/operating/OperatingProperties.vue'
-import OperatingContracts from '~/components/admin/property/operating/OperatingContracts.vue'
-import OperatingRent from '~/components/admin/property/operating/OperatingRent.vue'
-import OperatingAnalysis from '~/components/admin/property/operating/OperatingAnalysis.vue'
+import OperatingOverviewView from '~/views/admin/property/operating/OperatingOverviewView.vue'
+import OperatingPropertiesView from '~/views/admin/property/operating/OperatingPropertiesView.vue'
+import OperatingContractsView from '~/views/admin/property/operating/OperatingContractsView.vue'
+import OperatingRentView from '~/views/admin/property/operating/OperatingRentView.vue'
+import OperatingAnalysisView from '~/views/admin/property/operating/OperatingAnalysisView.vue'
 
 // Apartments
-import ApartmentsOverview from '~/components/admin/property/apartments/ApartmentsOverview.vue'
-import ApartmentsApplication from '~/components/admin/property/apartments/ApartmentsApplication.vue'
-import ApartmentsRooms from '~/components/admin/property/apartments/ApartmentsRooms.vue'
-import ApartmentsUtilities from '~/components/admin/property/apartments/ApartmentsUtilities.vue'
-import ApartmentsDeposit from '~/components/admin/property/apartments/ApartmentsDeposit.vue'
-import ApartmentsAssignment from '~/components/admin/property/apartments/ApartmentsAssignment.vue'
+import ApartmentsOverviewView from '~/views/admin/property/apartments/ApartmentsOverviewView.vue'
+import ApartmentsApplicationView from '~/views/admin/property/apartments/ApartmentsApplicationView.vue'
+import ApartmentsRoomsView from '~/views/admin/property/apartments/ApartmentsRoomsView.vue'
+import ApartmentsUtilitiesView from '~/views/admin/property/apartments/ApartmentsUtilitiesView.vue'
+import ApartmentsDepositView from '~/views/admin/property/apartments/ApartmentsDepositView.vue'
+import ApartmentsAssignmentView from '~/views/admin/property/apartments/ApartmentsAssignmentView.vue'
 
 // Services
-import ServicesWorkOrders from '~/components/admin/property/services/ServicesWorkOrders.vue'
-import ServicesProperty from '~/components/admin/property/services/ServicesProperty.vue'
-import ServicesStats from '~/components/admin/property/services/ServicesStats.vue'
+import ServicesWorkOrdersView from '~/views/admin/property/services/ServicesWorkOrdersView.vue'
+import ServicesPropertyView from '~/views/admin/property/services/ServicesPropertyView.vue'
+import ServicesStatsView from '~/views/admin/property/services/ServicesStatsView.vue'
 
 // Inventory
-import InventoryTasks from '~/components/admin/property/inventory/InventoryTasks.vue'
-import InventoryDiscrepancies from '~/components/admin/property/inventory/InventoryDiscrepancies.vue'
-import InventoryStats from '~/components/admin/property/inventory/InventoryStats.vue'
+import InventoryTasksView from '~/views/admin/property/inventory/InventoryTasksView.vue'
+import InventoryDiscrepanciesView from '~/views/admin/property/inventory/InventoryDiscrepanciesView.vue'
+import InventoryStatsView from '~/views/admin/property/inventory/InventoryStatsView.vue'
 
 // Query
-import QueryMultiRooms from '~/components/admin/property/query/QueryMultiRooms.vue'
-import QueryMultiPeople from '~/components/admin/property/query/QueryMultiPeople.vue'
-import QueryDepartment from '~/components/admin/property/query/QueryDepartment.vue'
-import QueryQuota from '~/components/admin/property/query/QueryQuota.vue'
-import QueryPublic from '~/components/admin/property/query/QueryPublic.vue'
-import QueryCommercial from '~/components/admin/property/query/QueryCommercial.vue'
+import QueryMultiRoomsView from '~/views/admin/property/query/QueryMultiRoomsView.vue'
+import QueryMultiPeopleView from '~/views/admin/property/query/QueryMultiPeopleView.vue'
+import QueryDepartmentView from '~/views/admin/property/query/QueryDepartmentView.vue'
+import QueryQuotaView from '~/views/admin/property/query/QueryQuotaView.vue'
+import QueryPublicView from '~/views/admin/property/query/QueryPublicView.vue'
+import QueryCommercialView from '~/views/admin/property/query/QueryCommercialView.vue'
 
 // Reports
-import ReportsMoe from '~/components/admin/property/reports/ReportsMoe.vue'
-import ReportsCustom from '~/components/admin/property/reports/ReportsCustom.vue'
-import ReportsLogs from '~/components/admin/property/reports/ReportsLogs.vue'
+import ReportsMoeView from '~/views/admin/property/reports/ReportsMoeView.vue'
+import ReportsCustomView from '~/views/admin/property/reports/ReportsCustomView.vue'
+import ReportsLogsView from '~/views/admin/property/reports/ReportsLogsView.vue'
 
 export const adminCompMap: Record<ThirdKey, any> = {
   // Fixation
-  fix_new_project: FixNewProject,
-  fix_stock_import: FixStockImport,
-  fix_apply: FixApply,
-  fix_audit: FixAudit,
-  fix_mapping: FixMapping,
-  fix_room_function: FixRoomFunction,
-  fix_logs: FixLogs,
+  fix_new_project: FixNewProjectView,
+  fix_stock_import: FixStockImportView,
+  fix_apply: FixApplyView,
+  fix_audit: FixAuditView,
+  fix_mapping: FixMappingView,
+  fix_room_function: FixRoomFunctionView,
+  fix_logs: FixLogsView,
 
   // Allocation
-  allocation_approval: AllocationApproval,
-  allocation_assignment: AllocationAssignment,
-  allocation_adjustment: AllocationAdjustment,
-  allocation_records: AllocationRecords,
-  allocation_analysis: AllocationAnalysis,
+  allocation_approval: AllocationApprovalView,
+  allocation_assignment: AllocationAssignmentView,
+  allocation_adjustment: AllocationAdjustmentView,
+  allocation_records: AllocationRecordsView,
+  allocation_analysis: AllocationAnalysisView,
 
   // Charging
-  charging_overview: ChargingOverview,
-  charging_personal: ChargingPersonal,
-  charging_bills: ChargingBills,
-  charging_records: ChargingRecords,
-  charging_urge: ChargingUrge,
+  charging_overview: ChargingOverviewView,
+  charging_personal: ChargingPersonalView,
+  charging_bills: ChargingBillsView,
+  charging_records: ChargingRecordsView,
+  charging_urge: ChargingUrgeView,
 
   // Operating
-  operating_overview: OperatingOverview,
-  operating_properties: OperatingProperties,
-  operating_contracts: OperatingContracts,
-  operating_rent: OperatingRent,
-  operating_analysis: OperatingAnalysis,
+  operating_overview: OperatingOverviewView,
+  operating_properties: OperatingPropertiesView,
+  operating_contracts: OperatingContractsView,
+  operating_rent: OperatingRentView,
+  operating_analysis: OperatingAnalysisView,
 
   // Apartments
-  apartments_overview: ApartmentsOverview,
-  apartments_application: ApartmentsApplication,
-  apartments_rooms: ApartmentsRooms,
-  apartments_utilities: ApartmentsUtilities,
-  apartments_deposit: ApartmentsDeposit,
-  apartments_assignment: ApartmentsAssignment,
+  apartments_overview: ApartmentsOverviewView,
+  apartments_application: ApartmentsApplicationView,
+  apartments_rooms: ApartmentsRoomsView,
+  apartments_utilities: ApartmentsUtilitiesView,
+  apartments_deposit: ApartmentsDepositView,
+  apartments_assignment: ApartmentsAssignmentView,
 
   // Services
-  services_workorders: ServicesWorkOrders,
-  services_property: ServicesProperty,
-  services_stats: ServicesStats,
+  services_workorders: ServicesWorkOrdersView,
+  services_property: ServicesPropertyView,
+  services_stats: ServicesStatsView,
 
   // Inventory
-  inventory_tasks: InventoryTasks,
-  inventory_discrepancies: InventoryDiscrepancies,
-  inventory_stats: InventoryStats,
+  inventory_tasks: InventoryTasksView,
+  inventory_discrepancies: InventoryDiscrepanciesView,
+  inventory_stats: InventoryStatsView,
 
   // Query
-  query_multi_rooms: QueryMultiRooms,
-  query_multi_people: QueryMultiPeople,
-  query_department: QueryDepartment,
-  query_quota: QueryQuota,
-  query_public: QueryPublic,
-  query_commercial: QueryCommercial,
+  query_multi_rooms: QueryMultiRoomsView,
+  query_multi_people: QueryMultiPeopleView,
+  query_department: QueryDepartmentView,
+  query_quota: QueryQuotaView,
+  query_public: QueryPublicView,
+  query_commercial: QueryCommercialView,
 
   // Reports
-  reports_moe: ReportsMoe,
-  reports_custom: ReportsCustom,
-  reports_logs: ReportsLogs,
+  reports_moe: ReportsMoeView,
+  reports_custom: ReportsCustomView,
+  reports_logs: ReportsLogsView,
 }
 

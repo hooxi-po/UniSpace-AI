@@ -2,4 +2,5 @@
 alwaysApply: true
 ---
 
-#在每次回答问题前 阅读agent.md
+#在每次回答问题前 阅读agent.md和frontend/STRUCTURE.md
+##回答前加上“好的jolt”

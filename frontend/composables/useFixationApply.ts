@@ -1,30 +1,29 @@
+import { computed, onMounted } from 'vue'
 import type { ApplyProject } from '~/server/utils/fixation-apply-db'
+import { fixationService } from '~/services/fixation'
+import { useListFetcher } from '~/composables/shared/useListFetcher'
 
 export function useFixationApply() {
-  const projects = ref<ApplyProject[]>([])
-  const loading = ref(false)
-  const error = ref<string>()
+  const {
+    list,
+    loading,
+    error,
+    fetchList,
+    updateItem,
+  } = useListFetcher<ApplyProject>(async () => {
+    const res = await fixationService.fetchApplyList()
+    return res.list
+  }, { immediate: false })
+
+  const projects = computed(() => list.value)
 
   async function fetchProjects() {
-    loading.value = true
-    error.value = undefined
-    try {
-      const res = await $fetch<{ list: ApplyProject[] }>('/api/fixation/apply')
-      projects.value = res.list
-    } catch (e: any) {
-      error.value = e.message || '获取转固申请列表失败'
-      console.error(e)
-    } finally {
-      loading.value = false
-    }
+    return fetchList()
   }
 
   async function patchProject(projectId: string, updates: Record<string, any>) {
-    const res = await $fetch<{ project: ApplyProject }>('/api/fixation/apply', {
-      method: 'PATCH',
-      body: { projectId, updates },
-    })
-    projects.value = projects.value.map(p => (p.id === res.project.id ? res.project : p))
+    const res = await fixationService.patchApplyProject(projectId, updates)
+    updateItem(projectId, res.project)
     return res.project
   }
 
@@ -33,12 +32,10 @@ export function useFixationApply() {
   })
 
   return {
-    projects: readonly(projects),
-    loading: readonly(loading),
-    error: readonly(error),
+    projects,
+    loading,
+    error,
     fetchProjects,
     patchProject,
   }
 }
-
-

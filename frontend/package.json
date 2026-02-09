@@ -4,11 +4,11 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "nuxt dev",
-    "build": "nuxt build",
+    "dev": "node scripts/ensure-nuxt-internal.mjs && nuxt dev",
+    "build": "node scripts/ensure-nuxt-internal.mjs && nuxt build",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
-    "postinstall": "nuxt prepare"
+    "postinstall": "nuxt prepare && node scripts/ensure-nuxt-internal.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.37.0",

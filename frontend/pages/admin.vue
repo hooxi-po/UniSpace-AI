@@ -49,7 +49,7 @@
               v-else
               :active="activeSubTab === 'assets_pipelines'"
               :backend-base-url="backendBaseUrl"
-              layer="roads"
+              layer="pipes"
               :search="assetSearch"
               :search-keys="['id', 'name', 'highway', 'geomType']"
               :columns="roadColumns as any"

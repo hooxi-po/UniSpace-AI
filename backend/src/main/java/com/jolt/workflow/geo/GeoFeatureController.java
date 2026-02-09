@@ -3,7 +3,6 @@ package com.jolt.workflow.geo;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import java.util.List;
-import java.util.Optional;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -39,16 +38,23 @@ public class GeoFeatureController {
         java.util.ArrayList<Object> params = new java.util.ArrayList<>();
 
         if (layers != null && !layers.isBlank()) {
-            List<String> layerList = List.of(layers.split(","));
-            StringBuilder sb = new StringBuilder();
-            sb.append(" AND layer IN (");
-            for (int i = 0; i < layerList.size(); i++) {
-                if (i > 0) sb.append(",");
-                sb.append("?");
-                params.add(layerList.get(i).trim());
+            List<String> layerList = List.of(layers.split(",")).stream()
+                    .map(String::trim)
+                    .filter(s -> !s.isBlank())
+                    .map(GeoFeatureController::normalizeLayerName)
+                    .toList();
+
+            if (!layerList.isEmpty()) {
+                StringBuilder sb = new StringBuilder();
+                sb.append(" AND layer IN (");
+                for (int i = 0; i < layerList.size(); i++) {
+                    if (i > 0) sb.append(",");
+                    sb.append("?");
+                    params.add(layerList.get(i));
+                }
+                sb.append(")");
+                where += sb;
             }
-            sb.append(")");
-            where += sb;
         }
 
         if (bbox != null && !bbox.isBlank()) {
@@ -209,5 +215,12 @@ public class GeoFeatureController {
                 Double.parseDouble(parts[2].trim()),
                 Double.parseDouble(parts[3].trim())
         };
+    }
+
+    private static String normalizeLayerName(String layer) {
+        if ("pipes".equalsIgnoreCase(layer)) {
+            return "roads";
+        }
+        return layer;
     }
 }

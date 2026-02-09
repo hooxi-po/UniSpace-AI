@@ -5,6 +5,10 @@
 <script setup lang="ts">
 import * as Cesium from 'cesium'
 import type { PipeNode, Building, GeoJsonFeature } from '~/types'
+import {
+  PIPE_LAYER_NAMES,
+  usePipeLayerLoader,
+} from '~/composables/shared/usePipeLayerLoader'
 
 const DEFAULT_CAMERA = {
   longitude: 119.1895,
@@ -24,7 +28,6 @@ type MapLayers = {
   drain: boolean
   buildings: boolean
   green?: boolean
-  roads?: boolean
 }
 
 interface Props {
@@ -56,21 +59,12 @@ const dataSources = {
   water: new Cesium.CustomDataSource('water'),
   green: new Cesium.CustomDataSource('green'),
   buildings: new Cesium.CustomDataSource('buildings'),
-  roads: new Cesium.CustomDataSource('roads'),
-  // For other pipelines if needed
   sewage: new Cesium.CustomDataSource('sewage'),
   drain: new Cesium.CustomDataSource('drain'),
 }
 
 // 未来主义科技风格样式（参考图片风格）
 const styles = {
-  water: {
-    fill: new Cesium.ColorMaterialProperty(
-      Cesium.Color.fromCssColorString('rgb(10, 37, 81)').withAlpha(0.8)
-    ),
-    stroke: Cesium.Color.CYAN.withAlpha(0.5),
-    strokeWidth: 1,
-  },
   green: {
     fill: new Cesium.ColorMaterialProperty(
       Cesium.Color.fromCssColorString('rgb(10, 43, 49)').withAlpha(0.7)
@@ -84,10 +78,6 @@ const styles = {
     outline: Cesium.Color.fromCssColorString('rgb(100, 180, 255)').withAlpha(0.6), // 发光浅蓝色边缘
     outlineWidth: 2,
     extrudedHeight: 20,
-  },
-  roads: {
-    glowStroke: Cesium.Color.fromCssColorString('rgb(100, 180, 255)'), // 发光浅蓝色
-    glowWidth: 3,
   },
 }
 
@@ -322,11 +312,9 @@ function setupViewportSync() {
  * 图层文件映射
  */
 const layerFiles: Record<string, string> = {
-  water: '/map/water.geojson',
   green: '/map/green.geojson',
   // Buildings now served by backend (GeoJSON)
   buildings: 'http://localhost:8080/api/v1/features?layers=buildings&visible=true',
-  roads: '/map/roads.geojson',
 }
 
 /**
@@ -334,11 +322,28 @@ const layerFiles: Record<string, string> = {
  */
 const loadedLayers = ref<Set<string>>(new Set())
 
+const pipeDataSources = {
+  water: dataSources.water,
+  drain: dataSources.drain,
+  sewage: dataSources.sewage,
+}
+
+const { isPipeLayer, loadPipeLayers } = usePipeLayerLoader({
+  getViewer: () => viewer,
+  dataSources: pipeDataSources,
+  loadedLayers,
+})
+
 /**
  * 加载单个图层数据
  * @param layerName - 图层名称
  */
 function loadLayer(layerName: string) {
+  if (isPipeLayer(layerName)) {
+    loadPipeLayers()
+    return
+  }
+
   if (!viewer || loadedLayers.value.has(layerName)) return
 
   const dataSource = dataSources[layerName as keyof typeof dataSources]
@@ -365,14 +370,10 @@ function loadLayer(layerName: string) {
         entity.description = undefined
 
         // Apply appropriate styling based on layer type
-        if (layerName === 'water') {
-          styleWaterEntity(entity)
-        } else if (layerName === 'green') {
+        if (layerName === 'green') {
           styleGreenEntity(entity)
         } else if (layerName === 'buildings') {
           styleBuildingEntity(entity)
-        } else if (layerName === 'roads') {
-          styleRoadEntity(entity)
         }
 
         dataSource.entities.add(entity)
@@ -407,9 +408,10 @@ function unloadLayer(layerName: string) {
 function loadGeoJsonLayers() {
   // Load visible layers
   if (props.layers.water) loadLayer('water')
+  if (props.layers.sewage) loadLayer('sewage')
+  if (props.layers.drain) loadLayer('drain')
   if (props.layers.green) loadLayer('green')
   if (props.layers.buildings) loadLayer('buildings')
-  if (props.layers.roads) loadLayer('roads')
 }
 
 /**
@@ -427,6 +429,18 @@ watch(
       unloadLayer('water')
     }
 
+    if (newLayers.sewage && !loadedLayers.value.has('sewage')) {
+      loadLayer('sewage')
+    } else if (!newLayers.sewage && loadedLayers.value.has('sewage')) {
+      unloadLayer('sewage')
+    }
+
+    if (newLayers.drain && !loadedLayers.value.has('drain')) {
+      loadLayer('drain')
+    } else if (!newLayers.drain && loadedLayers.value.has('drain')) {
+      unloadLayer('drain')
+    }
+
     if (newLayers.green && !loadedLayers.value.has('green')) {
       loadLayer('green')
     } else if (!newLayers.green && loadedLayers.value.has('green')) {
@@ -439,27 +453,9 @@ watch(
       unloadLayer('buildings')
     }
 
-    if (newLayers.roads && !loadedLayers.value.has('roads')) {
-      loadLayer('roads')
-    } else if (!newLayers.roads && loadedLayers.value.has('roads')) {
-      unloadLayer('roads')
-    }
   },
   { deep: true, immediate: false }
 )
-
-/**
- * 为水体实体应用样式（深色风格）
- * @param entity - Cesium 实体对象
- */
-function styleWaterEntity(entity: Cesium.Entity) {
-  if (entity.polygon) {
-    entity.polygon.material = styles.water.fill
-    entity.polygon.outline = new Cesium.ConstantProperty(true)
-    entity.polygon.outlineColor = new Cesium.ConstantProperty(styles.water.stroke)
-    entity.polygon.outlineWidth = new Cesium.ConstantProperty(1)
-  }
-}
 
 /**
  * 为绿地实体应用样式（深绿色风格）
@@ -490,23 +486,6 @@ function styleBuildingEntity(entity: Cesium.Entity) {
     entity.polygon.outline = new Cesium.ConstantProperty(true)
     entity.polygon.outlineColor = new Cesium.ConstantProperty(styles.buildings.outline)
     entity.polygon.outlineWidth = new Cesium.ConstantProperty(styles.buildings.outlineWidth)
-  }
-}
-
-/**
- * 为道路实体应用样式（发光浅蓝色线条，模拟未来主义道路）
- * @param entity - Cesium 实体对象
- */
-function styleRoadEntity(entity: Cesium.Entity) {
-  if (entity.polyline) {
-    // 使用发光材质创建浅蓝色发光道路效果
-    entity.polyline.material = new Cesium.PolylineGlowMaterialProperty({
-      color: styles.roads.glowStroke,
-      glowPower: 0.4,
-      taperPower: 0.3,
-    })
-    entity.polyline.width = new Cesium.ConstantProperty(styles.roads.glowWidth)
-    entity.polyline.clampToGround = new Cesium.ConstantProperty(true)
   }
 }
 

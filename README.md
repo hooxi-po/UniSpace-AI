@@ -5,7 +5,7 @@
 - 前端：Nuxt 3（Vue 3）+ Cesium（3D 地图）+ TailwindCSS + AI 助手（Gemini，SSE 流式输出）
 - 后端：Spring Boot 4 + PostgreSQL/PostGIS + Flyway（空间要素表 `geo_features`）
 
-> 当前版本说明：主地图目前为 **静态 GeoJSON 数据源**——`water/green/buildings/roads` 均从 `frontend/public/map/*.geojson` 加载（见 `frontend/components/MapView.vue`）。后台大厅（`/admin`）的“资产中心”会从后端 GeoJSON API 拉取 `buildings/roads` 进行展示，并支持在表格中切换 `visible`（写入后端 `geo_features.visible`）。
+> 当前版本说明：主地图中的“管道”已切换为后端动态数据：前端请求 `GET /api/v1/features?layers=pipes`，并在前端按管道分类规则（源自道路 `highway`）映射为 `water/drain/sewage` 三类（统一线宽 `5`）。后端对 `pipes` 做了别名兼容（映射到数据库 `geo_features.layer='roads'`）。后台大厅（`/admin`）资产中心同步使用 `buildings/pipes` 并支持 `visible` 开关。
 
 ---
 
@@ -18,7 +18,7 @@
 - [前端说明（Nuxt + Cesium）](#前端说明-nuxt--cesium)
 - [后端说明（Spring Boot + PostGIS）](#后端说明-spring-boot--postgis)
 - [数据准备：GeoJSON 拆分](#数据准备-geojson-拆分)
-- [数据导入：GeoJSON -> PostGIS（buildings/roads 实操流程）](#数据导入-geojson---postgisbuildingsroads-实操流程)
+- [数据导入：GeoJSON -> PostGIS（buildings/pipes（存储层 roads）实操流程）](#数据导入-geojson---postgisbuildingspipes存储层-roads实操流程)
 - [API 列表（后端）](#api-列表后端)
 - [常见问题](#常见问题)
 - [Git 工作流（推荐）](#git-工作流推荐)
@@ -49,9 +49,9 @@ UniSpace-AI/
     ├── nuxt.config.ts
     ├── pages/
     │   ├── index.vue           # 主页面（Map + UI Overlay）
-    │   └── admin.vue           # 后台大厅（资产中心：buildings/roads）
+    │   └── admin.vue           # 后台大厅（资产中心：buildings/pipes）
     ├── components/
-    │   ├── MapView.vue         # Cesium Viewer + GeoJSON 图层加载/拾取
+    │   ├── MapView.vue         # Cesium Viewer + 图层加载/拾取（管道逻辑已抽离）
     │   ├── MapControls.vue     # 底部图层切换
     │   ├── LayerToggle.vue
     │   ├── TopNav.vue
@@ -59,10 +59,14 @@ UniSpace-AI/
     │   ├── RightSidebar.vue
     │   └── ChatInterface.vue   # AI 聊天浮窗
     ├── composables/
-    │   ├── useConstants.ts     # Mock 资产/告警/工单数据
-    │   └── useGeminiChat.ts    # 与 /api/chat 的 SSE 流式交互
+    │   ├── shared/
+    │   │   └── usePipeLayerLoader.ts  # 管道图层加载/分类/样式复用逻辑
+    │   ├── useConstants.ts             # Mock 资产/告警/工单数据
+    │   └── useGeminiChat.ts            # 与 /api/chat 的 SSE 流式交互
     ├── server/api/
     │   └── chat.post.ts        # Gemini API 代理（SSE）
+    ├── scripts/
+    │   └── ensure-nuxt-internal.mjs   # 修复 #internal/nuxt/paths 运行时报错
     └── public/map/
         ├── map_all.geojson
         ├── water.geojson
@@ -144,7 +148,7 @@ cd backend
 
 ```bash
 cd frontend
-npm install
+npm ci || npm install
 npm run dev
 ```
 
@@ -182,39 +186,29 @@ export GEMINI_API_KEY=YOUR_KEY
   - 作为全局状态“源头”维护：
     - `selectedItem`：当前选中对象（建筑/管网/GeoJSON feature）
     - `viewport`：视口（经纬度 + 相机高度）
-    - `layers`：图层开关（water/green/buildings/roads 等）
+    - `layers`：图层开关（water/sewage/drain/buildings/green）
   - 将状态通过 props 传给 `MapView`、`MapControls`、`RightSidebar` 等组件。
 
 - `pages/admin.vue`
   - 后台大厅（浅色字节后台风格）：
-    - 使用左侧菜单布局（组件：`components/admin/AdminLayout.vue`、`components/admin/AdminSider.vue`），资产中心包含二级菜单：建筑 / 道路
-    - 资产中心：从后端 GeoJSON API 拉取真实数据（`GET http://localhost:8080/api/v1/features?layers=buildings|roads`），并支持搜索、行点击查看原始 Feature JSON
+    - 使用左侧菜单布局（组件：`components/admin/AdminLayout.vue`、`components/admin/AdminSider.vue`），资产中心包含二级菜单：建筑 / 管道
+    - 资产中心：从后端 GeoJSON API 拉取真实数据（`GET http://localhost:8080/api/v1/features?layers=buildings|pipes`），并支持搜索、行点击查看原始 Feature JSON
     - 组件化：`components/admin/GeoFeatureTable.vue`（通用图层表格） + `components/admin/JsonDrawer.vue`（详情抽屉）
     - `useConstants.ts` 中的资产/告警/工单仍为 mock（主地图与右侧详情面板仍会用到）
 
 ### 地图核心（`components/MapView.vue`）
 
 - 使用 `Cesium.Viewer` 初始化场景，采用深色底图（Carto dark）
-- 为每个图层维护一个 `Cesium.CustomDataSource`：
-  - `water` / `green` / `buildings` / `roads`（以及预留的 `sewage`/`drain`）
-- 图层数据加载：
-  - 使用 `Cesium.GeoJsonDataSource.load('/map/*.geojson')`
-  - 加载后会移除默认 label/billboard/point，并按图层应用不同风格
-- 图层显隐：
-  - 通过 `dataSource.show = props.layers.xxx` 控制
-- 拾取：
-  - `ScreenSpaceEventHandler` + `viewer.scene.pick`，拾取到 entity 后 emit `select` 给父组件
-
-### 图层与样式
-
-当前前端使用“未来主义/赛博朋克”风格：
-
-- 水体（polygon）深蓝填充 + 边缘线
-- 绿地（polygon）深绿填充
-- 建筑（polygon）半透明浅蓝 + outline + extrusion（固定 extrudedHeight）
-- 道路（polyline）浅蓝发光 `PolylineGlowMaterialProperty`
-
-> 注：目前 `MapControls.vue` UI 展示了“供水/污水/雨水/绿地/建筑”，但 `MapView.vue` 实际加载的静态 GeoJSON 图层是 `water/green/buildings/roads`。`sewage/drain` 在 `MapView.vue` 中存在数据源占位，但当前未加载对应 GeoJSON 文件。
+- 地图图层职责拆分：
+  - `MapView.vue`：地图容器、相机同步、拾取、高亮、通用图层装载
+  - `composables/shared/usePipeLayerLoader.ts`：管道图层加载/分类/样式（可复用）
+- 图层数据来源：
+  - 管道三分类（`water/drain/sewage`）：从后端 `GET /api/v1/features?layers=pipes&visible=true` 拉取后分类
+  - 建筑：从后端 `GET /api/v1/features?layers=buildings&visible=true` 拉取
+  - 绿地：仍使用静态文件 `public/map/green.geojson`
+- 管道样式：三类统一线宽 `5`，并使用发光材质（`PolylineGlowMaterialProperty`）
+- 图层显隐：通过 `dataSource.show = props.layers.xxx` 控制
+- 拾取：`ScreenSpaceEventHandler` + `viewer.scene.pick`，拾取 entity 后 emit `select` 给父组件
 
 ### 资产台账（Mock）
 
@@ -280,13 +274,13 @@ export GEMINI_API_KEY=YOUR_KEY
 - 水体：`properties.natural == 'water'` 或存在 `properties.water`
 - 绿地：`natural == 'wood' | 'wetland'` 或 `landuse == 'cemetery'`
 - 建筑：存在 `properties.building`
-- 道路：存在 `properties.highway`
+- 管道（源自道路）：存在 `properties.highway`
 
 ---
 
-## 数据导入：GeoJSON -> PostGIS（buildings/roads 实操流程）
+## 数据导入：GeoJSON -> PostGIS（buildings/pipes（存储层 roads）实操流程）
 
-目标：将前端静态文件中的 **建筑/道路** 导入到后端 PostGIS 表 `geo_features`，并通过后端 GeoJSON API 验证。
+目标：将前端静态文件中的 **建筑/管道（API 语义 pipes，存储层 roads）** 导入到后端 PostGIS 表 `geo_features`，并通过后端 GeoJSON API 验证。
 
 ### 0) 启动数据库容器
 
@@ -317,7 +311,7 @@ docker cp frontend/public/map/roads.geojson unispace-postgis:/tmp/roads.geojson
 docker cp frontend/public/map/buildings.geojson unispace-postgis:/tmp/buildings.geojson
 ```
 
-### 3) 导入 roads
+### 3) 导入 pipes（存储层 roads）
 
 ```bash
 docker exec -i unispace-postgis psql -U postgres -d unispace -c "
@@ -382,7 +376,7 @@ docker exec -i unispace-postgis psql -U postgres -d unispace -c "select layer, c
 后端启动后：
 
 ```bash
-curl "http://localhost:8080/api/v1/features?layers=buildings,roads&limit=5" | head -c 400
+curl "http://localhost:8080/api/v1/features?layers=buildings,pipes&limit=5" | head -c 400
 ```
 
 ---
@@ -396,7 +390,7 @@ curl "http://localhost:8080/api/v1/features?layers=buildings,roads&limit=5" | he
 Query 参数：
 
 - `bbox`（可选）：`minLon,minLat,maxLon,maxLat`（EPSG:4326）
-- `layers`（可选）：逗号分隔图层名（对应 `geo_features.layer`）
+- `layers`（可选）：逗号分隔图层名（`pipes` 会在后端自动映射到 `roads` 存储层）
 - `limit`（可选，默认 `2000`）
 - `visible`（可选）：`true | false`（后端会按 `geo_features.visible` 过滤；返回的 `properties` 也会附加 `visible` 字段）
 
@@ -405,7 +399,7 @@ Query 参数：
 示例：
 
 ```bash
-curl -s "http://localhost:8080/api/v1/features?layers=water&limit=10" | cat
+curl -s "http://localhost:8080/api/v1/features?layers=pipes&limit=10" | cat
 ```
 
 ### `GET /api/v1/features/{id}`
@@ -455,12 +449,23 @@ cd backend
 export GEMINI_API_KEY=YOUR_KEY
 ```
 
-### 3) GeoJSON 很大导致前端卡顿
+### 3) 地图数据量大导致前端卡顿
 
-当前是静态一次性加载。后续建议：
+当前管道/建筑已走后端 GeoJSON API，仍是“按图层一次性加载”。后续建议：
 
 - 后端按 `bbox` 分页/裁剪返回
 - 前端按视口动态加载（camera changed -> 请求 bbox）
+
+### 4) 前端报错 `#internal/nuxt/paths` 未定义
+
+已在 `frontend/scripts/ensure-nuxt-internal.mjs` 做兼容修复，并接入 `dev/build/postinstall` 生命周期。
+如果仍报错，先清理并重建 Nuxt 产物：
+
+```bash
+cd frontend
+rm -rf .nuxt
+npm run dev
+```
 
 ---
 

@@ -46,7 +46,7 @@
   ```
 
 ### 4) composables/ 按层级分
-- **shared/**：通用 hooks（`useTable`、`usePagination`、`useDialog`）
+- **shared/**：通用 hooks（`useTable`、`usePagination`、`useDialog`）与跨页面地图能力（如 `usePipeLayerLoader`）
 - **admin/**：admin 域专用 hooks
 - **property/**：房产域专用 hooks（如 `useFixationApply`、`useChargingBills`）
 
@@ -89,10 +89,19 @@
 ### 新 composable
 - 通用：`composables/shared/use<Name>.ts`
 - 域专用：`composables/<domain>/use<Name>.ts`
+- 地图管道加载/分类/样式逻辑：`composables/shared/usePipeLayerLoader.ts`（避免堆在 `MapView.vue`）
 
 ### 新 service
 - 路径：`services/<domain>.ts`
 - 只封装请求，不包含 Vue 状态
+
+---
+
+## 地图模块实践（2026-02-09）
+
+- 主地图中“管道”显示逻辑应优先抽到 `composables/shared/`，避免页面组件膨胀。
+- `components/MapView.vue` 保持为地图容器与编排层，不承载复杂分类策略。
+- 当前已落地：`usePipeLayerLoader` 负责 `pipes` 数据读取、`water/drain/sewage` 分类与统一样式。
 
 ---
 

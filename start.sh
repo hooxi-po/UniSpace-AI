@@ -50,7 +50,7 @@ if [ -f "$PIDFILE" ]; then
     rm -f "$PIDFILE"
   fi
 fi
-echo $ > "$PIDFILE"
+echo $$ > "$PIDFILE"
 
 # 清理函数
 cleanup() {

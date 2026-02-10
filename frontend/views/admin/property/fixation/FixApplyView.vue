@@ -318,7 +318,7 @@ const selectedProject = ref<Project | null>(null)
 const detailTab = ref<'flow' | 'split' | 'attachments'>('flow')
 
 function isEditable(p: Project | null) {
-  return !!p && p.status === 'DisposalPending'
+  return !!p && (p.status === 'DisposalPending' || p.status === 'PendingReview')
 }
 
 const filtered = computed(() => {

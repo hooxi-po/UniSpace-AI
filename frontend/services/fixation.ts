@@ -54,4 +54,11 @@ export const fixationService = {
       body: { rooms: newRooms },
     })
   },
+
+  async syncRoomFunctions(projectId: string, plan: any[]) {
+    return $fetch<{ updatedRooms: number; addedRooms: number }>('/api/fixation/stock/sync-room-functions', {
+      method: 'POST',
+      body: { projectId, plan },
+    })
+  },
 } as const

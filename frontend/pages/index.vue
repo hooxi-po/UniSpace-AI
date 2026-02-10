@@ -155,18 +155,30 @@ const handleSelection = (item: PipeNode | Building | GeoJsonFeature | null) => {
       }
     }
     
-    // 检查是否是管道（通过 properties.highway 判断）
-    if (properties.highway) {
-      // 尝试精确匹配 id
-      let pipeline = PIPELINES.find(p => featureId === p.id || featureId.includes(p.id))
-      
-      // 如果找不到，使用第一个管道作为默认（用于演示）
+    // 检查是否是管道（由道路数据分类生成：pipeType=water|drain|sewage）
+    const pipeType = String(properties.pipeType || '').toLowerCase()
+    if (pipeType === 'water' || pipeType === 'drain' || pipeType === 'sewage' || properties.highway) {
+      // 优先按管道类型匹配 Mock 管线
+      let pipeline = PIPELINES.find(p => p.type === pipeType)
+
+      // 兼容兜底：尝试按 id 匹配
+      if (!pipeline) {
+        pipeline = PIPELINES.find(p => featureId === p.id || featureId.includes(p.id))
+      }
+
+      // 最后兜底：选第一条
       if (!pipeline && PIPELINES.length > 0) {
         pipeline = PIPELINES[0]
       }
-      
+
       if (pipeline) {
-        selectedItem.value = pipeline
+        selectedItem.value = {
+          ...pipeline,
+          id: featureId,
+          type: (pipeType === 'water' || pipeType === 'drain' || pipeType === 'sewage')
+            ? pipeType
+            : pipeline.type,
+        }
         return
       }
     }

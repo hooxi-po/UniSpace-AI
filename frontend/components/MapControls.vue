@@ -31,7 +31,7 @@
             @click="emit('toggle-layer', 'sewage')" 
           />
           <LayerToggle 
-            label="雨水" 
+            label="排水" 
             :active="layers.drain" 
             color="bg-tech-drain" 
             text-color="text-tech-drain"

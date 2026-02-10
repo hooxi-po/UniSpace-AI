@@ -78,7 +78,7 @@
       "name": "理科实验楼A座",
       "contractor": "未指定",
       "contractAmount": 15000000,
-      "status": "PendingReview",
+      "status": "PendingArchive",
       "completionDate": "2024-06-30",
       "hasCadData": true,
       "fundSource": "Fiscal",
@@ -103,6 +103,17 @@
           "reviewStatus": "Approved",
           "reviewedBy": "审核员B",
           "reviewedAt": "2024-07-02"
+        },
+        {
+          "id": "ATT-1770600721787",
+          "name": "1.pdf",
+          "type": "approval",
+          "uploadDate": "2026-02-09",
+          "uploadedByDept": "二级学院",
+          "reviewStatus": "Approved",
+          "reviewedBy": "系统审核",
+          "reviewedAt": "2026-02-09T01:32:19.522Z",
+          "reviewNote": "审核通过"
         }
       ],
       "splitItems": [
@@ -128,7 +139,8 @@
       "roomFunctionPlan": [],
       "isOverdue": false,
       "isArchived": false,
-      "source": "stock"
+      "source": "stock",
+      "roomFunctionPlanConfirmed": true
     }
   ]
 }

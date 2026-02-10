@@ -108,26 +108,29 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { FileSpreadsheet, Upload, AlertCircle, CheckCircle2, Trash2, Info } from 'lucide-vue-next'
 import * as XLSX from 'xlsx'
 
 type ImportTab = 'buildings' | 'rooms'
-type ImportMode = 'new_only'
+// type ImportMode = 'new_only'
 
 type BuildingRow = {
   code: string
-  name: string
+  projectName: string
 
   contractor?: string
+  supervisor?: string
+
   contractAmount?: number
   auditAmount?: number
-  value?: number
   fundSource?: 'Fiscal' | 'SelfRaised' | 'Mixed'
 
   location?: string
-  completionDate?: string
+  plannedArea?: number
   floorCount?: number
+  roomCount?: number
+  buildingName?: string
 
   plannedStartDate?: string
   plannedEndDate?: string
@@ -135,7 +138,6 @@ type BuildingRow = {
   actualEndDate?: string
 
   projectManager?: string
-  supervisor?: string
 }
 
 type RoomRow = {
@@ -193,7 +195,7 @@ function parseDateYMD(v: any): string | undefined {
 }
 
 const tab = ref<ImportTab>('buildings')
-const importMode = ref<ImportMode>('new_only')
+// const importMode = ref<ImportMode>('new_only')
 
 const fileName = ref('')
 const sheetNames = ref<string[]>([])
@@ -226,11 +228,22 @@ const templateHint = computed(() => ({
     title: '楼宇导入模板（推荐表头）',
     cols: [
       '楼宇编码(必填) / BuildingCode',
-      '楼宇名称(必填) / BuildingName',
+      '工程名称(必填) / ProjectName',
+      '承建单位 / Contractor',
+      '监理单位 / Supervisor',
+      '合同金额(元)(必填) / ContractAmount',
+      '审计金额(元) / AuditAmount',
+      '资金来源(Fiscal/SelfRaised/Mixed) / FundSource',
       '建设地点 / Location',
-      '合同金额(元) / ContractAmount (或 Value)',
-      '竣工日期(YYYY-MM-DD) / CompletionDate',
-      '楼层数 / FloorCount',
+      '规划建筑面积(m²) / PlannedArea',
+      '楼层 / FloorCount',
+      '房间数 / RoomCount',
+      '楼栋名称 / BuildingName',
+      '项目负责人 / ProjectManager',
+      '计划开工日期(YYYY-MM-DD) / PlannedStartDate',
+      '计划竣工日期(YYYY-MM-DD) / PlannedEndDate',
+      '实际开工日期(YYYY-MM-DD) / ActualStartDate',
+      '实际竣工日期(YYYY-MM-DD) / ActualEndDate',
     ],
   },
   rooms: {
@@ -272,21 +285,22 @@ function parseCurrentSheet(rows: any[]) {
     楼宇编码: 'code' as any,
     楼栋编码: 'code' as any,
     编码: 'code' as any,
-    buildingname: 'name',
-    name: 'name',
-    楼宇名称: 'name' as any,
-    楼栋名称: 'name' as any,
-    建筑名称: 'name' as any,
+
+    projectname: 'projectName',
+    工程名称: 'projectName' as any,
+    项目名称: 'projectName' as any,
+    name: 'projectName',
 
     contractor: 'contractor',
     承建单位: 'contractor' as any,
     承建商: 'contractor' as any,
 
+    supervisor: 'supervisor',
+    监理单位: 'supervisor' as any,
+
     contractamount: 'contractAmount',
     合同金额: 'contractAmount' as any,
-    价值: 'contractAmount' as any,
     金额: 'contractAmount' as any,
-    value: 'contractAmount' as any,
 
     auditamount: 'auditAmount',
     审计金额: 'auditAmount' as any,
@@ -298,12 +312,25 @@ function parseCurrentSheet(rows: any[]) {
     建设地点: 'location' as any,
     地点: 'location' as any,
     地址: 'location' as any,
-    completiondate: 'completionDate',
-    竣工日期: 'completionDate' as any,
-    完工日期: 'completionDate' as any,
+
+    plannedarea: 'plannedArea',
+    规划建筑面积: 'plannedArea' as any,
+    '规划建筑面积(m²)': 'plannedArea' as any,
+
     floorcount: 'floorCount',
+    楼层: 'floorCount' as any,
     楼层数: 'floorCount' as any,
     层数: 'floorCount' as any,
+
+    roomcount: 'roomCount',
+    房间数: 'roomCount' as any,
+
+    buildingname: 'buildingName',
+    楼栋名称: 'buildingName' as any,
+    楼宇名称: 'buildingName' as any,
+
+    projectmanager: 'projectManager',
+    项目负责人: 'projectManager' as any,
 
     plannedstartdate: 'plannedStartDate',
     计划开工日期: 'plannedStartDate' as any,
@@ -313,11 +340,6 @@ function parseCurrentSheet(rows: any[]) {
     实际开工日期: 'actualStartDate' as any,
     actualenddate: 'actualEndDate',
     实际竣工日期: 'actualEndDate' as any,
-
-    projectmanager: 'projectManager',
-    项目负责人: 'projectManager' as any,
-    supervisor: 'supervisor',
-    监理单位: 'supervisor' as any,
   }
 
   const rAlias: Record<string, keyof RoomRow> = {
@@ -353,32 +375,47 @@ function parseCurrentSheet(rows: any[]) {
         if (key) mapped[key] = v
       })
       const code = String(mapped.code || '').trim()
-      const name = String(mapped.name || '').trim()
+      const projectName = String(mapped.projectName || '').trim()
 
       if (!code) nextErrors.push({ rowIndex: idx + 1, message: '楼宇编码为空' })
-      if (!name) nextErrors.push({ rowIndex: idx + 1, message: '楼宇名称为空' })
+      if (!projectName) nextErrors.push({ rowIndex: idx + 1, message: '工程名称为空' })
 
-      const completionDate = parseDateYMD(mapped.completionDate)
-      if (mapped.completionDate && !completionDate) {
-        nextErrors.push({ rowIndex: idx + 1, message: '竣工日期格式不合法（建议 YYYY-MM-DD）' })
+      const plannedStartDate = parseDateYMD(mapped.plannedStartDate) || ''
+      const plannedEndDate = parseDateYMD(mapped.plannedEndDate) || ''
+      const actualStartDate = parseDateYMD(mapped.actualStartDate)
+      const actualEndDate = parseDateYMD(mapped.actualEndDate)
+
+      if (mapped.plannedStartDate && !parseDateYMD(mapped.plannedStartDate)) {
+        nextErrors.push({ rowIndex: idx + 1, message: '计划开工日期格式不合法（建议 YYYY-MM-DD）' })
+      }
+      if (mapped.plannedEndDate && !parseDateYMD(mapped.plannedEndDate)) {
+        nextErrors.push({ rowIndex: idx + 1, message: '计划竣工日期格式不合法（建议 YYYY-MM-DD）' })
+      }
+      if (mapped.actualStartDate && !parseDateYMD(mapped.actualStartDate)) {
+        nextErrors.push({ rowIndex: idx + 1, message: '实际开工日期格式不合法（建议 YYYY-MM-DD）' })
+      }
+      if (mapped.actualEndDate && !parseDateYMD(mapped.actualEndDate)) {
+        nextErrors.push({ rowIndex: idx + 1, message: '实际竣工日期格式不合法（建议 YYYY-MM-DD）' })
       }
 
       return {
         code,
-        name,
+        projectName,
         contractor: mapped.contractor ? String(mapped.contractor).trim() : undefined,
+        supervisor: mapped.supervisor ? String(mapped.supervisor).trim() : undefined,
         contractAmount: parseNumber(mapped.contractAmount),
         auditAmount: parseNumber(mapped.auditAmount),
         fundSource: (mapped.fundSource as any) || 'Fiscal',
         location: mapped.location ? String(mapped.location).trim() : undefined,
-        completionDate,
+        plannedArea: parseNumber(mapped.plannedArea),
         floorCount: parseNumber(mapped.floorCount),
-        plannedStartDate: mapped.plannedStartDate || '',
-        plannedEndDate: mapped.plannedEndDate || '',
-        actualStartDate: mapped.actualStartDate || undefined,
-        actualEndDate: mapped.actualEndDate || undefined,
-        projectManager: mapped.projectManager ? String(mapped.projectManager).trim() : '',
-        supervisor: mapped.supervisor ? String(mapped.supervisor).trim() : '',
+        roomCount: parseNumber(mapped.roomCount),
+        buildingName: mapped.buildingName ? String(mapped.buildingName).trim() : undefined,
+        projectManager: mapped.projectManager ? String(mapped.projectManager).trim() : undefined,
+        plannedStartDate,
+        plannedEndDate,
+        actualStartDate,
+        actualEndDate,
       }
     })
 
@@ -478,27 +515,31 @@ async function doImport() {
   try {
     if (tab.value === 'buildings') {
       const toAdd = buildingRows.value
-        .filter(r => r.code && r.name)
-        .map(r => ({
-          id: `BLD-${r.code}`,
-          code: r.code,
-          name: r.name,
-          location: r.location || '-',
-          value: r.value ?? 0,
-          completionDate: r.completionDate || new Date().toISOString().split('T')[0],
-          hasCadData: false,
-          floorCount: r.floorCount,
+        .filter(r => r.code && r.projectName)
+        .map(r => {
+          const contractAmount = Number(r.contractAmount ?? 0)
+          const auditAmount = r.auditAmount !== undefined ? Number(r.auditAmount) : undefined
+
+          const auditReductionRate =
+            auditAmount !== undefined && contractAmount > 0
+              ? Number((((contractAmount - auditAmount) / contractAmount) * 100).toFixed(2))
+              : undefined
+
+          return {
+            id: `STOCK-BLD-${r.code}`,
+            name: r.projectName,
           contractor: r.contractor || '未指定',
-          contractAmount: Number(r.contractAmount ?? 0),
-          auditAmount: r.auditAmount !== undefined ? Number(r.auditAmount) : undefined,
-          auditReductionRate:
-            r.auditAmount !== undefined && Number(r.contractAmount ?? 0) > 0
-              ? Number((((Number(r.contractAmount ?? 0) - Number(r.auditAmount)) / Number(r.contractAmount ?? 0)) * 100).toFixed(2))
-              : undefined,
-          status: 'DisposalPending',
+            contractAmount,
+            auditAmount,
+            auditReductionRate,
+            status: 'PendingReview',
+            completionDate: r.plannedEndDate || new Date().toISOString().split('T')[0],
+            hasCadData: false,
           fundSource: (r.fundSource || 'Fiscal') as any,
-          plannedArea: undefined,
-          roomCount: undefined,
+            location: r.location || '-',
+            plannedArea: r.plannedArea !== undefined ? Number(r.plannedArea) : undefined,
+            floorCount: r.floorCount !== undefined ? Number(r.floorCount) : undefined,
+            roomCount: r.roomCount !== undefined ? Number(r.roomCount) : undefined,
           plannedStartDate: r.plannedStartDate || '',
           plannedEndDate: r.plannedEndDate || '',
           actualStartDate: r.actualStartDate || undefined,
@@ -518,7 +559,9 @@ async function doImport() {
           roomFunctionPlan: [],
           isOverdue: false,
           isArchived: false,
-        }))
+            source: 'stock',
+          }
+        })
       const res = await $fetch<{ addedBuildings: any[] }>('/api/fixation/stock', {
         method: 'POST',
         body: { buildings: toAdd },

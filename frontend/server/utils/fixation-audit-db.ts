@@ -71,6 +71,9 @@ export type Project = {
   attachments: Attachment[]
   splitItems: AssetSplitItem[]
   roomFunctionPlan: RoomPlanItem[]
+  roomFunctionPlanConfirmed?: boolean
+  roomFunctionPlanConfirmedAt?: string
+  roomFunctionPlanConfirmedBy?: string
   isOverdue: boolean
   isArchived: boolean
   source?: 'project' | 'stock' // 数据来源：project=新建工程项目，stock=存量房产导入
@@ -307,4 +310,6 @@ export async function deleteSplitItem(projectId: string, itemId: string): Promis
   await writeAuditDb(db)
   return p
 }
+
+
 

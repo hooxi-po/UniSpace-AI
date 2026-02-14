@@ -1,0 +1,177 @@
+{
+  "list": [
+    {
+      "id": "REQ-2026-010",
+      "department": "计算机科学与技术学院",
+      "applicant": "张老师",
+      "applicantPhone": "13800001111",
+      "area": 120,
+      "reason": "新增科研团队，急需科研实验室与办公工位。",
+      "useType": "Lab",
+      "urgency": "Urgent",
+      "requestedDate": "2026-02-10",
+      "status": "Pending",
+      "approvalRecords": [
+        {
+          "id": "APR-REQ-010-1",
+          "approverRole": "申请人",
+          "approverName": "张老师",
+          "action": "Submit",
+          "comment": "提交申请",
+          "timestamp": "2026-02-10T09:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "REQ-2026-011",
+      "department": "机械工程学院",
+      "applicant": "李院长",
+      "applicantPhone": "13900002222",
+      "area": 45,
+      "reason": "学院行政办公室调整，需要一间约45㎡办公室。",
+      "useType": "Office",
+      "urgency": "Normal",
+      "requestedDate": "2026-02-12",
+      "status": "Approved",
+      "approvalRecords": [
+        {
+          "id": "APR-REQ-011-1",
+          "approverRole": "申请人",
+          "approverName": "李院长",
+          "action": "Submit",
+          "comment": "提交申请",
+          "timestamp": "2026-02-12T14:30:00Z"
+        },
+        {
+          "id": "APR-REQ-011-2",
+          "approverRole": "审批人",
+          "approverName": "当前用户",
+          "action": "Approve",
+          "comment": "同意，进入待配房",
+          "timestamp": "2026-02-14T10:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": "REQ-2026-012",
+      "department": "教务处",
+      "applicant": "孙处长",
+      "applicantPhone": "13700003333",
+      "area": 180,
+      "reason": "新增教务服务窗口，需配置会议室/接待空间。",
+      "useType": "Meeting",
+      "urgency": "Normal",
+      "requestedDate": "2026-02-13",
+      "status": "Allocated",
+      "allocatedRooms": [
+        "RM-QS-001-201",
+        "RM-QS-001-101"
+      ],
+      "approvalRecords": [
+        {
+          "id": "APR-REQ-012-1",
+          "approverRole": "申请人",
+          "approverName": "孙处长",
+          "action": "Submit",
+          "comment": "提交申请",
+          "timestamp": "2026-02-13T08:20:00Z"
+        },
+        {
+          "id": "APR-REQ-012-2",
+          "approverRole": "审批人",
+          "approverName": "当前用户",
+          "action": "Approve",
+          "comment": "同意，进入待配房",
+          "timestamp": "2026-02-13T10:10:00Z"
+        }
+      ]
+    }
+  ],
+  "adjustments": [
+    {
+      "id": "ADJ-EX-001",
+      "department": "物理学院",
+      "applicant": "赵教授",
+      "fromBuildingName": "旗山校区-实验教学楼A",
+      "fromRoomNo": "301",
+      "fromArea": 85.0,
+      "reason": "仪器搬迁计划已批复，申请更换至同楼栋更大面积实验室以满足新设备安装。",
+      "status": "Pending",
+      "createdAt": "2026-02-10"
+    },
+    {
+      "id": "ADJ-EX-002",
+      "department": "化学学院",
+      "applicant": "王老师",
+      "fromBuildingName": "旗山校区-实验教学楼A",
+      "fromRoomNo": "302",
+      "fromArea": 90.0,
+      "reason": "原实验室进行功能改造，需临时换至同等规格备用实验室。",
+      "status": "Approved",
+      "createdAt": "2026-02-11",
+      "approvedAt": "2026-02-12"
+    },
+    {
+      "id": "ADJ-EX-003",
+      "department": "经济管理学院",
+      "applicant": "刘院长",
+      "fromBuildingName": "旗山校区-综合办公楼",
+      "fromRoomNo": "201",
+      "fromArea": 120.5,
+      "toBuildingName": "旗山校区-综合办公楼",
+      "toRoomNo": "102",
+      "toArea": 60.0,
+      "reason": "原研讨室过大造成资源浪费，申请调整至更适合小班研讨的房间。",
+      "status": "Allocated",
+      "createdAt": "2026-02-05",
+      "approvedAt": "2026-02-06",
+      "allocatedAt": "2026-02-08"
+    },
+    {
+      "id": "RET-001",
+      "department": "人文艺术学院",
+      "applicant": "陈主任",
+      "fromBuildingName": "旗山校区-综合办公楼",
+      "fromRoomNo": "101",
+      "fromArea": 45.5,
+      "reason": "部门办公地点整合，退还该分散办公用房。",
+      "status": "Pending",
+      "createdAt": "2026-02-14"
+    },
+    {
+      "id": "RET-002",
+      "department": "后勤处",
+      "applicant": "张科长",
+      "fromBuildingName": "旗山校区-实验教学楼A",
+      "fromRoomNo": "401",
+      "fromArea": 200.0,
+      "reason": "项目结束，按期交还临时库房。",
+      "status": "Completed",
+      "createdAt": "2026-01-20",
+      "approvedAt": "2026-01-21",
+      "completedAt": "2026-01-25"
+    }
+  ],
+  "borrows": [
+    {
+      "id": "TB-001",
+      "buildingName": "旗山校区-综合办公楼",
+      "roomNo": "102",
+      "ownerDept": "教务处",
+      "borrowerDept": "招生办",
+      "startDate": "2026-02-01",
+      "endDate": "2026-02-28",
+      "status": "Active"
+    },
+    {
+      "id": "TB-002",
+      "buildingName": "旗山校区-实验教学楼A",
+      "roomNo": "302",
+      "ownerDept": "物理学院",
+      "borrowerDept": "科研处",
+      "startDate": "2026-01-15",
+      "endDate": "2026-03-15",
+      "status": "Active"
+    }
+  ]
+}

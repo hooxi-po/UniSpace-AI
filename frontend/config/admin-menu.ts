@@ -36,6 +36,7 @@ export const adminMenuConfig = [
         key: 'property_allocation',
         label: '公用房归口调配管理',
         children: [
+          { key: 'allocation_apply', label: '申请用房' },
           { key: 'allocation_approval', label: '用房审批' },
           { key: 'allocation_assignment', label: '房源分配' },
           { key: 'allocation_adjustment', label: '用房调整' },

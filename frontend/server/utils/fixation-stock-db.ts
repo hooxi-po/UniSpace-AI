@@ -203,3 +203,12 @@ export async function addRooms(rooms: Room[]): Promise<Room[]> {
   await writeStockDb(db)
   return toAdd
 }
+
+export async function updateRoom(id: string, updates: Partial<Room>): Promise<Room | null> {
+  const db = await readStockDb()
+  const idx = db.rooms.findIndex(r => r.id === id)
+  if (idx === -1) return null
+  db.rooms[idx] = { ...db.rooms[idx], ...updates }
+  await writeStockDb(db)
+  return db.rooms[idx]
+}

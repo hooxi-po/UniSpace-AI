@@ -3,6 +3,8 @@ import type { Project as FixationProject } from '~/server/utils/fixation-project
 import type { Project as AuditProject } from '~/server/utils/fixation-audit-db'
 import type { Building, Room } from '~/server/utils/fixation-stock-db'
 
+import type { FixationOperationLog } from '~/server/utils/fixation-logs-db'
+
 export const fixationService = {
   async fetchApplyList() {
     return $fetch<{ list: ApplyProject[] }>('/api/fixation/apply')
@@ -60,5 +62,16 @@ export const fixationService = {
       method: 'POST',
       body: { projectId, plan },
     })
+  },
+
+  async updateRoom(id: string, updates: Partial<Room>) {
+    return $fetch<{ room: Room }>('/api/fixation/stock/room', {
+      method: 'PATCH',
+      body: { id, updates },
+    })
+  },
+
+  async fetchLogs() {
+    return $fetch<{ list: FixationOperationLog[] }>('/api/fixation/logs')
   },
 } as const

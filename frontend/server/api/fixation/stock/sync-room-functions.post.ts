@@ -1,5 +1,6 @@
 import type { RoomPlanItem } from '~/server/utils/fixation-audit-db'
 import { readStockDb, writeStockDb } from '~/server/utils/fixation-stock-db'
+import { addFixationLog } from '~/server/utils/fixation-logs-db'
 
 type Body = {
   projectId?: string
@@ -65,6 +66,17 @@ export default defineEventHandler(async (event) => {
   }
 
   await writeStockDb(db)
+
+  await addFixationLog({
+    id: `LOG-STOCK-SYNC-${Date.now()}`,
+    at: new Date().toISOString(),
+    operator: '当前用户',
+    module: 'fixation',
+    action: 'syncRoomFunctions',
+    projectId: body.projectId,
+    summary: `同步房间功能：更新 ${updatedCount}，新增 ${addedCount}`,
+    detail: { projectId: body.projectId, planCount: plan.length, updatedRooms: updatedCount, addedRooms: addedCount }
+  })
 
   return { updatedRooms: updatedCount, addedRooms: addedCount }
 })

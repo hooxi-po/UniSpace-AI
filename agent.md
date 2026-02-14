@@ -2,7 +2,7 @@
 
 > 作用：给任何接手本仓库的编码助手一套“可执行、可验证、可交付”的统一规则。  
 > 适用范围：`UniSpace-AI/` 全仓库（前端 + 后端 + 文档）。  
-> 最后对齐时间：2026-02-10（基于当前代码状态）。
+> 最后对齐时间：2026-02-13（基于当前代码状态）。
 
 ---
 
@@ -82,12 +82,18 @@
 - 页面：`frontend/pages/admin.vue`
 - 图层：`buildings` + `pipes`
 - 表格：`frontend/components/admin/GeoFeatureTable.vue`
+- 编辑/删除弹窗：`frontend/components/admin/AssetFeatureDialog.vue`、`frontend/components/admin/AssetDeleteDialog.vue`
+- 行级操作组件：`frontend/components/admin/AssetRowActions.vue`、`frontend/components/admin/AssetVisibilitySwitch.vue`
+- CRUD 状态编排：`frontend/composables/admin/useAssetCrud.ts`
+- CRUD 请求封装：`frontend/services/geo-features.ts`
 - 可见性接口：`PUT /api/v1/features/visibility`
+- 资产 CRUD：`POST /api/v1/features`、`PUT /api/v1/features`、`DELETE /api/v1/features?id=...`
 
 ### 4.3 后端接口核心
 
 - 文件：`backend/src/main/java/com/jolt/workflow/geo/GeoFeatureController.java`
 - `GET /features` 支持：`bbox/layers/limit/visible`
+- `POST/PUT/DELETE /features` 支持资产中心新增/编辑/删除
 - `normalizeLayerName(...)` 当前映射：`pipes => roads`
 
 ---
@@ -221,6 +227,7 @@ curl -s "http://localhost:8080/api/v1/features?layers=pipes&visible=true&limit=1
 - 打开 `/admin`
 - 资产中心切到“建筑/管道”都能出数据
 - `visible` 开关可写回且刷新后生效
+- 新增/编辑/删除操作可成功写回并刷新列表
 
 ### 8.4 改启动/构建链路
 

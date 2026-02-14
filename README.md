@@ -5,7 +5,7 @@
 - 前端：Nuxt 3（Vue 3）+ Cesium（3D 地图）+ TailwindCSS + AI 助手（Gemini，SSE 流式输出）
 - 后端：Spring Boot 4 + PostgreSQL/PostGIS + Flyway（空间要素表 `geo_features`）
 
-> 当前版本说明：主地图中的“管道”已切换为后端动态数据：前端请求 `GET /api/v1/features?layers=pipes`，并在前端按管道分类规则（源自道路 `highway`）映射为 `water/drain/sewage` 三类（统一线宽 `5`）。后端对 `pipes` 做了别名兼容（映射到数据库 `geo_features.layer='roads'`）。后台大厅（`/admin`）资产中心同步使用 `buildings/pipes` 并支持 `visible` 开关。
+> 当前版本说明：主地图中的“管道”已切换为后端动态数据：前端请求 `GET /api/v1/features?layers=pipes`，并在前端按管道分类规则（源自道路 `highway`）映射为 `water/drain/sewage` 三类（统一线宽 `5`）。后端对 `pipes` 做了别名兼容（映射到数据库 `geo_features.layer='roads'`）。后台大厅（`/admin`）资产中心同步使用 `buildings/pipes`，支持 `visible` 开关与要素 CRUD（新增/编辑/删除）。
 
 ---
 
@@ -192,8 +192,10 @@ export GEMINI_API_KEY=YOUR_KEY
 - `pages/admin.vue`
   - 后台大厅（浅色字节后台风格）：
     - 使用左侧菜单布局（组件：`components/admin/AdminLayout.vue`、`components/admin/AdminSider.vue`），资产中心包含二级菜单：建筑 / 管道
-    - 资产中心：从后端 GeoJSON API 拉取真实数据（`GET http://localhost:8080/api/v1/features?layers=buildings|pipes`），并支持搜索、行点击查看原始 Feature JSON
-    - 组件化：`components/admin/GeoFeatureTable.vue`（通用图层表格） + `components/admin/JsonDrawer.vue`（详情抽屉）
+    - 资产中心：从后端 GeoJSON API 拉取真实数据（`GET http://localhost:8080/api/v1/features?layers=buildings|pipes`），并支持搜索、可见性切换、要素 CRUD（新增/编辑/删除）
+    - 组件化：表格/弹窗/操作已拆分为 `components/admin/GeoFeatureTable.vue`、`components/admin/AssetFeatureDialog.vue`、`components/admin/AssetDeleteDialog.vue`、`components/admin/AssetRowActions.vue`、`components/admin/AssetVisibilitySwitch.vue`
+    - 资产 CRUD 逻辑收敛到 `composables/admin/useAssetCrud.ts`，请求封装在 `services/geo-features.ts`
+    - 编辑体验：支持「表单模式（默认）」+「高级 JSON」双模式
     - `useConstants.ts` 中的资产/告警/工单仍为 mock（主地图与右侧详情面板仍会用到）
 
 ### 地图核心（`components/MapView.vue`）
@@ -405,6 +407,36 @@ curl -s "http://localhost:8080/api/v1/features?layers=pipes&limit=10" | cat
 ### `GET /api/v1/features/{id}`
 
 返回：单个 GeoJSON `Feature`。
+
+### `POST /api/v1/features`
+
+用途：新增建筑/管道要素。
+
+Body（示例）：
+
+```json
+{
+  "id": "pipe_001",
+  "layer": "pipes",
+  "visible": true,
+  "geometry": { "type": "LineString", "coordinates": [[119.1, 26.0], [119.2, 26.1]] },
+  "properties": { "name": "新管道", "highway": "service" }
+}
+```
+
+返回：`{"ok":true,"id":"..."}`（201，或 400/409）。
+
+### `PUT /api/v1/features`
+
+用途：更新要素（按 `id` 全量更新 `layer/geometry/properties/visible`）。
+
+返回：`{"ok":true,"id":"..."}`（或 400/404）。
+
+### `DELETE /api/v1/features?id=...`
+
+用途：按 `id` 删除要素。
+
+返回：`{"ok":true,"id":"..."}`（或 400/404）。
 
 ### `PUT /api/v1/features/visibility`
 

@@ -23,24 +23,32 @@
         <section v-else-if="activeTab === 'assets'" class="panel">
           <div class="panel__header panel__header--row">
             <div>
-              <div class="panel__title">资产中心（Mock）</div>
-              <div class="panel__subtitle">当前展示 mock 数据</div>
+              <div class="panel__title">资产中心</div>
+              <div class="panel__subtitle">支持建筑/管道数据 CRUD</div>
             </div>
             <div class="toolbar">
               <input class="admin-input" v-model="assetSearch" :placeholder="searchPlaceholder" />
+              <button class="admin-btn admin-btn--primary" type="button" @click="openCreateAsset">
+                {{ assetCreateLabel }}
+              </button>
             </div>
           </div>
           <div class="panel__body">
+            <div v-if="assetNotice" :class="['asset-notice', `asset-notice--${assetNotice.type}`]">
+              {{ assetNotice.text }}
+            </div>
+
             <GeoFeatureTable
               v-if="activeSubTab === 'assets_buildings'"
               :active="activeSubTab === 'assets_buildings'"
+              :reload-key="assetReloadKey"
               :backend-base-url="backendBaseUrl"
               layer="buildings"
               :search="assetSearch"
               :search-keys="['id', 'name', 'buildingType', 'amenity', 'geomType']"
               :columns="buildingColumns as any"
               :map-row="mapBuildingRow as any"
-              :cell="assetBuildingCell"
+              :cell="assetCell"
               @select="openAssetDetail"
               @count="currentCount = $event"
             />
@@ -48,17 +56,19 @@
             <GeoFeatureTable
               v-else
               :active="activeSubTab === 'assets_pipelines'"
+              :reload-key="assetReloadKey"
               :backend-base-url="backendBaseUrl"
               layer="pipes"
               :search="assetSearch"
-              :search-keys="['id', 'name', 'highway', 'geomType']"
+              :search-keys="['id', 'name', 'pipeCategory', 'highway', 'geomType']"
               :columns="roadColumns as any"
               :map-row="mapRoadRow as any"
+              :cell="assetCell"
               @select="openAssetDetail"
               @count="currentCount = $event"
             />
 
-            <div class="footer-note">当前显示：{{ currentCount }} 条</div>
+            <div class="footer-note">当前显示：{{ currentCount }} 条（{{ assetLayerLabel }}）</div>
           </div>
         </section>
 
@@ -95,19 +105,42 @@
         :obj="detailObj"
         @close="closeDetail"
       />
+
+      <AssetFeatureDialog
+        :open="editorOpen"
+        :mode="editorMode"
+        :layer="activeAssetLayer"
+        :payload="editorPayload"
+        :submitting="editorSubmitting"
+        :api-error="editorError"
+        @close="closeEditor"
+        @submit="submitEditor"
+      />
+
+      <AssetDeleteDialog
+        :open="deleteOpen"
+        :id="deleteTargetId"
+        :submitting="deleteSubmitting"
+        :error="deleteError"
+        @close="closeDeleteDialog"
+        @confirm="confirmDelete"
+      />
     </template>
   </AdminLayout>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, h } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { ArrowLeft } from 'lucide-vue-next'
 import type { ThirdKey } from '~/types/admin'
+import type { AssetLayer } from '~/services/geo-features'
 
 import AdminLayout from '~/components/admin/AdminLayout.vue'
 import GeoFeatureTable from '~/components/admin/GeoFeatureTable.vue'
 import PropertyTable from '~/components/admin/PropertyTable.vue'
 import JsonDrawer from '~/components/admin/JsonDrawer.vue'
+import AssetFeatureDialog from '~/components/admin/AssetFeatureDialog.vue'
+import AssetDeleteDialog from '~/components/admin/AssetDeleteDialog.vue'
 
 import { adminCompMap } from '~/config/admin-comp-map'
 import { getTabs, getSubTabs, getThirdTabs } from '~/config/admin-menu'
@@ -119,12 +152,15 @@ import {
   mapRoadRow,
 } from '~/utils/admin-tables'
 import { useAdminDetail } from '~/composables/useAdminDetail'
+import { useAssetCrud } from '~/composables/admin/useAssetCrud'
 
 const compMap = adminCompMap
 
 const searchPlaceholder = computed(() => {
   if (activeTab.value === 'property') return '搜索 id / 名称 / 类型'
-  return activeSubTab.value === 'assets_buildings' ? '搜索 id / name' : '搜索 id / name'
+  return activeSubTab.value === 'assets_buildings'
+    ? '搜索 ID / 名称 / 建筑类型 / 用途'
+    : '搜索 ID / 名称 / 管道类别 / 道路类型'
 })
 
 const tabs = computed(() => getTabs())
@@ -162,45 +198,43 @@ watch(currentThirdTabs, (tabs) => {
 const assetSearch = ref('')
 const backendBaseUrl = 'http://localhost:8080'
 const currentCount = ref(0)
+const assetReloadKey = ref(0)
 
 const { detailOpen, detailObj, detailType, closeDetail, openAssetDetail, openPropertyDetail } = useAdminDetail()
 
-function assetBuildingCell(row: any, colKey: string) {
-  if (colKey === 'visible') {
-    return h('label', { class: 'switch' }, [
-      h('input', {
-        type: 'checkbox',
-        checked: !!row.visible,
-        onChange: async (e: Event) => {
-          const target = e.target as HTMLInputElement
-          const newVisible = target.checked
+const activeAssetLayer = computed<AssetLayer>(() => {
+  return activeSubTab.value === 'assets_buildings' ? 'buildings' : 'pipes'
+})
 
-          // optimistic UI
-          const old = !!row.visible
-          row.visible = newVisible
+const assetLayerLabel = computed(() => {
+  return activeAssetLayer.value === 'buildings' ? '建筑' : '管道'
+})
 
-          try {
-            const res = await fetch(
-              `${backendBaseUrl}/api/v1/features/visibility`,
-              {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: row.id, visible: newVisible }),
-              }
-            )
-            if (!res.ok) throw new Error(`HTTP ${res.status}`)
-          } catch (err) {
-            console.error('Failed to update visibility:', err)
-            row.visible = old
-            target.checked = old
-          }
-        },
-      }),
-      h('span'),
-    ])
-  }
-  return null
-}
+const {
+  assetNotice,
+  assetCreateLabel,
+  editorOpen,
+  editorMode,
+  editorPayload,
+  editorSubmitting,
+  editorError,
+  deleteOpen,
+  deleteTargetId,
+  deleteSubmitting,
+  deleteError,
+  openCreateAsset,
+  closeEditor,
+  submitEditor,
+  closeDeleteDialog,
+  confirmDelete,
+  assetCell,
+} = useAssetCrud({
+  backendBaseUrl,
+  activeAssetLayer,
+  onReload: () => {
+    assetReloadKey.value += 1
+  },
+})
 </script>
 
 <style scoped>
@@ -250,17 +284,6 @@ function assetBuildingCell(row: any, colKey: string) {
 
 .admin-btn--default {
   text-decoration: none;
-}
-
-.admin-btn--link {
-  border-color: transparent;
-  background: transparent;
-  color: var(--primary);
-  padding: 0 6px;
-}
-
-.admin-btn--link:hover {
-  background: rgba(22, 100, 255, 0.08);
 }
 
 .admin-input {
@@ -314,6 +337,26 @@ function assetBuildingCell(row: any, colKey: string) {
   padding: 12px;
 }
 
+.asset-notice {
+  margin-bottom: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.asset-notice--success {
+  border-color: rgba(18, 166, 90, 0.26);
+  background: rgba(18, 166, 90, 0.08);
+  color: #0f7a41;
+}
+
+.asset-notice--error {
+  border-color: rgba(245, 74, 69, 0.26);
+  background: rgba(245, 74, 69, 0.08);
+  color: #c03631;
+}
+
 .toolbar {
   display: flex;
   align-items: center;
@@ -321,176 +364,9 @@ function assetBuildingCell(row: any, colKey: string) {
   flex-wrap: wrap;
 }
 
-.table-wrap {
-  width: 100%;
-  overflow: auto;
-}
-
-.table {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  font-size: 13px;
-}
-
-.table thead th {
-  position: sticky;
-  top: 0;
-  background: #ffffff;
-  text-align: left;
-  font-weight: 600;
-  color: var(--muted);
-  border-bottom: 1px solid var(--border);
-  padding: 10px 10px;
-}
-
-.table tbody td {
-  padding: 10px 10px;
-  border-bottom: 1px solid #f0f1f2;
-}
-
-.table tbody tr:hover {
-  background: #fafbfc;
-}
-
-.row-click {
-  cursor: pointer;
-}
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  height: 22px;
-  padding: 0 8px;
-  border-radius: 999px;
-  font-size: 12px;
-  border: 1px solid var(--border);
-  background: #f6f7f8;
-  color: var(--muted);
-}
-
-.badge--success {
-  background: rgba(18, 166, 90, 0.08);
-  border-color: rgba(18, 166, 90, 0.22);
-  color: #0f7a41;
-}
-
-.badge--warning {
-  background: rgba(245, 159, 0, 0.08);
-  border-color: rgba(245, 159, 0, 0.22);
-  color: #b26a00;
-}
-
-.badge--danger {
-  background: rgba(245, 74, 69, 0.08);
-  border-color: rgba(245, 74, 69, 0.22);
-  color: #c03631;
-}
-
-.badge--default {
-  background: #f6f7f8;
-  border-color: var(--border);
-  color: var(--muted);
-}
-
-.kv {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.kv__row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.kv__key {
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.kv__val {
-  font-size: 12px;
-}
-
-.code {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: #0b1220;
-  color: #e6edf3;
-  padding: 10px;
-  max-height: 70vh;
-  overflow: auto;
-}
-
-.code pre {
-  margin: 0;
-  font-size: 12px;
-  line-height: 18px;
-  white-space: pre-wrap;
-}
-
-.drawer {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-}
-
-.drawer__mask {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.35);
-}
-
-.drawer__panel {
-  position: absolute;
-  right: 0;
-  top: 0;
-  height: 100%;
-  width: 560px;
-  max-width: 100%;
-  background: #ffffff;
-  border-left: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-}
-
-.drawer__header {
-  padding: 12px 12px;
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.drawer__title {
-  font-weight: 600;
-}
-
-.drawer__body {
-  padding: 12px;
-  overflow: auto;
-}
-
-.drawer__footer {
-  margin-top: 10px;
-  display: flex;
-  justify-content: flex-end;
-}
-
 .footer-note {
   margin-top: 10px;
   color: var(--muted);
   font-size: 12px;
-}
-
-.ta-r {
-  text-align: right;
-}
-
-.mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 </style>

@@ -1,4 +1,124 @@
 {
-  "buildings": [],
-  "rooms": []
+  "buildings": [
+    {
+      "id": "BLD-QS-001",
+      "code": "QS-001",
+      "name": "旗山校区-综合办公楼",
+      "contractor": "福建建工",
+      "contractAmount": 50000000,
+      "status": "DisposalPending",
+      "completionDate": "2024-12-20",
+      "hasCadData": true,
+      "fundSource": "Fiscal",
+      "location": "旗山校区中心区",
+      "floorCount": 12,
+      "plannedStartDate": "2023-01-01",
+      "plannedEndDate": "2024-12-31",
+      "projectManager": "王工",
+      "supervisor": "李监理",
+      "milestones": [],
+      "attachments": [],
+      "splitItems": [],
+      "roomFunctionPlan": [],
+      "isOverdue": false,
+      "isArchived": true
+    },
+    {
+      "id": "BLD-QS-002",
+      "code": "QS-002",
+      "name": "旗山校区-实验教学楼A",
+      "contractor": "中铁建设",
+      "contractAmount": 85000000,
+      "status": "DisposalPending",
+      "completionDate": "2025-01-15",
+      "hasCadData": true,
+      "fundSource": "Fiscal",
+      "location": "旗山校区北侧",
+      "floorCount": 8,
+      "plannedStartDate": "2023-06-01",
+      "plannedEndDate": "2025-01-31",
+      "projectManager": "张工",
+      "supervisor": "赵监理",
+      "milestones": [],
+      "attachments": [],
+      "splitItems": [],
+      "roomFunctionPlan": [],
+      "isOverdue": false,
+      "isArchived": true
+    }
+  ],
+  "rooms": [
+    {
+      "id": "RM-QS-001-101",
+      "buildingName": "旗山校区-综合办公楼",
+      "roomNo": "101",
+      "floor": 1,
+      "area": 45.5,
+      "type": "Admin",
+      "status": "Empty",
+      "department": "",
+      "functionMain": "行政办公",
+      "functionSub": "办公室"
+    },
+    {
+      "id": "RM-QS-001-102",
+      "buildingName": "旗山校区-综合办公楼",
+      "roomNo": "102",
+      "floor": 1,
+      "area": 60.0,
+      "type": "Admin",
+      "status": "Empty",
+      "department": "",
+      "functionMain": "行政办公",
+      "functionSub": "会议室"
+    },
+    {
+      "id": "RM-QS-001-201",
+      "buildingName": "旗山校区-综合办公楼",
+      "roomNo": "201",
+      "floor": 2,
+      "area": 120.5,
+      "type": "Admin",
+      "status": "Empty",
+      "department": "",
+      "functionMain": "行政办公",
+      "functionSub": "档案室"
+    },
+    {
+      "id": "RM-QS-002-301",
+      "buildingName": "旗山校区-实验教学楼A",
+      "roomNo": "301",
+      "floor": 3,
+      "area": 85.0,
+      "type": "Lab",
+      "status": "Empty",
+      "department": "",
+      "functionMain": "科研用房",
+      "functionSub": "物理实验室"
+    },
+    {
+      "id": "RM-QS-002-302",
+      "buildingName": "旗山校区-实验教学楼A",
+      "roomNo": "302",
+      "floor": 3,
+      "area": 90.0,
+      "type": "Lab",
+      "status": "Empty",
+      "department": "",
+      "functionMain": "科研用房",
+      "functionSub": "化学实验室"
+    },
+    {
+      "id": "RM-QS-002-401",
+      "buildingName": "旗山校区-实验教学楼A",
+      "roomNo": "401",
+      "floor": 4,
+      "area": 200.0,
+      "type": "Teaching",
+      "status": "Empty",
+      "department": "",
+      "functionMain": "教学用房",
+      "functionSub": "多媒体教室"
+    }
+  ]
 }

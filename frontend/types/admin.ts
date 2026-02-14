@@ -21,6 +21,7 @@ export type ThirdKey =
   | 'fix_mapping'
   | 'fix_room_function'
   | 'fix_logs'
+  | 'allocation_apply'
   | 'allocation_approval'
   | 'allocation_assignment'
   | 'allocation_adjustment'

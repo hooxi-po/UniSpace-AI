@@ -10,6 +10,7 @@ import FixRoomFunctionView from '~/views/admin/property/fixation/FixRoomFunction
 import FixLogsView from '~/views/admin/property/fixation/FixLogsView.vue'
 
 // Allocation
+import AllocationApplyView from '~/views/admin/property/allocation/AllocationApplyView.vue'
 import AllocationApprovalView from '~/views/admin/property/allocation/AllocationApprovalView.vue'
 import AllocationAssignmentView from '~/views/admin/property/allocation/AllocationAssignmentView.vue'
 import AllocationAdjustmentView from '~/views/admin/property/allocation/AllocationAdjustmentView.vue'
@@ -72,6 +73,7 @@ export const adminCompMap: Record<ThirdKey, any> = {
   fix_logs: FixLogsView,
 
   // Allocation
+  allocation_apply: AllocationApplyView,
   allocation_approval: AllocationApprovalView,
   allocation_assignment: AllocationAssignmentView,
   allocation_adjustment: AllocationAdjustmentView,

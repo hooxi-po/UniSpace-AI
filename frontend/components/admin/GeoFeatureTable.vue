@@ -28,8 +28,8 @@
               <component :is="props.cell(r, c.key)" @click.stop />
             </template>
             <template v-else>
-              <span v-if="c.mono" class="mono">{{ r[c.key] }}</span>
-              <span v-else>{{ r[c.key] }}</span>
+              <span v-if="c.mono" class="mono cell-text" :title="displayText(r[c.key])">{{ displayText(r[c.key]) }}</span>
+              <span v-else class="cell-text" :title="displayText(r[c.key])">{{ displayText(r[c.key]) }}</span>
             </template>
           </td>
         </tr>
@@ -72,6 +72,7 @@ const props = defineProps<{
   layer: string
   limit?: number
   active?: boolean
+  reloadKey?: number
   search?: string
   searchKeys?: string[]
   columns: Column<Row>[]
@@ -123,6 +124,17 @@ watch(
   { immediate: true }
 )
 
+watch(
+  () => props.reloadKey,
+  () => {
+    if (props.active) fetchFeatures()
+  }
+)
+
+defineExpose({
+  refresh: fetchFeatures,
+})
+
 const filteredRows = computed(() => {
   const q = (props.search || '').trim().toLowerCase()
   if (!q) return rows.value
@@ -136,6 +148,15 @@ const filteredRows = computed(() => {
     return false
   })
 })
+
+function displayText(value: unknown) {
+  if (value == null) return '—'
+  if (typeof value === 'string') {
+    const text = value.trim()
+    return text ? text : '—'
+  }
+  return String(value)
+}
 
 </script>
 
@@ -166,6 +187,7 @@ const filteredRows = computed(() => {
 .table tbody td {
   padding: 10px 10px;
   border-bottom: 1px solid #f0f1f2;
+  vertical-align: middle;
 }
 
 .table tbody tr:hover {
@@ -183,5 +205,51 @@ const filteredRows = computed(() => {
 
 .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.cell-text {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.col-id {
+  width: 220px;
+  max-width: 260px;
+}
+
+.col-name {
+  min-width: 140px;
+}
+
+.col-type {
+  min-width: 120px;
+}
+
+.col-level {
+  width: 72px;
+}
+
+.col-geom {
+  width: 68px;
+}
+
+.col-visible {
+  width: 72px;
+}
+
+.col-actions {
+  width: 120px;
+}
+
+.ta-r {
+  text-align: right;
+}
+
+.ta-c {
+  text-align: center;
 }
 </style>

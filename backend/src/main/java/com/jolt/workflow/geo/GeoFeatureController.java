@@ -2,12 +2,16 @@ package com.jolt.workflow.geo;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 import java.util.List;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -98,7 +102,7 @@ public class GeoFeatureController {
         String sql = "SELECT jsonb_build_object(" +
                 "'type','Feature'," +
                 "'id', id," +
-                "'properties', properties," +
+                "'properties', properties || jsonb_build_object('visible', visible)," +
                 "'geometry', ST_AsGeoJSON(geom)::jsonb" +
                 ") AS f " +
                 "FROM geo_features WHERE id = ?";
@@ -121,6 +125,86 @@ public class GeoFeatureController {
         } catch (Exception e) {
             throw new RuntimeException("Failed to serialize Feature", e);
         }
+    }
+
+    @PostMapping(value = "/features", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<JsonNode> createFeature(@RequestBody String body) {
+        FeaturePayload payload;
+        try {
+            payload = parseFeaturePayload(body);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(errorNode(e.getMessage()));
+        }
+
+        try {
+            jdbcTemplate.update(
+                    "INSERT INTO geo_features (id, layer, geom, properties, visible) VALUES (?, ?, ST_SetSRID(ST_GeomFromGeoJSON(?), 4326), ?::jsonb, ?)",
+                    payload.id(),
+                    payload.layer(),
+                    payload.geometryJson(),
+                    payload.propertiesJson(),
+                    payload.visible()
+            );
+        } catch (DuplicateKeyException e) {
+            return ResponseEntity.status(409).body(errorNode("id_exists"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(errorNode("invalid_feature"));
+        }
+
+        ObjectNode ok = objectMapper.createObjectNode();
+        ok.put("ok", true);
+        ok.put("id", payload.id());
+        return ResponseEntity.status(201).body(ok);
+    }
+
+    @PutMapping(value = "/features", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<JsonNode> updateFeature(@RequestBody String body) {
+        FeaturePayload payload;
+        try {
+            payload = parseFeaturePayload(body);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(errorNode(e.getMessage()));
+        }
+
+        int updated;
+        try {
+            updated = jdbcTemplate.update(
+                    "UPDATE geo_features SET layer = ?, geom = ST_SetSRID(ST_GeomFromGeoJSON(?), 4326), properties = ?::jsonb, visible = ? WHERE id = ?",
+                    payload.layer(),
+                    payload.geometryJson(),
+                    payload.propertiesJson(),
+                    payload.visible(),
+                    payload.id()
+            );
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(errorNode("invalid_feature"));
+        }
+
+        if (updated == 0) {
+            return ResponseEntity.status(404).body(errorNode("not_found"));
+        }
+
+        ObjectNode ok = objectMapper.createObjectNode();
+        ok.put("ok", true);
+        ok.put("id", payload.id());
+        return ResponseEntity.ok(ok);
+    }
+
+    @DeleteMapping(value = "/features", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<JsonNode> deleteFeature(@RequestParam("id") String id) {
+        if (id == null || id.isBlank()) {
+            return ResponseEntity.badRequest().body(errorNode("id_required"));
+        }
+
+        int deleted = jdbcTemplate.update("DELETE FROM geo_features WHERE id = ?", id);
+        if (deleted == 0) {
+            return ResponseEntity.status(404).body(errorNode("not_found"));
+        }
+
+        ObjectNode ok = objectMapper.createObjectNode();
+        ok.put("ok", true);
+        ok.put("id", id);
+        return ResponseEntity.ok(ok);
     }
 
     @PutMapping(value = "/features/visibility", produces = MediaType.APPLICATION_JSON_VALUE)
@@ -223,4 +307,66 @@ public class GeoFeatureController {
         }
         return layer;
     }
+
+    private FeaturePayload parseFeaturePayload(String body) {
+        JsonNode root;
+        try {
+            root = objectMapper.readTree(body);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("invalid_json");
+        }
+
+        JsonNode idNode = root.get("id");
+        if (idNode == null || !idNode.isTextual() || idNode.asText().isBlank()) {
+            throw new IllegalArgumentException("id_required");
+        }
+        String id = idNode.asText().trim();
+
+        JsonNode layerNode = root.get("layer");
+        if (layerNode == null || !layerNode.isTextual() || layerNode.asText().isBlank()) {
+            throw new IllegalArgumentException("layer_required");
+        }
+        String layer = normalizeLayerName(layerNode.asText().trim());
+
+        JsonNode geometryNode = root.get("geometry");
+        if (geometryNode == null || !geometryNode.isObject()) {
+            throw new IllegalArgumentException("geometry_required");
+        }
+
+        JsonNode propertiesNode = root.get("properties");
+        ObjectNode propertiesObject;
+        if (propertiesNode == null || propertiesNode.isNull()) {
+            propertiesObject = objectMapper.createObjectNode();
+        } else if (propertiesNode.isObject()) {
+            propertiesObject = ((ObjectNode) propertiesNode).deepCopy();
+        } else {
+            throw new IllegalArgumentException("properties_required");
+        }
+        propertiesObject.remove("visible");
+
+        JsonNode visibleNode = root.get("visible");
+        boolean visible = true;
+        if (visibleNode != null && !visibleNode.isNull()) {
+            if (!visibleNode.isBoolean()) {
+                throw new IllegalArgumentException("visible_required");
+            }
+            visible = visibleNode.asBoolean();
+        }
+
+        return new FeaturePayload(id, layer, geometryNode.toString(), propertiesObject.toString(), visible);
+    }
+
+    private ObjectNode errorNode(String code) {
+        ObjectNode node = objectMapper.createObjectNode();
+        node.put("error", code);
+        return node;
+    }
+
+    private record FeaturePayload(
+            String id,
+            String layer,
+            String geometryJson,
+            String propertiesJson,
+            boolean visible
+    ) {}
 }

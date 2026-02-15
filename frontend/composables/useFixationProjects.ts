@@ -1,5 +1,5 @@
 import { computed, onMounted } from 'vue'
-import type { Project } from '~/server/utils/fixation-projects-db'
+import type { FixationProject } from '~/server/utils/fixation-projects-db'
 import { fixationService } from '~/services/fixation'
 import { useListFetcher } from '~/composables/shared/useListFetcher'
 
@@ -10,7 +10,7 @@ export function useFixationProjects() {
     error,
     fetchList,
     prependItem,
-  } = useListFetcher<Project>(async () => {
+  } = useListFetcher<FixationProject>(async () => {
     const res = await fixationService.fetchProjects()
     return res.list
   }, { immediate: false })
@@ -21,7 +21,7 @@ export function useFixationProjects() {
     return fetchList()
   }
 
-  async function addProject(project: Project) {
+  async function addProject(project: FixationProject) {
     const created = await fixationService.addProject(project)
     prependItem(created)
     return created

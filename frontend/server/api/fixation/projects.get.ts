@@ -1,8 +1,7 @@
-import { listProjects } from '~/server/utils/fixation-projects-db'
+import { listFixationProjects } from '~/server/utils/fixation-projects-db'
 
 export default defineEventHandler(async () => {
-  const list = await listProjects()
+  const list = await listFixationProjects()
   return { list }
 })
-
 

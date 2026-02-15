@@ -1,5 +1,5 @@
 import type { ApplyProject } from '~/server/utils/fixation-apply-db'
-import type { Project as FixationProject } from '~/server/utils/fixation-projects-db'
+import type { FixationProject } from '~/server/utils/fixation-projects-db'
 import type { Project as AuditProject } from '~/server/utils/fixation-audit-db'
 import type { Building, Room } from '~/server/utils/fixation-stock-db'
 

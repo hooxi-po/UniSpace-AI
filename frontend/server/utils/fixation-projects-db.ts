@@ -1,11 +1,11 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 
-export type FundSource = 'Fiscal' | 'SelfRaised' | 'Mixed'
-export type AssetStatus = 'DisposalPending'
-export type ProjectMilestone = 'Approval'
+type FundSource = 'Fiscal' | 'SelfRaised' | 'Mixed'
+type AssetStatus = 'DisposalPending'
+type ProjectMilestone = 'Approval'
 
-export type Attachment = {
+type Attachment = {
   id: string
   name: string
   type:
@@ -22,7 +22,7 @@ export type Attachment = {
   reviewStatus: 'Pending'
 }
 
-export type RoomPlanItem = {
+type RoomPlanItem = {
   id: string
   buildingName: string
   roomNo: string
@@ -31,9 +31,9 @@ export type RoomPlanItem = {
   subCategory: string
 }
 
-export type AssetCategory = 'Building' | 'Land' | 'Structure' | 'Equipment' | 'Greening' | 'Other'
+type AssetCategory = 'Building' | 'Land' | 'Structure' | 'Equipment' | 'Greening' | 'Other'
 
-export type AssetSplitItem = {
+type AssetSplitItem = {
   id: string
   category: AssetCategory
   name: string
@@ -44,7 +44,7 @@ export type AssetSplitItem = {
   depreciationMethod: 'StraightLine' | 'Accelerated'
 }
 
-export type Project = {
+export type FixationProject = {
   id: string
   name: string
   contractor: string
@@ -73,7 +73,7 @@ export type Project = {
   isArchived: boolean
 }
 
-type DbShape = { list: Project[] }
+type DbShape = { list: FixationProject[] }
 
 const DB_FILE = path.resolve(process.cwd(), 'server', 'data', 'fixation-projects.json')
 
@@ -106,16 +106,14 @@ export async function writeProjectsDb(next: DbShape) {
   await fs.writeFile(DB_FILE, JSON.stringify(next, null, 2), 'utf-8')
 }
 
-export async function listProjects(): Promise<Project[]> {
+export async function listFixationProjects(): Promise<FixationProject[]> {
   const db = await readProjectsDb()
   return db.list
 }
 
-export async function addProject(project: Project): Promise<Project> {
+export async function addProject(project: FixationProject): Promise<FixationProject> {
   const db = await readProjectsDb()
   db.list.unshift(project)
   await writeProjectsDb(db)
   return project
 }
-
-

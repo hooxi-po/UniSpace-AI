@@ -1,10 +1,9 @@
-import { listProjects as listNewProjects, readProjectsDb, writeProjectsDb } from '~/server/utils/fixation-projects-db'
+import { listFixationProjects as listNewProjects, readProjectsDb, writeProjectsDb } from '~/server/utils/fixation-projects-db'
 import type {
-  AssetCategory,
   AssetSplitItem,
   Attachment,
   Project as NewProject,
-} from '~/server/utils/fixation-projects-db'
+} from '~/server/utils/fixation-audit-db'
 import {
   readStockDb,
   writeStockDb,
@@ -174,4 +173,3 @@ export async function updateApplyProject(projectId: string, updates: Partial<App
   const list = await listApplyProjects()
   return list.find(p => p.id === projectId) || null
 }
-

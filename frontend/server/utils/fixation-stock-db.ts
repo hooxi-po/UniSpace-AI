@@ -1,10 +1,10 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 
-export type FundSource = 'Fiscal' | 'SelfRaised' | 'Mixed'
-export type AssetStatus = 'DisposalPending'
+type FundSource = 'Fiscal' | 'SelfRaised' | 'Mixed'
+type AssetStatus = 'DisposalPending'
 
-export type Attachment = {
+type Attachment = {
   id: string
   name: string
   type:
@@ -24,9 +24,9 @@ export type Attachment = {
   reviewNote?: string
 }
 
-export type AssetCategory = 'Building' | 'Land' | 'Structure' | 'Equipment' | 'Greening' | 'Other'
+type AssetCategory = 'Building' | 'Land' | 'Structure' | 'Equipment' | 'Greening' | 'Other'
 
-export type AssetSplitItem = {
+type AssetSplitItem = {
   id: string
   category: AssetCategory
   name: string
@@ -38,7 +38,7 @@ export type AssetSplitItem = {
   assetCardNo?: string
 }
 
-export type RoomPlanItem = {
+type RoomPlanItem = {
   id: string
   buildingName: string
   roomNo: string

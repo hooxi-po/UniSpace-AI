@@ -14,8 +14,12 @@
           <input v-model="applyForm.department" class="input" placeholder="请输入部门" />
         </div>
         <div class="formItem">
-          <label>申请人 *</label>
+          <label>申请人姓名 *</label>
           <input v-model="applyForm.applicant" class="input" placeholder="请输入姓名" />
+        </div>
+        <div class="formItem">
+          <label>申请人工号/ID *</label>
+          <input v-model="applyForm.applicantId" class="input" placeholder="请输入工号" />
         </div>
         <div class="formItem">
           <label>联系电话</label>
@@ -69,6 +73,7 @@ const { createRequest } = useAllocationApproval()
 const applyForm = reactive({
   department: '',
   applicant: '',
+  applicantId: '',
   applicantPhone: '',
   area: 0,
   useType: 'Office' as AllocationRequest['useType'],
@@ -77,7 +82,7 @@ const applyForm = reactive({
 })
 
 const isApplyValid = computed(() => {
-  return applyForm.department.trim() && applyForm.applicant.trim() && applyForm.area > 0 && applyForm.reason.trim()
+  return applyForm.department.trim() && applyForm.applicant.trim() && applyForm.applicantId.trim() && applyForm.area > 0 && applyForm.reason.trim()
 })
 
 async function onApply() {
@@ -86,6 +91,7 @@ async function onApply() {
   // 重置表单
   applyForm.department = ''
   applyForm.applicant = ''
+  applyForm.applicantId = ''
   applyForm.applicantPhone = ''
   applyForm.area = 0
   applyForm.useType = 'Office'

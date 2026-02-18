@@ -41,6 +41,7 @@ export type AllocationRequest = {
   id: string
   department: string
   applicant: string
+  applicantId: string
   applicantPhone?: string
   area: number
   reason: string

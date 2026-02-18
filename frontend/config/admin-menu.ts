@@ -119,6 +119,19 @@ export const adminMenuConfig = [
       },
     ],
   },
+  {
+    key: 'persons',
+    label: '人员管理',
+    children: [
+      {
+        key: 'persons_manage',
+        label: '人员管理',
+        children: [
+          { key: 'persons_list', label: '人员列表' },
+        ],
+      },
+    ],
+  },
 ] as const satisfies readonly MenuNode[]
 
 export type AdminTabKey = (typeof adminMenuConfig)[number]['key'] & TabKey

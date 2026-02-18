@@ -4,7 +4,7 @@
     v-model:subValue="activeSubTab"
     v-model:thirdValue="activeThirdTab"
     title="后台大厅"
-    :subtitle="activeTab === 'assets' ? '资产中心' : activeTab === 'property' ? '房产管理' : ''"
+    :subtitle="activeTab === 'assets' ? '资产中心' : activeTab === 'property' ? '房产管理' : activeTab === 'persons' ? '人员管理' : ''"
     :tabs="tabs"
     :sub-tabs="currentSubTabs"
     :third-tabs="currentThirdTabs"

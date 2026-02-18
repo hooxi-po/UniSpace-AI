@@ -1,4 +1,4 @@
-export type TabKey = 'overview' | 'geo' | 'assets' | 'property' | 'ops'
+export type TabKey = 'overview' | 'geo' | 'assets' | 'property' | 'ops' | 'persons'
 
 export type SubKey =
   | 'assets_buildings'
@@ -12,6 +12,7 @@ export type SubKey =
   | 'property_inventory'
   | 'property_query'
   | 'property_reports'
+  | 'persons_manage'
 
 export type ThirdKey =
   | 'fix_new_project'
@@ -58,3 +59,4 @@ export type ThirdKey =
   | 'reports_moe'
   | 'reports_custom'
   | 'reports_logs'
+  | 'persons_list'

@@ -62,6 +62,9 @@ import ReportsMoeView from '~/views/admin/property/reports/ReportsMoeView.vue'
 import ReportsCustomView from '~/views/admin/property/reports/ReportsCustomView.vue'
 import ReportsLogsView from '~/views/admin/property/reports/ReportsLogsView.vue'
 
+// Persons
+import PersonsManagementView from '~/views/admin/persons/PersonsManagementView.vue'
+
 export const adminCompMap: Record<ThirdKey, any> = {
   // Fixation
   fix_new_project: FixNewProjectView,
@@ -124,5 +127,8 @@ export const adminCompMap: Record<ThirdKey, any> = {
   reports_moe: ReportsMoeView,
   reports_custom: ReportsCustomView,
   reports_logs: ReportsLogsView,
+
+  // Persons
+  persons_list: PersonsManagementView,
 }
 

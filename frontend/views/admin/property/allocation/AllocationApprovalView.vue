@@ -230,6 +230,7 @@ const applying = ref(false)
 const applyForm = reactive({
   department: '',
   applicant: '',
+  applicantId: '',
   applicantPhone: '',
   area: 0,
   useType: 'Office' as AllocationRequest['useType'],

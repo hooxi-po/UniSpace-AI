@@ -1,0 +1,14 @@
+{
+  "persons": [
+    { "personId": "T-1001", "personName": "王老师", "departmentName": "机械工程学院", "title": "AssociateProfessor", "status": "Active" },
+    { "personId": "T-1002", "personName": "李老师", "departmentName": "机械工程学院", "title": "Lecturer", "status": "Active" },
+    { "personId": "T-2001", "personName": "张老师", "departmentName": "计算机学院", "title": "Assistant", "status": "Active" },
+    { "personId": "P-DEAN-LI", "personName": "李院长", "departmentName": "机械工程学院", "title": "Professor", "status": "Active" },
+    { "personId": "P-DIR-SUN", "personName": "孙处长", "departmentName": "教务处", "title": "Other", "status": "Active" },
+    { "personId": "P-PROF-ZHAO", "personName": "赵教授", "departmentName": "物理学院", "title": "Professor", "status": "Active" },
+    { "personId": "P-DIR-CHEN", "personName": "陈主任", "departmentName": "人文艺术学院", "title": "AssociateProfessor", "status": "Active" },
+    { "personId": "P-CHIEF-ZHANG", "personName": "张科长", "departmentName": "后勤处", "title": "Other", "status": "Active" },
+    { "personId": "P-LECT-WANG", "personName": "王老师(化学)", "departmentName": "化学学院", "title": "Lecturer", "status": "Active" },
+    { "personId": "P-DEAN-LIU", "personName": "刘院长", "departmentName": "经济管理学院", "title": "Professor", "status": "Active" }
+  ]
+}

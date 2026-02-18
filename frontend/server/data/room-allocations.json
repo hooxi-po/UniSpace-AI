@@ -1,0 +1,11 @@
+{
+  "allocations": [
+    { "allocationId": "ALC-2025-001", "roomId": "RM-QS-001-101", "personId": "T-2001", "startDate": "2024-09-01" },
+    { "allocationId": "ALC-2025-002", "roomId": "RM-QS-001-102", "personId": "T-1002", "startDate": "2024-09-01" },
+    { "allocationId": "ALC-2025-003", "roomId": "RM-QS-001-201", "personId": "P-DEAN-LI", "startDate": "2024-09-01" },
+    { "allocationId": "ALC-2025-004", "roomId": "RM-QS-002-301", "personId": "P-PROF-ZHAO", "startDate": "2024-09-01" },
+    { "allocationId": "ALC-2025-005", "roomId": "RM-QS-002-302", "personId": "P-LECT-WANG", "startDate": "2024-09-01" },
+    { "allocationId": "ALC-2025-006", "roomId": "RM-QS-001-102", "personId": "T-1001", "startDate": "2024-09-01" },
+    { "allocationId": "ALC-2025-007", "roomId": "RM-QS-001-102", "personId": "P-DIR-CHEN", "startDate": "2024-09-01", "shareArea": 25 }
+  ]
+}

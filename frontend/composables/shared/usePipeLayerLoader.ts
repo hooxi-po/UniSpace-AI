@@ -17,15 +17,15 @@ const DEFAULT_PIPE_SOURCE_URL = 'http://localhost:8080/api/v1/features?layers=pi
 
 const PIPE_STYLES: PipeStyles = {
   water: {
-    glowStroke: Cesium.Color.fromCssColorString('#10B981'),
+    glowStroke: Cesium.Color.fromCssColorString('#119A61'),
     glowWidth: 5,
   },
   drain: {
-    glowStroke: Cesium.Color.fromCssColorString('#3B82F6'),
+    glowStroke: Cesium.Color.fromCssColorString('#3F86EA'),
     glowWidth: 5,
   },
   sewage: {
-    glowStroke: Cesium.Color.fromCssColorString('#8B5CF6'),
+    glowStroke: Cesium.Color.fromCssColorString('#A16AEE'),
     glowWidth: 5,
   },
 }
@@ -62,7 +62,7 @@ function stylePipeEntity(entity: Cesium.Entity, pipeLayer: PipeLayerName) {
     entity.polyline.material = new Cesium.PolylineGlowMaterialProperty({
       color: pipeStyle.glowStroke,
       glowPower: 0.4,
-      taperPower: 0.3,
+      taperPower: 1,
     })
     entity.polyline.width = new Cesium.ConstantProperty(pipeStyle.glowWidth)
     entity.polyline.clampToGround = new Cesium.ConstantProperty(true)
@@ -137,4 +137,3 @@ export function usePipeLayerLoader(options: UsePipeLayerLoaderOptions) {
     loadPipeLayers,
   }
 }
-

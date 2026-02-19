@@ -57,6 +57,24 @@
             <div class="bg-white/5 p-3 border border-white/10 rounded">
               <h4 class="text-tech-blue font-bold mb-2 text-xs uppercase">技术参数</h4>
               <div v-if="isPipe" class="space-y-2 text-gray-300 font-mono">
+                <div class="flex items-center justify-between gap-2">
+                  <span class="text-gray-500">资产名称:</span>
+                  <div class="flex items-center gap-2 min-w-0">
+                    <span class="truncate">{{ pipeAssetName }}</span>
+                    <button
+                      class="px-2 py-0.5 rounded border border-tech-cyan/40 text-tech-cyan text-[10px] hover:bg-tech-cyan/10 transition-colors"
+                      @click="copyPipeName"
+                    >
+                      {{
+                        copyStatus === 'ok'
+                          ? '已复制'
+                          : copyStatus === 'error'
+                            ? '复制失败'
+                            : '复制'
+                      }}
+                    </button>
+                  </div>
+                </div>
                 <div class="flex justify-between">
                   <span class="text-gray-500">材质:</span> {{ (data as PipeNode).material }}
                 </div>
@@ -220,10 +238,19 @@ const emit = defineEmits<{
 }>()
 
 const activeTab = ref<'ledger' | 'monitor' | 'ops'>('ledger')
+const copyStatus = ref<'idle' | 'ok' | 'error'>('idle')
+let copyResetTimer: ReturnType<typeof setTimeout> | null = null
 
 const isPipe = computed(() => {
   if (!props.data) return false
   return 'coordinates' in props.data && Array.isArray(props.data.coordinates)
+})
+
+const pipeAssetName = computed(() => {
+  if (!props.data || !isPipe.value) return ''
+  const maybeName = (props.data as PipeNode & { name?: unknown }).name
+  if (typeof maybeName === 'string' && maybeName.trim()) return maybeName.trim()
+  return props.data.id
 })
 
 const title = computed(() => {
@@ -236,6 +263,34 @@ const title = computed(() => {
 const relatedOrders = computed(() => {
   if (!props.data) return []
   return WORK_ORDERS.filter(wo => wo.targetId === props.data!.id)
+})
+
+function resetCopyStatusLater() {
+  if (copyResetTimer) {
+    clearTimeout(copyResetTimer)
+  }
+  copyResetTimer = setTimeout(() => {
+    copyStatus.value = 'idle'
+    copyResetTimer = null
+  }, 1800)
+}
+
+async function copyPipeName() {
+  if (!pipeAssetName.value) return
+  try {
+    await navigator.clipboard.writeText(pipeAssetName.value)
+    copyStatus.value = 'ok'
+  } catch {
+    copyStatus.value = 'error'
+  }
+  resetCopyStatusLater()
+}
+
+onBeforeUnmount(() => {
+  if (copyResetTimer) {
+    clearTimeout(copyResetTimer)
+    copyResetTimer = null
+  }
 })
 </script>
 

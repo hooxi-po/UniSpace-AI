@@ -1,4 +1,5 @@
 import type { Property } from '~/mock/properties'
+import { classifyRoadToPipeCategory } from '~/utils/pipe-classifier'
 
 export type PropertyRow = Property
 
@@ -140,19 +141,6 @@ function normalizeHighway(value: unknown) {
   if (!raw) return '—'
   const label = mapping[raw] || '其他道路'
   return `${label}（${raw}）`
-}
-
-function classifyRoadToPipeCategory(value: unknown) {
-  const highway = String(value || '').trim().toLowerCase()
-
-  const waterHighways = new Set(['motorway', 'trunk', 'primary', 'secondary'])
-  const sewageHighways = new Set(['service', 'residential', 'living_street', 'tertiary', 'unclassified'])
-  const drainHighways = new Set(['footway', 'path', 'pedestrian', 'cycleway', 'steps', 'track'])
-
-  if (waterHighways.has(highway)) return '供水'
-  if (drainHighways.has(highway)) return '排水'
-  if (sewageHighways.has(highway)) return '污水'
-  return '未分类'
 }
 
 export function mapBuildingRow(f: GeoJsonFeature): BuildingRow {

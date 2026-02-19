@@ -1,5 +1,22 @@
 export type AssetLayer = 'buildings' | 'pipes'
 
+export type GeoJsonGeometry = {
+  type: string
+  coordinates: unknown
+}
+
+export type GeoJsonFeature = {
+  type: 'Feature'
+  id: string
+  properties: Record<string, unknown>
+  geometry: GeoJsonGeometry
+}
+
+export type GeoJsonFeatureCollection = {
+  type: 'FeatureCollection'
+  features: GeoJsonFeature[]
+}
+
 export type GeoFeaturePayload = {
   id: string
   layer: string
@@ -37,6 +54,24 @@ async function requestJson(url: string, init?: RequestInit) {
 }
 
 export const geoFeatureService = {
+  async list(
+    backendBaseUrl: string,
+    options: { layer: AssetLayer; limit?: number; visible?: boolean }
+  ) {
+    const params = new URLSearchParams()
+    params.set('layers', options.layer)
+    params.set('limit', String(options.limit ?? 5000))
+    if (typeof options.visible === 'boolean') {
+      params.set('visible', String(options.visible))
+    }
+
+    const json = (await requestJson(
+      `${backendBaseUrl}/api/v1/features?${params.toString()}`
+    )) as GeoJsonFeatureCollection
+
+    return Array.isArray(json?.features) ? json.features : []
+  },
+
   create(backendBaseUrl: string, payload: GeoFeaturePayload) {
     return requestJson(`${backendBaseUrl}/api/v1/features`, {
       method: 'POST',
@@ -67,4 +102,3 @@ export const geoFeatureService = {
     })
   },
 } as const
-

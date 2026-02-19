@@ -9,6 +9,8 @@ import {
   PIPE_LAYER_NAMES,
   usePipeLayerLoader,
 } from '~/composables/shared/usePipeLayerLoader'
+import { normalizeBackendBaseUrl } from '~/utils/backend-url'
+import { styleBuildingEntity, styleGreenEntity } from '~/utils/map-entity-style'
 
 const DEFAULT_CAMERA = {
   longitude: 119.1895,
@@ -34,6 +36,7 @@ interface Props {
   selectedId: string | null
   viewport: Viewport
   layers: MapLayers
+  backendBaseUrl: string
   weatherMode: boolean
 }
 
@@ -63,31 +66,17 @@ const dataSources = {
   drain: new Cesium.CustomDataSource('drain'),
 }
 
-// 未来主义科技风格样式（参考图片风格）
-const styles = {
-  green: {
-    fill: new Cesium.ColorMaterialProperty(
-      Cesium.Color.fromCssColorString('rgb(10, 43, 49)').withAlpha(0.7)
-    ),
-    outline: undefined,
-  },
-  buildings: {
-    fill: new Cesium.ColorMaterialProperty(
-      Cesium.Color.fromCssColorString('rgb(100, 180, 255)').withAlpha(0.6)
-    ),
-    outline: Cesium.Color.fromCssColorString('rgb(100, 180, 255)').withAlpha(0.6), // 发光浅蓝色边缘
-    outlineWidth: 2,
-    extrudedHeight: 20,
-  },
-}
+const normalizedBackendBaseUrl = computed(() => normalizeBackendBaseUrl(props.backendBaseUrl))
+type LayerName = keyof typeof dataSources
+
+const MAP_LAYER_NAMES: LayerName[] = ['water', 'sewage', 'drain', 'green', 'buildings']
 
 // Watch for layer visibility changes
 watchEffect(() => {
   if (!viewer) return
-  for (const key in dataSources) {
-    const typedKey = key as keyof typeof dataSources
-    const dataSource = dataSources[typedKey]
-    const layerProp = props.layers[typedKey as keyof MapLayers]
+  for (const layerName of MAP_LAYER_NAMES) {
+    const dataSource = dataSources[layerName]
+    const layerProp = props.layers[layerName as keyof MapLayers]
     if (layerProp !== undefined) {
       dataSource.show = layerProp
     }
@@ -308,13 +297,8 @@ function setupViewportSync() {
   )
 }
 
-/**
- * 图层文件映射
- */
-const layerFiles: Record<string, string> = {
+const staticLayerFiles: Partial<Record<LayerName, string>> = {
   green: '/map/green.geojson',
-  // Buildings now served by backend (GeoJSON)
-  buildings: 'http://localhost:8080/api/v1/features?layers=buildings&visible=true',
 }
 
 /**
@@ -332,13 +316,26 @@ const { isPipeLayer, loadPipeLayers } = usePipeLayerLoader({
   getViewer: () => viewer,
   dataSources: pipeDataSources,
   loadedLayers,
+  sourceUrl: `${normalizedBackendBaseUrl.value}/api/v1/features?layers=pipes&visible=true`,
 })
+
+function getLayerSourceUrl(layerName: LayerName): string | null {
+  if (layerName === 'buildings') {
+    return `${normalizedBackendBaseUrl.value}/api/v1/features?layers=buildings&visible=true`
+  }
+  return staticLayerFiles[layerName] || null
+}
+
+function appendCacheBust(url: string): string {
+  const separator = url.includes('?') ? '&' : '?'
+  return `${url}${separator}t=${Date.now()}`
+}
 
 /**
  * 加载单个图层数据
  * @param layerName - 图层名称
  */
-function loadLayer(layerName: string) {
+function loadLayer(layerName: LayerName) {
   if (isPipeLayer(layerName)) {
     loadPipeLayers()
     return
@@ -346,16 +343,13 @@ function loadLayer(layerName: string) {
 
   if (!viewer || loadedLayers.value.has(layerName)) return
 
-  const dataSource = dataSources[layerName as keyof typeof dataSources]
+  const dataSource = dataSources[layerName]
   if (!dataSource) return
 
-  const fileUrl = layerFiles[layerName]
+  const fileUrl = getLayerSourceUrl(layerName)
   if (!fileUrl) return
 
-  // For backend API, add cache busting; for static files, keep existing behavior
-  const geoJsonUrl = fileUrl.startsWith('http') 
-    ? `${fileUrl}&t=${Date.now()}`
-    : `${fileUrl}?t=${Date.now()}`
+  const geoJsonUrl = appendCacheBust(fileUrl)
   
   Cesium.GeoJsonDataSource.load(geoJsonUrl, { clampToGround: true })
     .then(layerDataSource => {
@@ -391,14 +385,25 @@ function loadLayer(layerName: string) {
  * 卸载单个图层数据
  * @param layerName - 图层名称
  */
-function unloadLayer(layerName: string) {
+function unloadLayer(layerName: LayerName) {
   if (!viewer) return
 
-  const dataSource = dataSources[layerName as keyof typeof dataSources]
+  const dataSource = dataSources[layerName]
   if (!dataSource) return
 
   dataSource.entities.removeAll()
   loadedLayers.value.delete(layerName)
+}
+
+function syncLayerLoadState(layerName: LayerName, visible: boolean | undefined) {
+  const isLoaded = loadedLayers.value.has(layerName)
+  if (visible && !isLoaded) {
+    loadLayer(layerName)
+    return
+  }
+  if (!visible && isLoaded) {
+    unloadLayer(layerName)
+  }
 }
 
 /**
@@ -406,12 +411,9 @@ function unloadLayer(layerName: string) {
  * 根据 layers prop 的可见性按需加载各个图层
  */
 function loadGeoJsonLayers() {
-  // Load visible layers
-  if (props.layers.water) loadLayer('water')
-  if (props.layers.sewage) loadLayer('sewage')
-  if (props.layers.drain) loadLayer('drain')
-  if (props.layers.green) loadLayer('green')
-  if (props.layers.buildings) loadLayer('buildings')
+  for (const layerName of MAP_LAYER_NAMES) {
+    syncLayerLoadState(layerName, props.layers[layerName as keyof MapLayers])
+  }
 }
 
 /**
@@ -422,72 +424,12 @@ watch(
   (newLayers) => {
     if (!viewer) return
 
-    // Check each layer and load/unload accordingly
-    if (newLayers.water && !loadedLayers.value.has('water')) {
-      loadLayer('water')
-    } else if (!newLayers.water && loadedLayers.value.has('water')) {
-      unloadLayer('water')
+    for (const layerName of MAP_LAYER_NAMES) {
+      syncLayerLoadState(layerName, newLayers[layerName as keyof MapLayers])
     }
-
-    if (newLayers.sewage && !loadedLayers.value.has('sewage')) {
-      loadLayer('sewage')
-    } else if (!newLayers.sewage && loadedLayers.value.has('sewage')) {
-      unloadLayer('sewage')
-    }
-
-    if (newLayers.drain && !loadedLayers.value.has('drain')) {
-      loadLayer('drain')
-    } else if (!newLayers.drain && loadedLayers.value.has('drain')) {
-      unloadLayer('drain')
-    }
-
-    if (newLayers.green && !loadedLayers.value.has('green')) {
-      loadLayer('green')
-    } else if (!newLayers.green && loadedLayers.value.has('green')) {
-      unloadLayer('green')
-    }
-
-    if (newLayers.buildings && !loadedLayers.value.has('buildings')) {
-      loadLayer('buildings')
-    } else if (!newLayers.buildings && loadedLayers.value.has('buildings')) {
-      unloadLayer('buildings')
-    }
-
   },
   { deep: true, immediate: false }
 )
-
-/**
- * 为绿地实体应用样式（深绿色风格）
- * @param entity - Cesium 实体对象
- */
-function styleGreenEntity(entity: Cesium.Entity) {
-  if (entity.polygon) {
-    entity.polygon.material = styles.green.fill
-    entity.polygon.outline = new Cesium.ConstantProperty(false)
-  }
-}
-
-/**
- * 为建筑实体应用样式，包括拉伸高度和发光边缘（未来主义风格）
- * @param entity - Cesium 实体对象
- */
-function styleBuildingEntity(entity: Cesium.Entity) {
-  if (entity.polygon) {
-    entity.polygon.material = styles.buildings.fill
-    entity.polygon.extrudedHeight = new Cesium.ConstantProperty(styles.buildings.extrudedHeight)
-    entity.polygon.heightReference = new Cesium.ConstantProperty(
-      Cesium.HeightReference.CLAMP_TO_GROUND
-    )
-    entity.polygon.extrudedHeightReference = new Cesium.ConstantProperty(
-      Cesium.HeightReference.RELATIVE_TO_GROUND
-    )
-    // 添加发光浅蓝色边缘（模拟图片中的建筑物轮廓）
-    entity.polygon.outline = new Cesium.ConstantProperty(true)
-    entity.polygon.outlineColor = new Cesium.ConstantProperty(styles.buildings.outline)
-    entity.polygon.outlineWidth = new Cesium.ConstantProperty(styles.buildings.outlineWidth)
-  }
-}
 
 watch(
   () => props.weatherMode,

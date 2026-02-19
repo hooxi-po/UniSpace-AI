@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 
-import { listPersons } from './persons-db'
+import { listPersons, type PersonTitle } from './persons-db'
 import { listRoomAllocations } from './room-allocations-db'
 import { listRooms } from './fixation-stock-db'
 
@@ -12,8 +12,6 @@ export type FeeStatus =
   | 'Disputed' 
   | 'FinanceProcessing' 
   | 'Completed'
-
-export type PersonTitle = 'Assistant' | 'Lecturer' | 'AssociateProfessor' | 'Professor' | 'Other'
 
 export type PersonUsage = {
   id: string

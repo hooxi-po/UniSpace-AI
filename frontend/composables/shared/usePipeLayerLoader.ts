@@ -5,6 +5,7 @@ import {
   classifyRoadToPipeLayer,
   type PipeLayerName,
 } from '~/utils/pipe-classifier'
+import { normalizeBackendBaseUrl } from '~/utils/backend-url'
 
 export { PIPE_LAYER_NAMES }
 export type { PipeLayerName }
@@ -17,8 +18,6 @@ type PipeStyle = {
 }
 
 type PipeStyles = Record<PipeLayerName, PipeStyle>
-
-const DEFAULT_PIPE_SOURCE_URL = 'http://localhost:8080/api/v1/features?layers=pipes&visible=true'
 
 const PIPE_STYLES: PipeStyles = {
   water: {
@@ -63,7 +62,9 @@ function stylePipeEntity(entity: Cesium.Entity, pipeLayer: PipeLayerName) {
 }
 
 export function usePipeLayerLoader(options: UsePipeLayerLoaderOptions) {
-  const sourceUrl = options.sourceUrl || DEFAULT_PIPE_SOURCE_URL
+  const runtimeConfig = useRuntimeConfig()
+  const backendBaseUrl = normalizeBackendBaseUrl(runtimeConfig.public.backendBaseUrl as string | undefined)
+  const sourceUrl = options.sourceUrl || `${backendBaseUrl}/api/v1/features?layers=pipes&visible=true`
   let pipeLoadPromise: Promise<void> | null = null
 
   function isPipeLayer(layerName: string): layerName is PipeLayerName {

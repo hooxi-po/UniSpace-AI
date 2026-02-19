@@ -64,7 +64,7 @@
 
 <script setup lang="ts">
 import { FileSpreadsheet, Search } from 'lucide-vue-next'
-import type { PersonTitle } from '~/server/utils/charging-db'
+import type { PersonTitle } from '~/server/utils/persons-db'
 
 defineEmits<{
   'update:month': [val: string]
@@ -188,4 +188,3 @@ function titleLabel(t: PersonTitle) {
   outline: none;
 }
 </style>
-

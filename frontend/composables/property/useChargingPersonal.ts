@@ -1,6 +1,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { chargingService } from '~/services/charging'
-import type { PersonFeeBill, PersonPayment, PersonTitle, PersonUsage } from '~/server/utils/charging-db'
+import type { PersonFeeBill, PersonPayment, PersonUsage } from '~/server/utils/charging-db'
+import type { PersonTitle } from '~/server/utils/persons-db'
 
 export function useChargingPersonal() {
   const month = ref<string>('2025-01')
@@ -131,4 +132,3 @@ export function useChargingPersonal() {
     setMonth,
   }
 }
-

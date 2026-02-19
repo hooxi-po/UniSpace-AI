@@ -1,5 +1,10 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
 import cesium from 'vite-plugin-cesium'
+import { fileURLToPath } from 'node:url'
+
+const appManifestFallbackPath = fileURLToPath(
+  new URL('./.nuxt/manifest/meta/dev.json', import.meta.url)
+)
 
 export default defineNuxtConfig({
   compatibilityDate: '2024-11-01',
@@ -17,7 +22,8 @@ export default defineNuxtConfig({
     
     // 客户端可访问的公共配置
     public: {
-      appName: '校园地下管网运维系统'
+      appName: '校园地下管网运维系统',
+      backendBaseUrl: process.env.NUXT_PUBLIC_BACKEND_BASE_URL || process.env.BACKEND_BASE_URL || 'http://localhost:8080',
     }
   },
 
@@ -38,6 +44,12 @@ export default defineNuxtConfig({
   },
 
   vite: {
-    plugins: [cesium()]
+    plugins: [cesium()],
+    resolve: {
+      alias: {
+        // Workaround for occasional Nuxt dev import-analysis failures on #app-manifest.
+        '#app-manifest': appManifestFallbackPath,
+      },
+    },
   }
 })

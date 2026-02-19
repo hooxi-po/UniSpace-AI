@@ -148,7 +148,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { ArrowLeft } from 'lucide-vue-next'
-import type { ThirdKey } from '~/types/admin'
+import type { SubKey, ThirdKey } from '~/types/admin'
 import type { AssetLayer } from '~/services/geo-features'
 
 import AdminLayout from '~/components/admin/AdminLayout.vue'
@@ -170,6 +170,7 @@ import {
 } from '~/utils/admin-tables'
 import { useAdminDetail } from '~/composables/useAdminDetail'
 import { useAssetCrud } from '~/composables/admin/useAssetCrud'
+import { normalizeBackendBaseUrl } from '~/utils/backend-url'
 
 const compMap = adminCompMap
 
@@ -185,7 +186,7 @@ const tabs = computed(() => getTabs())
 type TabKey = typeof tabs.value[number]['key']
 
 const activeTab = ref<TabKey>('assets')
-const activeSubTab = ref<any>('assets_buildings')
+const activeSubTab = ref<SubKey>('assets_buildings')
 const activeThirdTab = ref<ThirdKey | undefined>(undefined)
 
 const currentSubTabs = computed(() => getSubTabs(activeTab.value))
@@ -212,8 +213,11 @@ watch(currentThirdTabs, (tabs) => {
   }
 }, { immediate: true })
 
+type AssetFeatureLike = Record<string, unknown> & { id?: string | number | null }
+
 const assetSearch = ref('')
-const backendBaseUrl = 'http://localhost:8080'
+const runtimeConfig = useRuntimeConfig()
+const backendBaseUrl = normalizeBackendBaseUrl(runtimeConfig.public.backendBaseUrl as string | undefined)
 const currentCount = ref(0)
 const assetReloadKey = ref(0)
 const pipeEditorOpen = ref(false)
@@ -255,7 +259,7 @@ const {
   },
 })
 
-function handleAssetSelect(feature: any) {
+function handleAssetSelect(feature: AssetFeatureLike) {
   if (activeAssetLayer.value === 'pipes') {
     pipeEditorFeatureId.value = feature?.id ? String(feature.id) : null
   }

@@ -5,6 +5,7 @@
       :selected-id="selectedItem?.id ? String(selectedItem.id) : null"
       :viewport="viewport"
       :layers="layers"
+      :backend-base-url="backendBaseUrl"
       :weather-mode="weatherMode"
       @select="handleSelection"
       @update:viewport="viewport = $event"
@@ -53,11 +54,27 @@
 <script setup lang="ts">
 import type { PipeNode, Building, GeoJsonFeature } from '~/types'
 import { BUILDINGS, PIPELINES } from '~/composables/useConstants'
+import { normalizeBackendBaseUrl } from '~/utils/backend-url'
 
 const selectedItem = ref<PipeNode | Building | GeoJsonFeature | null>(null)
+const runtimeConfig = useRuntimeConfig()
+
+const DEFAULT_VIEWPORT = {
+  x: 119.1895,
+  y: 26.0254,
+  scale: 500,
+}
+const MIN_CAMERA_HEIGHT = 80
+const MAX_CAMERA_HEIGHT = 5000
+const ZOOM_IN_FACTOR = 0.8
+const ZOOM_OUT_FACTOR = 1.25
+
+const backendBaseUrl = computed(() => {
+  return normalizeBackendBaseUrl(runtimeConfig.public.backendBaseUrl as string | undefined)
+})
 
 // Map Viewport State
-const viewport = ref({ x: 119.1895, y: 26.0254, scale: 500 })
+const viewport = ref({ ...DEFAULT_VIEWPORT })
 
 // Layer State
 const layers = ref({
@@ -205,14 +222,20 @@ const toggleLayer = (layer: keyof typeof layers.value) => {
 }
 
 const handleZoomIn = () => {
-  viewport.value = { ...viewport.value, scale: Math.min(viewport.value.scale + 0.2, 4) }
+  viewport.value = {
+    ...viewport.value,
+    scale: Math.max(MIN_CAMERA_HEIGHT, viewport.value.scale * ZOOM_IN_FACTOR),
+  }
 }
 
 const handleZoomOut = () => {
-  viewport.value = { ...viewport.value, scale: Math.max(viewport.value.scale - 0.2, 0.5) }
+  viewport.value = {
+    ...viewport.value,
+    scale: Math.min(MAX_CAMERA_HEIGHT, viewport.value.scale * ZOOM_OUT_FACTOR),
+  }
 }
 
 const resetView = () => {
-  viewport.value = { x: 0, y: 0, scale: 1 }
+  viewport.value = { ...DEFAULT_VIEWPORT }
 }
 </script>

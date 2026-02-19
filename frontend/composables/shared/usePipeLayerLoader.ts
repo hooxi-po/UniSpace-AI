@@ -1,8 +1,13 @@
 import * as Cesium from 'cesium'
 import type { Ref } from 'vue'
+import {
+  PIPE_LAYER_NAMES,
+  classifyRoadToPipeLayer,
+  type PipeLayerName,
+} from '~/utils/pipe-classifier'
 
-export const PIPE_LAYER_NAMES = ['water', 'drain', 'sewage'] as const
-export type PipeLayerName = (typeof PIPE_LAYER_NAMES)[number]
+export { PIPE_LAYER_NAMES }
+export type { PipeLayerName }
 
 type PipeDataSources = Record<PipeLayerName, Cesium.CustomDataSource>
 
@@ -35,25 +40,6 @@ type UsePipeLayerLoaderOptions = {
   dataSources: PipeDataSources
   loadedLayers: Ref<Set<string>>
   sourceUrl?: string
-}
-
-function normalizeRoadClass(highway: unknown) {
-  return String(highway || '').trim().toLowerCase()
-}
-
-function classifyRoadToPipeLayer(props: Record<string, unknown>, entityId: string): PipeLayerName {
-  const highway = normalizeRoadClass(props.highway)
-
-  const waterHighways = new Set(['motorway', 'trunk', 'primary', 'secondary'])
-  const sewageHighways = new Set(['service', 'residential', 'living_street', 'tertiary', 'unclassified'])
-  const drainHighways = new Set(['footway', 'path', 'pedestrian', 'cycleway', 'steps', 'track'])
-
-  if (waterHighways.has(highway)) return 'water'
-  if (drainHighways.has(highway)) return 'drain'
-  if (sewageHighways.has(highway)) return 'sewage'
-
-  const seed = [...entityId].reduce((acc, ch) => acc + ch.charCodeAt(0), 0)
-  return PIPE_LAYER_NAMES[seed % PIPE_LAYER_NAMES.length]
 }
 
 function stylePipeEntity(entity: Cesium.Entity, pipeLayer: PipeLayerName) {

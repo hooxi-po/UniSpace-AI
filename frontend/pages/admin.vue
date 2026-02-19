@@ -28,6 +28,14 @@
             </div>
             <div class="toolbar">
               <input class="admin-input" v-model="assetSearch" :placeholder="searchPlaceholder" />
+              <button
+                v-if="activeSubTab === 'assets_pipelines'"
+                class="admin-btn"
+                type="button"
+                @click="openPipeEditor"
+              >
+                二维地图编辑
+              </button>
               <button class="admin-btn admin-btn--primary" type="button" @click="openCreateAsset">
                 {{ assetCreateLabel }}
               </button>
@@ -49,7 +57,7 @@
               :columns="buildingColumns as any"
               :map-row="mapBuildingRow as any"
               :cell="assetCell"
-              @select="openAssetDetail"
+              @select="handleAssetSelect"
               @count="currentCount = $event"
             />
 
@@ -64,7 +72,7 @@
               :columns="roadColumns as any"
               :map-row="mapRoadRow as any"
               :cell="assetCell"
-              @select="openAssetDetail"
+              @select="handleAssetSelect"
               @count="currentCount = $event"
             />
 
@@ -125,6 +133,14 @@
         @close="closeDeleteDialog"
         @confirm="confirmDelete"
       />
+
+      <Pipe2DEditorDialog
+        :open="pipeEditorOpen"
+        :backend-base-url="backendBaseUrl"
+        :initial-feature-id="pipeEditorFeatureId"
+        @close="pipeEditorOpen = false"
+        @saved="handlePipeEditorSaved"
+      />
     </template>
   </AdminLayout>
 </template>
@@ -141,6 +157,7 @@ import PropertyTable from '~/components/admin/PropertyTable.vue'
 import JsonDrawer from '~/components/admin/JsonDrawer.vue'
 import AssetFeatureDialog from '~/components/admin/AssetFeatureDialog.vue'
 import AssetDeleteDialog from '~/components/admin/AssetDeleteDialog.vue'
+import Pipe2DEditorDialog from '~/components/admin/Pipe2DEditorDialog.vue'
 
 import { adminCompMap } from '~/config/admin-comp-map'
 import { getTabs, getSubTabs, getThirdTabs } from '~/config/admin-menu'
@@ -199,6 +216,8 @@ const assetSearch = ref('')
 const backendBaseUrl = 'http://localhost:8080'
 const currentCount = ref(0)
 const assetReloadKey = ref(0)
+const pipeEditorOpen = ref(false)
+const pipeEditorFeatureId = ref<string | null>(null)
 
 const { detailOpen, detailObj, detailType, closeDetail, openAssetDetail, openPropertyDetail } = useAdminDetail()
 
@@ -235,6 +254,22 @@ const {
     assetReloadKey.value += 1
   },
 })
+
+function handleAssetSelect(feature: any) {
+  if (activeAssetLayer.value === 'pipes') {
+    pipeEditorFeatureId.value = feature?.id ? String(feature.id) : null
+  }
+  openAssetDetail(feature)
+}
+
+function openPipeEditor() {
+  pipeEditorOpen.value = true
+}
+
+function handlePipeEditorSaved(id: string) {
+  pipeEditorFeatureId.value = id
+  assetReloadKey.value += 1
+}
 </script>
 
 <style scoped>

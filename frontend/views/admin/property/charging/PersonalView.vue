@@ -54,7 +54,8 @@ import PersonBillsTable from '~/components/admin/property/charging/components/Pe
 import PersonBillDetailModal from '~/components/admin/property/charging/components/PersonBillDetailModal.vue'
 import PersonPaymentModal from '~/components/admin/property/charging/components/PersonPaymentModal.vue'
 import { useChargingPersonal } from '~/composables/property/useChargingPersonal'
-import type { PersonFeeBill, PersonPayment, PersonTitle } from '~/server/utils/charging-db'
+import type { PersonFeeBill, PersonPayment } from '~/server/utils/charging-db'
+import type { PersonTitle } from '~/server/utils/persons-db'
 
 const {
   month,

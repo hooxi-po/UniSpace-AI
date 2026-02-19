@@ -40,7 +40,8 @@
 </template>
 
 <script setup lang="ts">
-import type { PersonTitle, PersonUsage } from '~/server/utils/charging-db'
+import type { PersonUsage } from '~/server/utils/charging-db'
+import type { PersonTitle } from '~/server/utils/persons-db'
 
 const props = defineProps<{
   month: string
@@ -174,4 +175,3 @@ function estimateAmount(u: PersonUsage) {
   font-weight: 700;
 }
 </style>
-

@@ -1,0 +1,272 @@
+.page {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #1f2329;
+}
+
+.desc {
+  margin-top: 6px;
+  color: #646a73;
+  font-size: 14px;
+}
+
+.toolbar {
+  background: #fff;
+  border: 1px solid #dee0e3;
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.search {
+  position: relative;
+  flex: 1;
+}
+
+.searchIcon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #8f959e;
+}
+
+.searchInput {
+  width: 100%;
+  padding: 10px 10px 10px 34px;
+  border: 1px solid #dee0e3;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.count {
+  color: #646a73;
+  font-size: 14px;
+}
+
+.card {
+  background: #fff;
+  border: 1px solid #dee0e3;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.table thead {
+  background: #f8fafc;
+  color: #646a73;
+}
+
+.table th {
+  text-align: left;
+  padding: 12px 14px;
+  font-weight: 600;
+}
+
+.table td {
+  padding: 12px 14px;
+  border-top: 1px solid #eef0f2;
+}
+
+.row:hover {
+  background: #f8fafc;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  font-size: 12px;
+  color: #646a73;
+}
+
+.name {
+  font-weight: 600;
+  color: #1f2329;
+}
+
+.link {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: #3370ff;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.empty {
+  padding: 24px;
+  text-align: center;
+  color: #8f959e;
+}
+
+.mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 60;
+  padding: 16px;
+}
+
+.modal {
+  width: 100%;
+  max-width: 980px;
+  max-height: 90vh;
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.modalHeader {
+  padding: 12px 14px;
+  border-bottom: 1px solid #eef0f2;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.modalTitle {
+  font-weight: 700;
+  color: #1f2329;
+}
+
+.modalSub {
+  font-size: 12px;
+  color: #646a73;
+  margin-top: 2px;
+}
+
+.iconBtn {
+  border: none;
+  background: transparent;
+  color: #646a73;
+  padding: 4px;
+}
+
+.modalBody {
+  padding: 14px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.panel {
+  border: 1px solid #dee0e3;
+  border-radius: 12px;
+  padding: 12px;
+  background: #f9fafb;
+}
+
+.panelTitle {
+  font-weight: 700;
+  color: #1f2329;
+  margin-bottom: 12px;
+}
+
+.readonlyTip {
+  display: flex;
+  gap: 10px;
+  background: #fffbeb;
+  border-left: 4px solid #f59e0b;
+  padding: 10px 12px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  color: #92400e;
+}
+
+.readonlyTitle {
+  font-weight: 700;
+}
+
+.readonlyDesc {
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.field label {
+  display: block;
+  font-size: 12px;
+  color: #646a73;
+  margin-bottom: 6px;
+}
+
+.input {
+  width: 100%;
+  border: 1px solid #dee0e3;
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 14px;
+  background: #fff;
+}
+
+.inputReadonly {
+  background: #f3f4f6;
+  border-color: #e5e7eb;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.btnPrimary {
+  background: #3370ff;
+  color: #fff;
+  border: 1px solid #3370ff;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btnPrimary:disabled {
+  opacity: 0.5;
+}
+
+.hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #8f959e;
+  font-size: 12px;
+}
+
+@media (max-width: 900px) {
+  .toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -2,7 +2,7 @@
 
 > 作用：给任何接手本仓库的编码助手一套“可执行、可验证、可交付”的统一规则。  
 > 适用范围：`UniSpace-AI/` 全仓库（前端 + 后端 + 文档）。  
-> 最后对齐时间：2026-02-13（基于当前代码状态）。
+> 最后对齐时间：2026-02-20（基于当前代码状态）。
 
 ---
 
@@ -11,6 +11,7 @@
 - 本仓库关键语义：**业务层 `pipes`，存储层 `roads`**。
 - 主地图管道数据：后端 API `layers=pipes`，前端再分类为 `water/drain/sewage`。
 - 管道渲染逻辑已组件化：`frontend/composables/shared/usePipeLayerLoader.ts`。
+- 管道二维编辑已接入 Twin 链路：`drilldown / trace / telemetry / audit / write`。
 - 三类管道线宽统一：`5`。
 - 改“语义/接口/地图行为”后，必须同步：
   - `README.md`
@@ -61,6 +62,9 @@
 - **roads（存储语义）**：`geo_features.layer` 中实际存储的道路层名。
 - **pipeType**：前端给要素注入的分类字段，值为 `water|drain|sewage`。
 - **可见性**：`geo_features.visible`，由后台资产中心开关写入。
+- **Twin drilldown**：按要素返回段/节点/关系/关联楼宇的穿透视图。
+- **Twin trace**：按上下游方向追踪管段拓扑路径。
+- **Twin telemetry_latest**：按要素返回当前最新测点指标。
 
 ---
 
@@ -89,12 +93,31 @@
 - 可见性接口：`PUT /api/v1/features/visibility`
 - 资产 CRUD：`POST /api/v1/features`、`PUT /api/v1/features`、`DELETE /api/v1/features?id=...`
 
-### 4.3 后端接口核心
+### 4.3 后端 Geo 接口核心
 
 - 文件：`backend/src/main/java/com/jolt/workflow/geo/GeoFeatureController.java`
 - `GET /features` 支持：`bbox/layers/limit/visible`
 - `POST/PUT/DELETE /features` 支持资产中心新增/编辑/删除
+- `PUT /features/visibility` 为可见性主接口（另保留 legacy path 兼容）
 - `normalizeLayerName(...)` 当前映射：`pipes => roads`
+
+### 4.4 管道 Twin（2D 编辑 + 拓扑 + 遥测 + 审计）
+
+- 前端入口：`frontend/components/admin/Pipe2DEditorDialog.vue`
+- 前端数据编排：`frontend/composables/admin/usePipe2DEditorData.ts`
+- 前端 2D 几何交互：`frontend/composables/admin/usePipe2DEditorMap.ts`
+- 请求封装：`frontend/services/twin.ts`
+- 后端只读接口：`backend/src/main/java/com/jolt/workflow/geo/TwinController.java`
+  - `GET /api/v1/twin/drilldown/{featureId}`
+  - `GET /api/v1/twin/trace?startId=...&direction=up|down`
+  - `GET /api/v1/twin/telemetry/latest?featureIds=...`
+- 后端写接口：`backend/src/main/java/com/jolt/workflow/geo/TwinWriteController.java`
+  - `PUT /api/v1/twin/pipes/{id}/geometry`
+  - `PUT /api/v1/twin/pipes/{id}/properties`
+  - `GET /api/v1/twin/audit/{featureId}?limit=...`
+- 数据表迁移：
+  - `V3__add_twin_topology_tables.sql`：`pipe_nodes / pipe_segments / asset_relations / telemetry_latest / edit_audit_log`
+  - `V4__seed_twin_topology_and_telemetry.sql`：根据 `geo_features(layer='roads')` 回填拓扑与测点
 
 ---
 
@@ -124,6 +147,8 @@
 - 不要移除 `pipes -> roads` 兼容映射（除非明确全链路升级）。
 - 改 `listFeatures` SQL 时，必须检查参数顺序与占位符一致。
 - 返回结构应保持 GeoJSON 兼容（`FeatureCollection` / `Feature`）。
+- 改 Twin 写接口时，保持“几何写入 + 拓扑同步 + 审计日志”事务语义。
+- `resolvePipeFeatureId(...)` 需兼容“featureId 或 segmentId”两种输入。
 
 ---
 
@@ -151,7 +176,15 @@
 3. 保持外部接口（props/emit）不破坏
 4. 补文档（结构变化必须写）
 
-### 6.4 如果需求描述不完整（默认处理）
+### 6.4 如果需求是“改管道二维编辑 / Twin 追踪”
+
+1. 前端优先改 `usePipe2DEditorData.ts` / `usePipe2DEditorMap.ts`，`Pipe2DEditorDialog.vue` 仅保留编排
+2. 后端优先改 `TwinController` / `TwinWriteController`，避免把 Twin 逻辑塞回 `GeoFeatureController`
+3. 保留写接口 fallback 行为（Twin 写失败时可回退到 `geoFeatureService.update`）
+4. 验证至少覆盖：drilldown + trace + telemetry + audit + geometry write
+5. 同步文档（`开发日志.md`，必要时 `README.md`）
+
+### 6.5 如果需求描述不完整（默认处理）
 
 1. 优先按“最小可行改动”实现，不阻塞主流程
 2. 对不确定项采用向后兼容策略（不破坏现有接口）
@@ -187,11 +220,22 @@
 
 - `backend/src/main/java/com/jolt/workflow/geo/GeoFeatureController.java`
 
-### 7.6 改动影响矩阵（快速判断）
+### 7.6 Twin 穿透/追踪/编辑
+
+- `frontend/components/admin/Pipe2DEditorDialog.vue`
+- `frontend/composables/admin/usePipe2DEditorData.ts`
+- `frontend/composables/admin/usePipe2DEditorMap.ts`
+- `frontend/services/twin.ts`
+- `backend/src/main/java/com/jolt/workflow/geo/TwinController.java`
+- `backend/src/main/java/com/jolt/workflow/geo/TwinWriteController.java`
+
+### 7.7 改动影响矩阵（快速判断）
 
 - 改 `usePipeLayerLoader.ts`：影响地图管道展示、分类、选中映射（需回归 `index.vue`）
 - 改 `MapView.vue`：影响图层加载与拾取（需回归图层开关 + 高亮）
 - 改 `GeoFeatureController.java`：影响主地图与后台资产中心（需双页面回归）
+- 改 `TwinController.java`：影响二维编辑器的穿透/追踪/遥测侧栏（需回归 `/admin` 二维编辑）
+- 改 `TwinWriteController.java`：影响几何保存、拓扑同步、审计日志（需回归“保存后立即重载”链路）
 - 改 `admin-tables.ts`：影响后台字段展示与搜索（需回归 `/admin`）
 - 改 `start.sh` / `frontend/package.json`：影响全员启动链路（需记录到 `README.md`）
 
@@ -229,7 +273,23 @@ curl -s "http://localhost:8080/api/v1/features?layers=pipes&visible=true&limit=1
 - `visible` 开关可写回且刷新后生效
 - 新增/编辑/删除操作可成功写回并刷新列表
 
-### 8.4 改启动/构建链路
+### 8.4 改 Twin 接口 / 二维管道编辑
+
+**至少执行：**
+
+```bash
+curl -s "http://localhost:8080/api/v1/twin/drilldown/way/25598484" | head -c 400
+curl -s "http://localhost:8080/api/v1/twin/trace?startId=way/25598484&direction=down" | head -c 400
+curl -s "http://localhost:8080/api/v1/twin/telemetry/latest?featureIds=way/25598484" | head -c 400
+curl -s "http://localhost:8080/api/v1/twin/audit/way/25598484?limit=5" | head -c 400
+```
+
+并在 `/admin` -> 资产中心 -> 管道数据 -> 二维地图编辑确认：
+- 管道列表可加载且可检索
+- 拖拽点位后可保存几何
+- 保存后“穿透信息 / 下游追踪 / 实时测点 / 编辑审计”有响应且不报错
+
+### 8.5 改启动/构建链路
 
 **至少执行：**
 
@@ -245,7 +305,7 @@ rm -rf .nuxt
 npm run dev
 ```
 
-### 8.5 验证失败时的闭环要求
+### 8.6 验证失败时的闭环要求
 
 - 必须在交付说明中写清：失败命令、报错摘要、已尝试修复动作
 - 若失败与本次改动无关，需明确“已确认为历史问题/环境问题”
@@ -260,6 +320,7 @@ npm run dev
 - 现象：`#internal/nuxt/paths` 未定义
 - 修复脚本：`frontend/scripts/ensure-nuxt-internal.mjs`
 - 已挂载：`dev/build/postinstall`
+- 辅助兜底：`frontend/nuxt.config.ts` 中对 `#app-manifest` 的 fallback alias
 
 ### 9.2 端口冲突
 
@@ -276,6 +337,12 @@ npm run dev
 - 现象：`Maximum call stack size exceeded`（Vite transform 链）
 - 高风险操作：在 `frontend/package.json` 里添加不当 `imports` 别名映射
 - 当前稳定策略：使用 `scripts/ensure-nuxt-internal.mjs` 补丁，不在项目 `package.json` 增加该内部别名
+
+### 9.5 Twin 拓扑回填边界
+
+- `TwinWriteController` 的几何同步要求目标要素可归一为线几何（`LineString/MultiLineString`）
+- 若数据是非线要素或线合并失败，会出现 `line_geometry_required` / `topology_sync_failed`
+- 遇到该类报错，优先检查 `geo_features.layer='roads'` 且 geometry 类型正确
 
 ---
 
@@ -303,6 +370,7 @@ npm run dev
 
 - 改接口参数/返回结构：更新 `README.md` + `开发日志.md`
 - 改地图图层语义/样式：更新 `README.md` + `开发日志.md` + `agent.md`
+- 改 Twin 拓扑/写接口/审计行为：更新 `README.md` + `开发日志.md` + `agent.md`
 - 改目录结构/组件职责：更新 `frontend/STRUCTURE.md` + `agent.md`
 - 改启动命令或脚本：更新 `README.md` + `开发日志.md`
 
@@ -336,6 +404,8 @@ cd frontend && npm ci || npm install && npm run dev
 # 最小 API 验证
 curl -s "http://localhost:8080/api/v1/features?layers=pipes&limit=1"
 curl -s "http://localhost:8080/api/v1/features?layers=buildings&limit=1"
+curl -s "http://localhost:8080/api/v1/twin/drilldown/way/25598484" | head -c 200
+curl -s "http://localhost:8080/api/v1/twin/trace?startId=way/25598484&direction=down" | head -c 200
 ```
 
 ---
@@ -348,9 +418,15 @@ curl -s "http://localhost:8080/api/v1/features?layers=buildings&limit=1"
 - 主页面状态：`frontend/pages/index.vue`
 - 后台资产中心：`frontend/pages/admin.vue`
 - 后端 GeoJSON API：`backend/src/main/java/com/jolt/workflow/geo/GeoFeatureController.java`
+- 二维管道编辑器：`frontend/components/admin/Pipe2DEditorDialog.vue`
+- Twin 前端请求封装：`frontend/services/twin.ts`
+- Twin 只读接口：`backend/src/main/java/com/jolt/workflow/geo/TwinController.java`
+- Twin 写接口：`backend/src/main/java/com/jolt/workflow/geo/TwinWriteController.java`
 - 数据库迁移：
   - `backend/src/main/resources/db/migration/V1__init_postgis_and_features.sql`
   - `backend/src/main/resources/db/migration/V2__add_visibility_to_geo_features.sql`
+  - `backend/src/main/resources/db/migration/V3__add_twin_topology_tables.sql`
+  - `backend/src/main/resources/db/migration/V4__seed_twin_topology_and_telemetry.sql`
 - 前端结构规范：`frontend/STRUCTURE.md`
 - 变更记录：`开发日志.md`
 

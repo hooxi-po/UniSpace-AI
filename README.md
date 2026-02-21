@@ -241,6 +241,8 @@ export GEMINI_API_KEY=YOUR_KEY
 - `V3__add_twin_topology_tables.sql`：`pipe_nodes / pipe_segments / asset_relations / telemetry_latest / edit_audit_log`
 - `V4__seed_twin_topology_and_telemetry.sql`：基于 `roads` 回填初始拓扑关系与遥测样例
 - `V5__add_twin_entity_tables.sql`：新增 `pipe_manholes / pipe_valves / pump_stations / building_floors / building_rooms`
+- `V6__add_module2_telemetry_tables.sql`：新增模块2测点/阈值/实时/历史/告警表
+- `V7__seed_extended_twin_topology_entities.sql`：补充扩展拓扑实体样例与全链路关系种子
 
 `backend/src/main/resources/db/migration/V1__init_postgis_and_features.sql`：
 
@@ -302,7 +304,7 @@ docker compose up -d
 
 ### 1) 初始化数据库表（Flyway 迁移）
 
-推荐方式：启动后端一次，让 Flyway 自动执行全部迁移（V1~V5）。
+推荐方式：启动后端一次，让 Flyway 自动执行全部迁移（V1~V7）。
 
 如果你只想快速初始化基础表，也可以手动执行 V1：
 
@@ -404,6 +406,8 @@ Query 参数：
 - `bbox`（可选）：`minLon,minLat,maxLon,maxLat`（EPSG:4326）
 - `layers`（可选）：逗号分隔图层名（`pipes` 会在后端自动映射到 `roads` 存储层）
 - `limit`（可选，默认 `2000`）
+- `page`（可选）：分页页码（从 `1` 开始）
+- `offset`（可选）：偏移量；若同时传 `page` 与 `offset`，优先 `offset`
 - `visible`（可选）：`true | false`（后端会按 `geo_features.visible` 过滤；返回的 `properties` 也会附加 `visible` 字段）
 
 返回：GeoJSON `FeatureCollection`。
@@ -472,6 +476,62 @@ Body：
 
 返回：`{"ok":true}`（或 400/404）。
 
+### `GET /api/v1/twin/drilldown/{id}`
+
+返回字段除 `feature/segment/nodes/relations/linkedBuildings` 外，新增：
+
+- `impactedRooms`
+- `valves`
+- `equipments`
+
+用于主地图点击管段后的真实穿透展示。
+
+### `POST /api/v1/module2/telemetry/ingest`
+
+用途：写入模块2测点数据（实时+历史），并按阈值自动产生告警。
+
+示例：
+
+```json
+{
+  "pointId": "pt_pipe_001_pressure",
+  "featureId": "way/25598484",
+  "metric": "pressure",
+  "value": 2.45,
+  "unit": "bar",
+  "sampledAt": "2026-02-21T06:20:00Z"
+}
+```
+
+### `PUT /api/v1/module2/telemetry/thresholds`
+
+用途：设置或更新测点阈值规则（`warn/alarm` 上下限）。
+
+### `GET /api/v1/module2/telemetry/latest`
+
+用途：查询模块2实时测点数据（支持 `pointIds`、`metric`、`limit`）。
+
+### `GET /api/v1/module2/telemetry/history`
+
+用途：查询模块2历史测点数据（支持 `pointId`、`metric`、`from`、`to`、`limit`）。
+
+## 性能基线脚本
+
+```bash
+./scripts/perf-baseline.sh
+```
+
+可选环境变量：
+
+- `BACKEND_URL`（默认 `http://localhost:8080`）
+- `FRONTEND_URL`（默认 `http://localhost:3000`）
+- `BBOX`（默认 `119.1500,26.0000,119.2500,26.0800`）
+- `PAGE_SIZE`（默认 `800`）
+- `MAX_PAGES`（默认 `5`）
+- `FPS_CURRENT`（可选，手工填入真实 FPS；不填则脚本给出估算值）
+
+脚本会在 `reports/` 下生成可复现的基线报告（首屏加载、实体数量、FPS Current/Target）。
+
 ---
 
 ## 常见问题
@@ -493,10 +553,11 @@ export GEMINI_API_KEY=YOUR_KEY
 
 ### 3) 地图数据量大导致前端卡顿
 
-当前管道/建筑已走后端 GeoJSON API，仍是“按图层一次性加载”。后续建议：
+当前实现已支持按视口 `bbox` + `page/offset` 增量加载。若仍卡顿，建议：
 
-- 后端按 `bbox` 分页/裁剪返回
-- 前端按视口动态加载（camera changed -> 请求 bbox）
+- 缩小单次分页大小（`limit`）
+- 降低前端分页拉取页数上限
+- 使用 `scripts/perf-baseline.sh` 定期生成性能基线报告
 
 ### 4) 前端报错 `#internal/nuxt/paths` 未定义
 

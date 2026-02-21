@@ -2,7 +2,7 @@
 
 > 作用：给任何接手本仓库的编码助手一套“可执行、可验证、可交付”的统一规则。  
 > 适用范围：`UniSpace-AI/` 全仓库（前端 + 后端 + 文档）。  
-> 最后对齐时间：2026-02-21（基于当前代码状态）。
+> 最后对齐时间：2026-02-21（基于当前代码状态，含 M1/M2 最新实现）。
 
 ---
 
@@ -10,6 +10,7 @@
 
 - 本仓库关键语义：**业务层 `pipes`，存储层 `roads`**。
 - 主地图管道数据：后端 API `layers=pipes`，前端再分类为 `water/drain/sewage`。
+- 主地图已按视口增量加载：`bbox + page/offset`。
 - 管道渲染逻辑已组件化：`frontend/composables/shared/usePipeLayerLoader.ts`。
 - 管道二维编辑已接入 Twin 链路：`drilldown / trace / telemetry / audit / write`。
 - Twin 拓扑实体已扩展：`pipe_manholes / pipe_valves / pump_stations / building_floors / building_rooms`。
@@ -76,11 +77,11 @@
 1. `frontend/pages/index.vue` 维护图层状态：`water/sewage/drain/buildings/green`
 2. `frontend/components/MapView.vue` 负责地图容器、拾取、高亮、编排
 3. `frontend/composables/shared/usePipeLayerLoader.ts` 负责：
-   - 请求 `GET /api/v1/features?layers=pipes&visible=true`
+   - 请求 `GET /api/v1/features?layers=pipes&visible=true&bbox=...&page=...`
    - 按 `highway` 分类 `water/drain/sewage`
    - 注入 `properties.pipeType`
    - 应用统一管道样式（线宽 `5`）
-4. 建筑层来自 `layers=buildings`，绿地仍来自 `/map/green.geojson`
+4. 建筑层来自 `layers=buildings&bbox=...&page=...`，绿地仍来自 `/map/green.geojson`
 
 ### 4.2 后台资产中心
 
@@ -97,7 +98,7 @@
 ### 4.3 后端 Geo 接口核心
 
 - 文件：`backend/src/main/java/com/jolt/workflow/geo/GeoFeatureController.java`
-- `GET /features` 支持：`bbox/layers/limit/visible`
+- `GET /features` 支持：`bbox/layers/limit/page/offset/visible`
 - `POST/PUT/DELETE /features` 支持资产中心新增/编辑/删除
 - `PUT /features/visibility` 为可见性主接口（另保留 legacy path 兼容）
 - `normalizeLayerName(...)` 当前映射：`pipes => roads`
@@ -109,9 +110,14 @@
 - 前端 2D 几何交互：`frontend/composables/admin/usePipe2DEditorMap.ts`
 - 请求封装：`frontend/services/twin.ts`
 - 后端只读接口：`backend/src/main/java/com/jolt/workflow/geo/TwinController.java`
-  - `GET /api/v1/twin/drilldown/{featureId}`
+  - `GET /api/v1/twin/drilldown/{featureId}`（含 `impactedRooms/valves/equipments`）
   - `GET /api/v1/twin/trace?startId=...&direction=up|down`
   - `GET /api/v1/twin/telemetry/latest?featureIds=...`
+- 模块2遥测接口：`backend/src/main/java/com/jolt/workflow/geo/Module2TelemetryController.java`
+  - `POST /api/v1/module2/telemetry/ingest`
+  - `PUT /api/v1/module2/telemetry/thresholds`
+  - `GET /api/v1/module2/telemetry/latest`
+  - `GET /api/v1/module2/telemetry/history`
 - 后端写接口：`backend/src/main/java/com/jolt/workflow/geo/TwinWriteController.java`
   - `PUT /api/v1/twin/pipes/{id}/geometry`
   - `PUT /api/v1/twin/pipes/{id}/properties`
@@ -120,6 +126,8 @@
   - `V3__add_twin_topology_tables.sql`：`pipe_nodes / pipe_segments / asset_relations / telemetry_latest / edit_audit_log`
   - `V4__seed_twin_topology_and_telemetry.sql`：根据 `geo_features(layer='roads')` 回填拓扑与测点
   - `V5__add_twin_entity_tables.sql`：新增 `pipe_manholes / pipe_valves / pump_stations / building_floors / building_rooms`
+  - `V6__add_module2_telemetry_tables.sql`：新增模块2测点/阈值/实时/历史/告警模型
+  - `V7__seed_extended_twin_topology_entities.sql`：补充“管段-井-阀-泵-楼-层-房”关系种子
 
 ---
 
@@ -424,12 +432,16 @@ curl -s "http://localhost:8080/api/v1/twin/trace?startId=way/25598484&direction=
 - Twin 前端请求封装：`frontend/services/twin.ts`
 - Twin 只读接口：`backend/src/main/java/com/jolt/workflow/geo/TwinController.java`
 - Twin 写接口：`backend/src/main/java/com/jolt/workflow/geo/TwinWriteController.java`
+- 模块2遥测接口：`backend/src/main/java/com/jolt/workflow/geo/Module2TelemetryController.java`
 - 数据库迁移：
   - `backend/src/main/resources/db/migration/V1__init_postgis_and_features.sql`
   - `backend/src/main/resources/db/migration/V2__add_visibility_to_geo_features.sql`
   - `backend/src/main/resources/db/migration/V3__add_twin_topology_tables.sql`
   - `backend/src/main/resources/db/migration/V4__seed_twin_topology_and_telemetry.sql`
   - `backend/src/main/resources/db/migration/V5__add_twin_entity_tables.sql`
+  - `backend/src/main/resources/db/migration/V6__add_module2_telemetry_tables.sql`
+  - `backend/src/main/resources/db/migration/V7__seed_extended_twin_topology_entities.sql`
+- 性能基线脚本：`scripts/perf-baseline.sh`
 - 前端结构规范：`frontend/STRUCTURE.md`
 - 变更记录：`开发日志.md`
 

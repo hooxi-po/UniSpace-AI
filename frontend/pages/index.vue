@@ -53,7 +53,6 @@
 
 <script setup lang="ts">
 import type { PipeNode, Building, GeoJsonFeature } from '~/types'
-import { BUILDINGS } from '~/composables/useConstants'
 import { twinService } from '~/services/twin'
 import { normalizeBackendBaseUrl } from '~/utils/backend-url'
 import { classifyRoadToPipeLayer } from '~/utils/pipe-classifier'
@@ -122,6 +121,21 @@ function normalizeDiameter(props: Record<string, unknown>) {
   const raw = toText(props.diameter) || toText(props.diameter_mm)
   if (!raw) return '未知'
   return raw.toUpperCase().startsWith('DN') ? raw.toUpperCase() : `DN${raw}`
+}
+
+function normalizeBuildingType(props: Record<string, unknown>): Building['type'] {
+  const buildingType = String(props.building || '').toLowerCase()
+  const amenity = String(props.amenity || '').toLowerCase()
+  if (buildingType.includes('dorm') || buildingType.includes('dormitory')) return 'dorm'
+  if (buildingType.includes('lab') || buildingType.includes('laboratory')) return 'lab'
+  if (
+    buildingType.includes('canteen') ||
+    buildingType.includes('restaurant') ||
+    amenity === 'restaurant'
+  ) {
+    return 'canteen'
+  }
+  return 'admin'
 }
 
 async function buildPipeAsset(feature: GeoJsonFeature) {
@@ -209,65 +223,28 @@ const handleSelection = async (item: PipeNode | Building | GeoJsonFeature | null
     const properties = feature.properties || {}
     const featureId = String(feature.id)
     
-    // 检查是否是建筑（通过 properties.building 判断）
+    // 建筑资产：直接基于真实 GeoJSON 属性构建，不再走本地 Mock BUILDINGS 映射
     if (properties.building) {
-      // 尝试精确匹配 id
-      let building = BUILDINGS.find(b => featureId === b.id || featureId.includes(b.id))
-      
-      // 如果找不到，尝试根据 properties 中的 name 匹配
-      if (!building && properties.name) {
-        const name = String(properties.name)
-        building = BUILDINGS.find(b => name.includes(b.name) || b.name.includes(name))
-      }
-      
-      // 如果还是找不到，从 GeoJSON properties 动态创建 Building 对象
-      if (!building) {
-        const buildingName = properties.name 
-          ? String(properties.name) 
-          : properties.short_name
-          ? String(properties.short_name)
-          : `建筑 ${featureId}`
-        
-        // 根据 building 类型映射到 Building.type
-        const buildingType = String(properties.building || '').toLowerCase()
-        let mappedType: Building['type'] = 'admin'
-        if (buildingType.includes('dorm') || buildingType.includes('dormitory')) {
-          mappedType = 'dorm'
-        } else if (buildingType.includes('lab') || buildingType.includes('laboratory')) {
-          mappedType = 'lab'
-        } else if (buildingType.includes('canteen') || buildingType.includes('restaurant') || properties.amenity === 'restaurant') {
-          mappedType = 'canteen'
-        } else if (buildingType.includes('school') || buildingType.includes('university')) {
-          mappedType = 'admin'
-        }
-        
-        // 估算房间数：如果有楼层信息，每层估算 20-30 个房间
-        let estimatedRooms = 0
-        if (properties['building:levels']) {
-          const levels = parseInt(String(properties['building:levels']), 10)
-          if (!isNaN(levels)) {
-            estimatedRooms = levels * 25 // 每层估算 25 个房间
-          }
-        }
-        
-        // 创建动态 Building 对象
-        building = {
-          id: featureId,
-          name: buildingName,
-          type: mappedType,
-          status: 'normal',
-          coordinates: { x: 0, y: 0 }, // GeoJSON 坐标需要从 geometry 中提取，这里暂时使用默认值
-          connectedPipeId: 'P-UNKNOWN',
-          rooms: estimatedRooms,
-          keyEquipment: [],
-          powerConsumption: 0
+      let estimatedRooms = 0
+      if (properties['building:levels']) {
+        const levels = Number.parseInt(String(properties['building:levels']), 10)
+        if (!Number.isNaN(levels)) {
+          estimatedRooms = levels * 25
         }
       }
-      
-      if (building) {
-        selectedItem.value = building
-        return
+
+      selectedItem.value = {
+        id: featureId,
+        name: toText(properties.name) || toText(properties.short_name) || `建筑 ${featureId}`,
+        type: normalizeBuildingType(properties as Record<string, unknown>),
+        status: 'normal',
+        coordinates: { x: 0, y: 0 },
+        connectedPipeId: toText(properties.connectedPipeId) || toText(properties.connected_pipe_id) || 'UNKNOWN',
+        rooms: estimatedRooms,
+        keyEquipment: [],
+        powerConsumption: 0,
       }
+      return
     }
     
     // 检查是否是管道（由道路数据分类生成：pipeType=water|drain|sewage）

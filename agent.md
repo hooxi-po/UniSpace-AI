@@ -2,7 +2,7 @@
 
 > 作用：给任何接手本仓库的编码助手一套“可执行、可验证、可交付”的统一规则。  
 > 适用范围：`UniSpace-AI/` 全仓库（前端 + 后端 + 文档）。  
-> 最后对齐时间：2026-02-20（基于当前代码状态）。
+> 最后对齐时间：2026-02-21（基于当前代码状态）。
 
 ---
 
@@ -12,6 +12,7 @@
 - 主地图管道数据：后端 API `layers=pipes`，前端再分类为 `water/drain/sewage`。
 - 管道渲染逻辑已组件化：`frontend/composables/shared/usePipeLayerLoader.ts`。
 - 管道二维编辑已接入 Twin 链路：`drilldown / trace / telemetry / audit / write`。
+- Twin 拓扑实体已扩展：`pipe_manholes / pipe_valves / pump_stations / building_floors / building_rooms`。
 - 三类管道线宽统一：`5`。
 - 改“语义/接口/地图行为”后，必须同步：
   - `README.md`
@@ -118,6 +119,7 @@
 - 数据表迁移：
   - `V3__add_twin_topology_tables.sql`：`pipe_nodes / pipe_segments / asset_relations / telemetry_latest / edit_audit_log`
   - `V4__seed_twin_topology_and_telemetry.sql`：根据 `geo_features(layer='roads')` 回填拓扑与测点
+  - `V5__add_twin_entity_tables.sql`：新增 `pipe_manholes / pipe_valves / pump_stations / building_floors / building_rooms`
 
 ---
 
@@ -427,6 +429,7 @@ curl -s "http://localhost:8080/api/v1/twin/trace?startId=way/25598484&direction=
   - `backend/src/main/resources/db/migration/V2__add_visibility_to_geo_features.sql`
   - `backend/src/main/resources/db/migration/V3__add_twin_topology_tables.sql`
   - `backend/src/main/resources/db/migration/V4__seed_twin_topology_and_telemetry.sql`
+  - `backend/src/main/resources/db/migration/V5__add_twin_entity_tables.sql`
 - 前端结构规范：`frontend/STRUCTURE.md`
 - 变更记录：`开发日志.md`
 

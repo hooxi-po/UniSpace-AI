@@ -53,11 +53,14 @@
 
 <script setup lang="ts">
 import type { PipeNode, Building, GeoJsonFeature } from '~/types'
-import { BUILDINGS, PIPELINES } from '~/composables/useConstants'
+import { BUILDINGS } from '~/composables/useConstants'
+import { twinService } from '~/services/twin'
 import { normalizeBackendBaseUrl } from '~/utils/backend-url'
+import { classifyRoadToPipeLayer } from '~/utils/pipe-classifier'
 
 const selectedItem = ref<PipeNode | Building | GeoJsonFeature | null>(null)
 const runtimeConfig = useRuntimeConfig()
+const selectionToken = ref(0)
 
 const DEFAULT_VIEWPORT = {
   x: 119.1895,
@@ -88,12 +91,107 @@ const layers = ref({
 // Weather State
 const weatherMode = ref(false)
 
+function toNumber(value: unknown) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string') {
+    const next = Number.parseFloat(value)
+    if (Number.isFinite(next)) return next
+  }
+  return null
+}
+
+function toText(value: unknown) {
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function normalizePipeType(props: Record<string, unknown>, featureId: string): PipeNode['type'] {
+  const pipeType = String(props.pipeType || '').trim().toLowerCase()
+  if (pipeType === 'water' || pipeType === 'drain' || pipeType === 'sewage') {
+    return pipeType
+  }
+  return classifyRoadToPipeLayer(props, featureId)
+}
+
+function normalizePipeStatus(value: unknown): PipeNode['status'] {
+  const raw = String(value || '').trim().toLowerCase()
+  if (raw === 'warning' || raw === 'critical') return raw
+  return 'normal'
+}
+
+function normalizeDiameter(props: Record<string, unknown>) {
+  const raw = toText(props.diameter) || toText(props.diameter_mm)
+  if (!raw) return '未知'
+  return raw.toUpperCase().startsWith('DN') ? raw.toUpperCase() : `DN${raw}`
+}
+
+async function buildPipeAsset(feature: GeoJsonFeature) {
+  const featureId = String(feature.id)
+  const properties = (feature.properties || {}) as Record<string, unknown>
+  const [drilldownResult, telemetryResult] = await Promise.allSettled([
+    twinService.drilldown(backendBaseUrl.value, featureId),
+    twinService.telemetryLatest(backendBaseUrl.value, [featureId]),
+  ])
+
+  const linkedBuildingNames =
+    drilldownResult.status === 'fulfilled'
+      ? drilldownResult.value.linkedBuildings
+          .map((item) => {
+            const name = toText((item as Record<string, unknown>).name)
+            if (name) return name
+            return toText((item as Record<string, unknown>).id)
+          })
+          .filter((item): item is string => Boolean(item))
+      : []
+
+  const telemetry = telemetryResult.status === 'fulfilled' ? telemetryResult.value : []
+  const pressure = telemetry.find(item => item.metric === 'pressure')?.value
+    ?? toNumber(properties.pressure)
+    ?? 0
+  const flowRate = telemetry.find(item => item.metric === 'flow')?.value
+    ?? toNumber(properties.flowRate)
+    ?? toNumber(properties.flow)
+    ?? 0
+
+  const depth = toNumber(properties.depth)
+    ?? toNumber(properties.depth_m)
+    ?? toNumber(properties.buried_depth)
+    ?? 0
+
+  const installDate =
+    toText(properties.installDate)
+    || toText(properties.install_date)
+    || toText(properties.start_date)
+    || '未知'
+
+  const lastMaintain =
+    toText(properties.lastMaintain)
+    || toText(properties.last_maintain)
+    || toText(properties.maintenance_date)
+    || '未知'
+
+  return {
+    id: featureId,
+    type: normalizePipeType(properties, featureId),
+    status: normalizePipeStatus(properties.status),
+    pressure,
+    flowRate,
+    coordinates: [],
+    diameter: normalizeDiameter(properties),
+    material: toText(properties.material) || '未知',
+    depth,
+    installDate,
+    lastMaintain,
+    connectedBuildingIds: linkedBuildingNames,
+  } as PipeNode
+}
+
 /**
  * 处理地图选择事件
  * 将 GeoJSON 特征转换为对应的资产对象（Building 或 PipeNode）
  * @param item - 选中的项（可能是 GeoJSON 特征、Building 或 PipeNode）
  */
-const handleSelection = (item: PipeNode | Building | GeoJsonFeature | null) => {
+const handleSelection = async (item: PipeNode | Building | GeoJsonFeature | null) => {
+  const token = ++selectionToken.value
   if (!item) {
     selectedItem.value = null
     return
@@ -175,29 +273,15 @@ const handleSelection = (item: PipeNode | Building | GeoJsonFeature | null) => {
     // 检查是否是管道（由道路数据分类生成：pipeType=water|drain|sewage）
     const pipeType = String(properties.pipeType || '').toLowerCase()
     if (pipeType === 'water' || pipeType === 'drain' || pipeType === 'sewage' || properties.highway) {
-      // 优先按管道类型匹配 Mock 管线
-      let pipeline = PIPELINES.find(p => p.type === pipeType)
-
-      // 兼容兜底：尝试按 id 匹配
-      if (!pipeline) {
-        pipeline = PIPELINES.find(p => featureId === p.id || featureId.includes(p.id))
+      try {
+        const pipeAsset = await buildPipeAsset(feature)
+        if (token !== selectionToken.value) return
+        selectedItem.value = pipeAsset
+      } catch {
+        if (token !== selectionToken.value) return
+        selectedItem.value = feature
       }
-
-      // 最后兜底：选第一条
-      if (!pipeline && PIPELINES.length > 0) {
-        pipeline = PIPELINES[0]
-      }
-
-      if (pipeline) {
-        selectedItem.value = {
-          ...pipeline,
-          id: featureId,
-          type: (pipeType === 'water' || pipeType === 'drain' || pipeType === 'sewage')
-            ? pipeType
-            : pipeline.type,
-        }
-        return
-      }
+      return
     }
     
     // 如果找不到对应的资产，保留 GeoJSON 特征（不显示右侧弹窗）

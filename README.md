@@ -234,6 +234,14 @@ export GEMINI_API_KEY=YOUR_KEY
 
 ### 数据库迁移（Flyway）
 
+当前迁移清单（`backend/src/main/resources/db/migration`）：
+
+- `V1__init_postgis_and_features.sql`：初始化 `geo_features` + PostGIS 扩展
+- `V2__add_visibility_to_geo_features.sql`：新增 `visible` 字段与索引
+- `V3__add_twin_topology_tables.sql`：`pipe_nodes / pipe_segments / asset_relations / telemetry_latest / edit_audit_log`
+- `V4__seed_twin_topology_and_telemetry.sql`：基于 `roads` 回填初始拓扑关系与遥测样例
+- `V5__add_twin_entity_tables.sql`：新增 `pipe_manholes / pipe_valves / pump_stations / building_floors / building_rooms`
+
 `backend/src/main/resources/db/migration/V1__init_postgis_and_features.sql`：
 
 - 启用扩展：`postgis`
@@ -294,7 +302,9 @@ docker compose up -d
 
 ### 1) 初始化数据库表（Flyway 迁移）
 
-如果你还没启动过后端导致迁移未自动执行，可以手动执行仓库内迁移 SQL：
+推荐方式：启动后端一次，让 Flyway 自动执行全部迁移（V1~V5）。
+
+如果你只想快速初始化基础表，也可以手动执行 V1：
 
 ```bash
 docker exec -i unispace-postgis psql -U postgres -d unispace < backend/src/main/resources/db/migration/V1__init_postgis_and_features.sql

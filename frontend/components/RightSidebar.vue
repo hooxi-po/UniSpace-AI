@@ -105,7 +105,7 @@
               <h4 class="text-tech-blue font-bold mb-2 text-xs uppercase">拓扑关系</h4>
               <div class="text-xs text-gray-400">
                 <template v-if="isPipe">
-                  该管段向下游供水至 {{ (data as PipeNode).connectedBuildingIds.join(', ') }}，当前链路畅通。
+                  该管段向下游供水至 {{ pipeLinkedTargetsText }}，当前链路畅通。
                 </template>
                 <template v-else>
                   该建筑接入 {{ (data as Building).connectedPipeId }} 号主管道，位于第 3 加压供水分区。
@@ -263,6 +263,12 @@ const title = computed(() => {
 const relatedOrders = computed(() => {
   if (!props.data) return []
   return WORK_ORDERS.filter(wo => wo.targetId === props.data!.id)
+})
+
+const pipeLinkedTargetsText = computed(() => {
+  if (!props.data || !isPipe.value) return ''
+  const list = (props.data as PipeNode).connectedBuildingIds || []
+  return list.length ? list.join(', ') : '暂无关联楼宇'
 })
 
 function resetCopyStatusLater() {

@@ -10,7 +10,7 @@ import {
   usePipeLayerLoader,
 } from '~/composables/shared/usePipeLayerLoader'
 import { normalizeBackendBaseUrl } from '~/utils/backend-url'
-import { styleBuildingEntity, styleGreenEntity } from '~/utils/map-entity-style'
+import { styleBuildingEntity, styleGreenEntity, stylePipeNodeEntity } from '~/utils/map-entity-style'
 
 const DEFAULT_CAMERA = {
   longitude: 119.1895,
@@ -28,6 +28,7 @@ type MapLayers = {
   water: boolean
   sewage: boolean
   drain: boolean
+  pipeNodes: boolean
   buildings: boolean
   green?: boolean
 }
@@ -55,13 +56,19 @@ let highlightedOriginal: {
   polygonMaterial?: Cesium.MaterialProperty
   polylineMaterial?: Cesium.MaterialProperty
   polylineWidth?: number
+  pointColor?: Cesium.Property
+  pointPixelSize?: number
 } | null = null
+
+const BUILDING_DISTANCE_CONDITION = new Cesium.DistanceDisplayCondition(0, 8000)
+const PIPE_NODE_DISTANCE_CONDITION = new Cesium.DistanceDisplayCondition(0, 4500)
 
 // Layer data sources
 const dataSources = {
   water: new Cesium.CustomDataSource('water'),
   green: new Cesium.CustomDataSource('green'),
   buildings: new Cesium.CustomDataSource('buildings'),
+  pipeNodes: new Cesium.CustomDataSource('pipeNodes'),
   sewage: new Cesium.CustomDataSource('sewage'),
   drain: new Cesium.CustomDataSource('drain'),
 }
@@ -69,7 +76,7 @@ const dataSources = {
 const normalizedBackendBaseUrl = computed(() => normalizeBackendBaseUrl(props.backendBaseUrl))
 type LayerName = keyof typeof dataSources
 
-const MAP_LAYER_NAMES: LayerName[] = ['water', 'sewage', 'drain', 'green', 'buildings']
+const MAP_LAYER_NAMES: LayerName[] = ['water', 'sewage', 'drain', 'pipeNodes', 'green', 'buildings']
 const DYNAMIC_LAYER_PAGE_SIZE = 800
 const DYNAMIC_LAYER_MAX_PAGES = 5
 const DYNAMIC_LAYER_RELOAD_DEBOUNCE_MS = 350
@@ -78,6 +85,7 @@ const dynamicLayerQueryKey = ref<Record<LayerName, string>>({
   water: '',
   sewage: '',
   drain: '',
+  pipeNodes: '',
   buildings: '',
   green: '',
 })
@@ -119,6 +127,16 @@ watch(
           )
         }
       }
+      if (highlightedEntity.point) {
+        if (highlightedOriginal.pointColor) {
+          highlightedEntity.point.color = highlightedOriginal.pointColor
+        }
+        if (typeof highlightedOriginal.pointPixelSize === 'number') {
+          highlightedEntity.point.pixelSize = new Cesium.ConstantProperty(
+            highlightedOriginal.pointPixelSize
+          )
+        }
+      }
     }
 
     highlightedEntity = null
@@ -143,6 +161,8 @@ watch(
       polygonMaterial: target.polygon?.material,
       polylineMaterial: target.polyline?.material,
       polylineWidth: target.polyline?.width?.getValue(viewer.clock.currentTime),
+      pointColor: target.point?.color,
+      pointPixelSize: target.point?.pixelSize?.getValue(viewer.clock.currentTime),
     }
 
     const highlightColor = new Cesium.ColorMaterialProperty(
@@ -160,6 +180,10 @@ watch(
     if (target.polyline) {
       target.polyline.material = highlightColor
       target.polyline.width = new Cesium.ConstantProperty(6)
+    }
+    if (target.point) {
+      target.point.color = new Cesium.ConstantProperty(Cesium.Color.YELLOW.withAlpha(0.95))
+      target.point.pixelSize = new Cesium.ConstantProperty(10)
     }
   },
   { immediate: true }
@@ -191,6 +215,9 @@ onMounted(() => {
   })
 
   viewer.scene.globe.depthTestAgainstTerrain = true
+  viewer.scene.requestRenderMode = true
+  viewer.scene.maximumRenderTimeChange = 0.2
+  viewer.scene.globe.maximumScreenSpaceError = 2
 
   // Remove GeoJSON default labels/billboards (often show as blue markers)
   viewer.scene.screenSpaceCameraController.enableCollisionDetection = false
@@ -347,6 +374,9 @@ function getLayerSourceUrl(layerName: LayerName): string | null {
   if (layerName === 'buildings') {
     return `${normalizedBackendBaseUrl.value}/api/v1/features?layers=buildings&visible=true`
   }
+  if (layerName === 'pipeNodes') {
+    return `${normalizedBackendBaseUrl.value}/api/v1/twin/nodes`
+  }
   return staticLayerFiles[layerName] || null
 }
 
@@ -445,6 +475,7 @@ const dynamicLayerLoadSeq: Record<LayerName, number> = {
   water: 0,
   sewage: 0,
   drain: 0,
+  pipeNodes: 0,
   buildings: 0,
   green: 0,
 }
@@ -470,7 +501,7 @@ function loadLayer(layerName: LayerName, force = false) {
   const dataSource = dataSources[layerName]
   if (!dataSource) return
 
-  if (layerName === 'buildings') {
+  if (layerName === 'buildings' || layerName === 'pipeNodes') {
     if (!viewer) return
     const queryKey = buildDynamicLayerQueryKey(layerName)
     if (!force && loadedLayers.value.has(layerName) && dynamicLayerQueryKey.value[layerName] === queryKey) return
@@ -487,9 +518,23 @@ function loadLayer(layerName: LayerName, force = false) {
         for (const entity of layerDataSource.entities.values) {
           entity.label = undefined
           entity.billboard = undefined
-          entity.point = undefined
           entity.description = undefined
-          styleBuildingEntity(entity)
+          if (layerName === 'buildings') {
+            entity.point = undefined
+            styleBuildingEntity(entity)
+            if (entity.polygon) {
+              entity.polygon.distanceDisplayCondition = new Cesium.ConstantProperty(
+                BUILDING_DISTANCE_CONDITION
+              )
+            }
+          } else {
+            stylePipeNodeEntity(entity)
+            if (entity.point) {
+              entity.point.distanceDisplayCondition = new Cesium.ConstantProperty(
+                PIPE_NODE_DISTANCE_CONDITION
+              )
+            }
+          }
           dataSource.entities.add(entity)
         }
         loadedLayers.value.add(layerName)
@@ -592,6 +637,9 @@ function reloadDynamicLayers(force = false) {
 
   if (props.layers.buildings) {
     loadLayer('buildings', true)
+  }
+  if (props.layers.pipeNodes) {
+    loadLayer('pipeNodes', true)
   }
 }
 

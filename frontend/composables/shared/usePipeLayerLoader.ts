@@ -46,6 +46,8 @@ const PIPE_STYLES: PipeStyles = {
   },
 }
 
+const PIPE_DISTANCE_DISPLAY_CONDITION = new Cesium.DistanceDisplayCondition(0, 9000)
+
 function stylePipeEntity(entity: Cesium.Entity, pipeLayer: PipeLayerName) {
   const pipeStyle = PIPE_STYLES[pipeLayer]
   if (entity.polyline) {
@@ -56,6 +58,9 @@ function stylePipeEntity(entity: Cesium.Entity, pipeLayer: PipeLayerName) {
     })
     entity.polyline.width = new Cesium.ConstantProperty(pipeStyle.glowWidth)
     entity.polyline.clampToGround = new Cesium.ConstantProperty(true)
+    entity.polyline.distanceDisplayCondition = new Cesium.ConstantProperty(
+      PIPE_DISTANCE_DISPLAY_CONDITION
+    )
   }
 
   if (entity.polygon) {
@@ -63,6 +68,9 @@ function stylePipeEntity(entity: Cesium.Entity, pipeLayer: PipeLayerName) {
     entity.polygon.outline = new Cesium.ConstantProperty(true)
     entity.polygon.outlineColor = new Cesium.ConstantProperty(pipeStyle.glowStroke.withAlpha(0.8))
     entity.polygon.outlineWidth = new Cesium.ConstantProperty(1)
+    entity.polygon.distanceDisplayCondition = new Cesium.ConstantProperty(
+      PIPE_DISTANCE_DISPLAY_CONDITION
+    )
   }
 }
 

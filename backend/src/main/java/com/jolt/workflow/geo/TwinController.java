@@ -38,6 +38,9 @@ public class TwinController {
         root.set("feature", queryFeatureGeoJson(featureId));
 
         ObjectNode segment = querySegmentByFeature(featureId);
+        if (segment == null) {
+            segment = querySegmentByNode(featureId);
+        }
         if (segment == null) root.putNull("segment");
         else root.set("segment", segment);
 
@@ -45,6 +48,18 @@ public class TwinController {
         candidateAssetIds.add(featureId);
         if (segment != null && segment.hasNonNull("id")) {
             candidateAssetIds.add(segment.get("id").asText());
+            String segmentFeatureId = segment.path("featureId").asText("");
+            if (!segmentFeatureId.isBlank()) {
+                candidateAssetIds.add(segmentFeatureId);
+            }
+            String fromNodeId = segment.path("fromNodeId").asText("");
+            if (!fromNodeId.isBlank()) {
+                candidateAssetIds.add(fromNodeId);
+            }
+            String toNodeId = segment.path("toNodeId").asText("");
+            if (!toNodeId.isBlank()) {
+                candidateAssetIds.add(toNodeId);
+            }
         }
 
         ArrayNode nodes = queryNodesByCandidates(candidateAssetIds);
@@ -183,6 +198,82 @@ public class TwinController {
         return root;
     }
 
+    @GetMapping(value = "/nodes", produces = MediaType.APPLICATION_JSON_VALUE)
+    public JsonNode listNodes(
+            @RequestParam(name = "bbox", required = false) String bbox,
+            @RequestParam(name = "limit", required = false, defaultValue = "1200") int limit,
+            @RequestParam(name = "page", required = false) Integer page,
+            @RequestParam(name = "offset", required = false) Integer offset
+    ) {
+        int safeLimit = Math.max(1, Math.min(limit, 4000));
+        long finalOffset = 0L;
+        if (offset != null) {
+            finalOffset = Math.max(0L, offset.longValue());
+        } else if (page != null && page > 1) {
+            long computed = (page.longValue() - 1L) * safeLimit;
+            finalOffset = Math.max(0L, Math.min(computed, Integer.MAX_VALUE));
+        }
+
+        String where = "WHERE (n.properties->>'lon') IS NOT NULL AND (n.properties->>'lat') IS NOT NULL";
+        List<Object> params = new ArrayList<>();
+        if (bbox != null && !bbox.isBlank()) {
+            double[] b = parseBbox(bbox);
+            where += " AND (n.properties->>'lon')::double precision BETWEEN ? AND ? " +
+                    "AND (n.properties->>'lat')::double precision BETWEEN ? AND ?";
+            params.add(b[0]);
+            params.add(b[2]);
+            params.add(b[1]);
+            params.add(b[3]);
+        }
+        params.add(safeLimit);
+        params.add(finalOffset);
+
+        String sql = "SELECT " +
+                " n.id, n.feature_id, n.node_type, COALESCE(n.name, n.id) AS name, n.properties, " +
+                " (n.properties->>'lon')::double precision AS lon, " +
+                " (n.properties->>'lat')::double precision AS lat, " +
+                " COALESCE((SELECT COUNT(1) FROM pipe_segments s WHERE s.from_node_id = n.id OR s.to_node_id = n.id), 0) AS segment_count, " +
+                " COALESCE((SELECT CASE " +
+                "   WHEN BOOL_OR(s.status = 'critical') THEN 'critical' " +
+                "   WHEN BOOL_OR(s.status = 'warning') THEN 'warning' " +
+                "   ELSE 'normal' END " +
+                "  FROM pipe_segments s WHERE s.from_node_id = n.id OR s.to_node_id = n.id), 'normal') AS health_status " +
+                "FROM pipe_nodes n " + where +
+                " ORDER BY n.id LIMIT ? OFFSET ?";
+
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, params.toArray());
+        ObjectNode root = objectMapper.createObjectNode();
+        root.put("type", "FeatureCollection");
+        ArrayNode features = objectMapper.createArrayNode();
+        root.set("features", features);
+        for (Map<String, Object> row : rows) {
+            ObjectNode feature = objectMapper.createObjectNode();
+            feature.put("type", "Feature");
+            feature.put("id", String.valueOf(row.get("id")));
+
+            ObjectNode properties = objectMapper.createObjectNode();
+            properties.put("assetType", "pipe_node");
+            properties.put("nodeId", String.valueOf(row.get("id")));
+            properties.put("nodeType", row.get("node_type") == null ? "" : String.valueOf(row.get("node_type")));
+            properties.put("name", String.valueOf(row.get("name")));
+            properties.put("status", row.get("health_status") == null ? "normal" : String.valueOf(row.get("health_status")));
+            Object segmentCount = row.get("segment_count");
+            properties.put("segmentCount", segmentCount instanceof Number ? ((Number) segmentCount).intValue() : 0);
+            properties.set("sourceProperties", parseJsonObject(row.get("properties")));
+            feature.set("properties", properties);
+
+            ObjectNode geometry = objectMapper.createObjectNode();
+            geometry.put("type", "Point");
+            ArrayNode coordinates = objectMapper.createArrayNode();
+            coordinates.add(((Number) row.get("lon")).doubleValue());
+            coordinates.add(((Number) row.get("lat")).doubleValue());
+            geometry.set("coordinates", coordinates);
+            feature.set("geometry", geometry);
+            features.add(feature);
+        }
+        return root;
+    }
+
     private JsonNode queryFeatureGeoJson(String id) {
         String sql = "SELECT jsonb_build_object(" +
                 "'type','Feature'," +
@@ -211,6 +302,14 @@ public class TwinController {
         if (rows.isEmpty()) return null;
         Map<String, Object> row = rows.get(0);
         return toSegmentNode(row);
+    }
+
+    private ObjectNode querySegmentByNode(String nodeId) {
+        String sql = "SELECT id, feature_id, from_node_id, to_node_id, diameter_mm, material, status, properties " +
+                "FROM pipe_segments WHERE from_node_id = ? OR to_node_id = ? ORDER BY updated_at DESC LIMIT 1";
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, nodeId, nodeId);
+        if (rows.isEmpty()) return null;
+        return toSegmentNode(rows.get(0));
     }
 
     private ArrayNode queryNodesByCandidates(Set<String> candidateIds) {
@@ -544,6 +643,21 @@ public class TwinController {
         } catch (Exception e) {
             return objectMapper.createObjectNode();
         }
+    }
+
+    private static double[] parseBbox(String bbox) {
+        String[] parts = bbox.split(",");
+        if (parts.length != 4) {
+            throw new IllegalArgumentException("bbox must be minLon,minLat,maxLon,maxLat");
+        }
+        double minLon = Double.parseDouble(parts[0].trim());
+        double minLat = Double.parseDouble(parts[1].trim());
+        double maxLon = Double.parseDouble(parts[2].trim());
+        double maxLat = Double.parseDouble(parts[3].trim());
+        if (minLon < -180 || maxLon > 180 || minLat < -90 || maxLat > 90 || minLon > maxLon || minLat > maxLat) {
+            throw new IllegalArgumentException("bbox out of range");
+        }
+        return new double[] {minLon, minLat, maxLon, maxLat};
     }
 
     private record SegmentTopology(

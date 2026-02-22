@@ -60,6 +60,7 @@ export const adminMenuConfig = [
         label: '经营性用房管理',
         children: [
           { key: 'operating_overview', label: '经营概览' },
+          { key: 'operating_bidding', label: '招商竞投' },
           { key: 'operating_properties', label: '房源管理' },
           { key: 'operating_contracts', label: '合同管理' },
           { key: 'operating_rent', label: '租金管理' },

@@ -1,0 +1,34 @@
+{
+  "logs": [
+    {
+      "id": "remind_1771773817179_7c31775a4f9de8",
+      "billId": "RB-OPT-CT-OPT-RM-BLD-004-318-2026-02",
+      "contractId": "CT-OPT-RM-BLD-004-318",
+      "tenant": "入驻企业_58有限公司",
+      "spaceName": "创新创业中心 318",
+      "period": "2026-02",
+      "remindAt": "2026-02-22",
+      "channel": "system"
+    },
+    {
+      "id": "remind_1771773817178_692181960b943",
+      "billId": "RB-OPT-CT-OPT-RM-BLD-004-315-2026-02",
+      "contractId": "CT-OPT-RM-BLD-004-315",
+      "tenant": "入驻企业_55有限公司",
+      "spaceName": "创新创业中心 315",
+      "period": "2026-02",
+      "remindAt": "2026-02-22",
+      "channel": "system"
+    },
+    {
+      "id": "remind_1771773817126_b83750aa723f08",
+      "billId": "RB-OPT-CT-OPT-RM-BLD-004-312-2026-02",
+      "contractId": "CT-OPT-RM-BLD-004-312",
+      "tenant": "入驻企业_52有限公司",
+      "spaceName": "创新创业中心 312",
+      "period": "2026-02",
+      "remindAt": "2026-02-22",
+      "channel": "system"
+    }
+  ]
+}

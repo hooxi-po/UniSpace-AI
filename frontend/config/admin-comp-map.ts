@@ -26,6 +26,7 @@ import ChargingUrgeView from '~/views/admin/property/charging/UrgeView.vue'
 
 // Operating
 import OperatingOverviewView from '~/views/admin/property/operating/OperatingOverviewView.vue'
+import OperatingBiddingView from '~/views/admin/property/operating/OperatingBiddingView.vue'
 import OperatingPropertiesView from '~/views/admin/property/operating/OperatingPropertiesView.vue'
 import OperatingContractsView from '~/views/admin/property/operating/OperatingContractsView.vue'
 import OperatingRentView from '~/views/admin/property/operating/OperatingRentView.vue'
@@ -92,6 +93,7 @@ export const adminCompMap: Record<ThirdKey, any> = {
 
   // Operating
   operating_overview: OperatingOverviewView,
+  operating_bidding: OperatingBiddingView,
   operating_properties: OperatingPropertiesView,
   operating_contracts: OperatingContractsView,
   operating_rent: OperatingRentView,

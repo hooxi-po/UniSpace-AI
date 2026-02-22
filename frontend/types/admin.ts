@@ -34,6 +34,7 @@ export type ThirdKey =
   | 'charging_records'
   | 'charging_urge'
   | 'operating_overview'
+  | 'operating_bidding'
   | 'operating_properties'
   | 'operating_contracts'
   | 'operating_rent'

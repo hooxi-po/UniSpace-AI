@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
+import { readBuildingsDB } from './buildings-db'
 
 export type AssetCategory = 'Building' | 'Land' | 'Structure' | 'Equipment' | 'Greening' | 'Other'
 export type AssetStatus = 'DisposalPending' | 'PendingReview' | 'PendingArchive' | 'Archived'
@@ -77,156 +78,26 @@ export type Project = {
   isOverdue: boolean
   isArchived: boolean
   source?: 'project' | 'stock' // 数据来源：project=新建工程项目，stock=存量房产导入
+  gaojibiaoData?: {
+    assetCode?: string
+    assetName?: string
+    department?: string
+    serviceLife?: number
+    originalValue?: number
+    residualRate?: number
+  }
 }
 
 type DbShape = { list: Project[] }
 
-const DB_FILE = path.resolve(process.cwd(), 'server', 'data', 'fixation-audit.json')
+const DB_FILE = path.resolve(process.cwd(), 'frontend/server/data/fixation-audit.json')
 
 async function ensureDbFile() {
   await fs.mkdir(path.dirname(DB_FILE), { recursive: true })
   try {
     await fs.access(DB_FILE)
   } catch {
-    const init: DbShape = {
-      list: [
-        // Mock 数据：来源于“新建工程项目”
-        {
-          id: 'PRJ-2025-001',
-          name: '综合体育馆建设工程',
-          contractor: '福建建工集团',
-          contractAmount: 10000000,
-          auditAmount: 9500000,
-          auditReductionRate: 5.0,
-          status: 'DisposalPending',
-          completionDate: '2025-12-31',
-          hasCadData: false,
-          fundSource: 'Fiscal',
-          location: '旗山校区东侧',
-          plannedArea: 8500,
-          floorCount: 6,
-          roomCount: 120,
-          plannedStartDate: '2025-01-01',
-          plannedEndDate: '2025-12-31',
-          actualStartDate: '2025-01-15',
-          actualEndDate: undefined,
-          projectManager: '张工',
-          supervisor: '李监理',
-          milestones: [
-            {
-              milestone: 'Approval',
-              date: '2024-12-01',
-              operator: '当前用户',
-              notes: '项目立项',
-            },
-          ],
-          attachments: [
-            {
-              id: 'ATT-001',
-              name: '施工合同.pdf',
-              type: 'contract',
-              uploadDate: '2025-01-10',
-              uploadedByDept: '二级学院',
-              reviewStatus: 'Pending',
-            },
-            {
-              id: 'ATT-002',
-              name: '竣工图纸.pdf',
-              type: 'drawing',
-              uploadDate: '2025-01-12',
-              uploadedByDept: '二级学院',
-              reviewStatus: 'Approved',
-              reviewedBy: '审核员A',
-              reviewedAt: '2025-01-13',
-            },
-          ],
-          splitItems: [
-            {
-              id: 'SPLIT-001',
-              category: 'Building',
-              name: '主体建筑',
-              amount: 8000000,
-              area: 8000,
-              depreciationYears: 50,
-              depreciationMethod: 'StraightLine',
-            },
-            {
-              id: 'SPLIT-002',
-              category: 'Equipment',
-              name: '体育设备',
-              amount: 2000000,
-              quantity: 50,
-              depreciationYears: 10,
-              depreciationMethod: 'Accelerated',
-            },
-          ],
-          roomFunctionPlan: [],
-          isOverdue: false,
-          isArchived: false,
-          source: 'project',
-        },
-        // Mock 数据：来源于“存量房产导入”
-        {
-          id: 'STOCK-BLD-001',
-          name: '理科实验楼A座',
-          contractor: '未指定',
-          contractAmount: 15000000,
-          auditAmount: undefined,
-          auditReductionRate: undefined,
-          status: 'PendingReview',
-          completionDate: '2024-06-30',
-          hasCadData: true,
-          fundSource: 'Fiscal',
-          location: '旗山校区西侧',
-          plannedArea: 12000,
-          floorCount: 8,
-          roomCount: 200,
-          plannedStartDate: '',
-          plannedEndDate: '',
-          actualStartDate: '',
-          actualEndDate: '',
-          projectManager: '',
-          supervisor: '',
-          milestones: [],
-          attachments: [
-            {
-              id: 'ATT-003',
-              name: '验收报告.pdf',
-              type: 'acceptance',
-              uploadDate: '2024-07-01',
-              uploadedByDept: '后勤处',
-              reviewStatus: 'Approved',
-              reviewedBy: '审核员B',
-              reviewedAt: '2024-07-02',
-            },
-          ],
-          splitItems: [
-            {
-              id: 'SPLIT-003',
-              category: 'Building',
-              name: '实验楼主体',
-              amount: 12000000,
-              area: 11500,
-              depreciationYears: 50,
-              depreciationMethod: 'StraightLine',
-            },
-            {
-              id: 'SPLIT-004',
-              category: 'Equipment',
-              name: '实验设备',
-              amount: 3000000,
-              quantity: 100,
-              depreciationYears: 8,
-              depreciationMethod: 'Accelerated',
-            },
-          ],
-          roomFunctionPlan: [],
-          isOverdue: false,
-          isArchived: false,
-          source: 'stock',
-        },
-      ],
-    }
+    const init: DbShape = { list: [] }
     await fs.writeFile(DB_FILE, JSON.stringify(init, null, 2), 'utf-8')
   }
 }
@@ -234,15 +105,127 @@ async function ensureDbFile() {
 export async function readAuditDb(): Promise<DbShape> {
   await ensureDbFile()
   const raw = await fs.readFile(DB_FILE, 'utf-8')
+  let db: DbShape = { list: [] }
   try {
     const parsed = JSON.parse(raw)
-    if (!parsed || typeof parsed !== 'object' || !Array.isArray((parsed as any).list)) {
-      return { list: [] }
+    if (parsed && typeof parsed === 'object' && Array.isArray((parsed as any).list)) {
+      db = parsed as DbShape
     }
-    return parsed as DbShape
-  } catch {
-    return { list: [] }
+  } catch {}
+
+  // 核心规则：以 buildings.json (真源) 强制同步到 fixation-audit.json
+  try {
+    const bDb = await readBuildingsDB()
+    let changed = false
+
+    // 1) 同步建筑物 -> 项目
+    for (const b of bDb.buildings) {
+      const code = String(b.code || '').trim()
+      const m = code.match(/^BLD-(\d+)$/)
+      if (!m) continue
+
+      const stockId = `STOCK-BLD-${m[1]}`
+      const existingIdx = db.list.findIndex(p => p.id === stockId)
+
+      const contractAmount = Number(b.contractAmount || 0)
+      const auditAmount = b.auditAmount !== undefined ? Number(b.auditAmount) : undefined
+      const auditReductionRate = (auditAmount !== undefined && contractAmount > 0)
+        ? Number((((contractAmount - auditAmount) / contractAmount) * 100).toFixed(2))
+        : undefined
+
+      const projectData: Project = {
+        id: stockId,
+        name: b.projectName || b.buildingName || '',
+        contractor: b.contractor || '福建建工集团',
+        contractAmount,
+        auditAmount,
+        auditReductionRate,
+        status: b.status || 'DisposalPending',
+        completionDate: b.actualEndDate || b.plannedEndDate || '',
+        hasCadData: true,
+        fundSource: (b.fundSource as any) || 'Fiscal',
+        location: b.location || '',
+        plannedArea: b.plannedArea,
+        floorCount: b.floorCount,
+        roomCount: b.roomCount,
+        plannedStartDate: b.plannedStartDate || '',
+        plannedEndDate: b.plannedEndDate || '',
+        actualStartDate: b.actualStartDate,
+        actualEndDate: b.actualEndDate,
+        projectManager: b.projectManager || '',
+        supervisor: b.supervisor || '',
+        milestones: [],
+        attachments: [],
+        splitItems: [],
+        roomFunctionPlan: [],
+        isOverdue: false,
+        isArchived: b.status === 'Archived',
+        source: 'stock',
+      }
+
+      if (existingIdx === -1) {
+        db.list.push(projectData)
+        changed = true
+      } else {
+        // 保留业务字段
+        const old = db.list[existingIdx]
+        db.list[existingIdx] = {
+          ...old,
+          ...projectData,
+          attachments: old.attachments || [],
+          splitItems: old.splitItems || [],
+          roomFunctionPlan: old.roomFunctionPlan || [],
+          roomFunctionPlanConfirmed: old.roomFunctionPlanConfirmed,
+          gaojibiaoData: old.gaojibiaoData
+        }
+        changed = true
+      }
+    }
+
+    // 2) 同步房间 -> 房间功能计划 (roomFunctionPlan)
+    for (const proj of db.list) {
+      if (proj.source === 'stock') {
+        const buildingNo = proj.id.replace('STOCK-BLD-', '')
+        const cleanCode = `BLD-${buildingNo}`
+        const bRooms = bDb.rooms.filter(r => r.buildingCode === cleanCode)
+
+        // 如果没有计划列表，或者需要强制刷新 (演示需求)
+        if (bRooms.length > 0 && (!proj.roomFunctionPlan || proj.roomFunctionPlan.length === 0)) {
+          proj.roomFunctionPlan = bRooms.map(r => ({
+            id: `PLAN-${r.id}`,
+            buildingName: r.buildingName,
+            roomNo: r.roomNo,
+            area: r.area || 0,
+            mainCategory: r.mainCategory || '',
+            subCategory: r.subCategory || ''
+          }))
+          proj.roomCount = bRooms.length
+          changed = true
+        }
+      }
+    }
+
+    // 3) 清理多余/错误的 ID (如旧的 STOCK-BLD-BLD-*)
+    const bCodes = new Set(bDb.buildings.map(b => b.code))
+    const validIds = new Set(bDb.buildings.map(b => `STOCK-BLD-${b.code.split('-')[1]}`))
+    
+    const initialLen = db.list.length
+    db.list = db.list.filter(p => {
+      if (p.id.startsWith('STOCK-BLD-')) {
+        return validIds.has(p.id)
+      }
+      return true
+    })
+    if (db.list.length !== initialLen) changed = true
+
+    if (changed) {
+      await fs.writeFile(DB_FILE, JSON.stringify(db, null, 2), 'utf-8')
+    }
+  } catch (e) {
+    console.error('Sync fixation audit from buildings failed:', e)
   }
+
+  return db
 }
 
 export async function writeAuditDb(next: DbShape) {
@@ -310,6 +293,3 @@ export async function deleteSplitItem(projectId: string, itemId: string): Promis
   await writeAuditDb(db)
   return p
 }
-
-
-

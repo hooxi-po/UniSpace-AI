@@ -37,6 +37,13 @@
             text-color="text-tech-drain"
             @click="emit('toggle-layer', 'drain')" 
           />
+          <LayerToggle
+            label="节点"
+            :active="layers.pipeNodes"
+            color="bg-tech-cyan"
+            text-color="text-tech-cyan"
+            @click="emit('toggle-layer', 'pipeNodes')"
+          />
           <LayerToggle 
             label="绿地" 
             :active="layers.green" 
@@ -70,6 +77,7 @@ interface Props {
     water: boolean
     sewage: boolean
     drain: boolean
+    pipeNodes: boolean
     buildings: boolean
     green: boolean
   }
@@ -78,6 +86,6 @@ interface Props {
 defineProps<Props>()
 
 const emit = defineEmits<{
-  'toggle-layer': [layer: 'water' | 'sewage' | 'drain' | 'green' | 'buildings']
+  'toggle-layer': [layer: 'water' | 'sewage' | 'drain' | 'pipeNodes' | 'green' | 'buildings']
 }>()
 </script>

@@ -1,3 +1,32 @@
+export interface ImpactedRoom {
+  id: string;
+  buildingId: string;
+  floorId: string;
+  floorNo: number | null;
+  roomNo: string;
+  roomName: string;
+  roomType: string;
+  status: string;
+  areaM2: number | null;
+}
+
+export interface LinkedEquipment {
+  id: string;
+  equipmentType: string;
+  name: string;
+  status: string;
+  featureId?: string;
+  nodeId?: string;
+  buildingId?: string;
+}
+
+export interface FaultImpactScope {
+  impactedBuildingCount: number;
+  impactedRoomCount: number;
+  impactedEquipmentCount: number;
+  keyBuildingIds: string[];
+}
+
 export interface PipeNode {
   id: string;
   type: 'water' | 'sewage' | 'drain';
@@ -12,6 +41,13 @@ export interface PipeNode {
   installDate: string;
   lastMaintain: string;
   connectedBuildingIds: string[];
+  topologyNodeIds?: string[];
+  linkedValves?: string[];
+  impactedRooms?: ImpactedRoom[];
+  linkedEquipments?: LinkedEquipment[];
+  healthScore?: number;
+  healthSummary?: 'healthy' | 'attention' | 'risk';
+  faultImpactScope?: FaultImpactScope;
 }
 
 export interface Building {

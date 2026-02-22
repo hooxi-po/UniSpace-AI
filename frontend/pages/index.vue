@@ -53,11 +53,13 @@
 
 <script setup lang="ts">
 import type { PipeNode, Building, GeoJsonFeature } from '~/types'
-import { BUILDINGS, PIPELINES } from '~/composables/useConstants'
+import { twinService } from '~/services/twin'
 import { normalizeBackendBaseUrl } from '~/utils/backend-url'
+import { classifyRoadToPipeLayer } from '~/utils/pipe-classifier'
 
 const selectedItem = ref<PipeNode | Building | GeoJsonFeature | null>(null)
 const runtimeConfig = useRuntimeConfig()
+const selectionToken = ref(0)
 
 const DEFAULT_VIEWPORT = {
   x: 119.1895,
@@ -81,6 +83,7 @@ const layers = ref({
   water: true,
   sewage: true,
   drain: true,
+  pipeNodes: true,
   buildings: true,
   green: true,
 })
@@ -88,12 +91,233 @@ const layers = ref({
 // Weather State
 const weatherMode = ref(false)
 
+function toNumber(value: unknown) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string') {
+    const next = Number.parseFloat(value)
+    if (Number.isFinite(next)) return next
+  }
+  return null
+}
+
+function toText(value: unknown) {
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function toRecord(value: unknown) {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
+}
+
+function toStringArray(values: unknown[]) {
+  return values
+    .map((value) => {
+      if (typeof value === 'string' && value.trim()) return value.trim()
+      if (value !== undefined && value !== null) return String(value)
+      return ''
+    })
+    .filter(Boolean)
+}
+
+function summarizeHealth(score: number): PipeNode['healthSummary'] {
+  if (score >= 85) return 'healthy'
+  if (score >= 65) return 'attention'
+  return 'risk'
+}
+
+function computePipeHealthScore(
+  status: PipeNode['status'],
+  pressure: number,
+  flowRate: number,
+  valveCount: number
+) {
+  let score = 100
+  if (status === 'warning') score -= 20
+  if (status === 'critical') score -= 40
+  if (pressure < 1.2 || pressure > 4.5) score -= 15
+  if (flowRate <= 0) score -= 20
+  if (valveCount === 0) score -= 5
+  return Math.max(0, Math.min(100, score))
+}
+
+function normalizePipeType(props: Record<string, unknown>, featureId: string): PipeNode['type'] {
+  const pipeType = String(props.pipeType || '').trim().toLowerCase()
+  if (pipeType === 'water' || pipeType === 'drain' || pipeType === 'sewage') {
+    return pipeType
+  }
+  return classifyRoadToPipeLayer(props, featureId)
+}
+
+function normalizePipeStatus(value: unknown): PipeNode['status'] {
+  const raw = String(value || '').trim().toLowerCase()
+  if (raw === 'warning' || raw === 'critical') return raw
+  return 'normal'
+}
+
+function normalizeDiameter(props: Record<string, unknown>) {
+  const raw = toText(props.diameter) || toText(props.diameter_mm)
+  if (!raw) return '未知'
+  return raw.toUpperCase().startsWith('DN') ? raw.toUpperCase() : `DN${raw}`
+}
+
+function normalizeBuildingType(props: Record<string, unknown>): Building['type'] {
+  const buildingType = String(props.building || '').toLowerCase()
+  const amenity = String(props.amenity || '').toLowerCase()
+  if (buildingType.includes('dorm') || buildingType.includes('dormitory')) return 'dorm'
+  if (buildingType.includes('lab') || buildingType.includes('laboratory')) return 'lab'
+  if (
+    buildingType.includes('canteen') ||
+    buildingType.includes('restaurant') ||
+    amenity === 'restaurant'
+  ) {
+    return 'canteen'
+  }
+  return 'admin'
+}
+
+async function buildPipeAsset(feature: GeoJsonFeature) {
+  const featureId = String(feature.id)
+  const properties = (feature.properties || {}) as Record<string, unknown>
+  const drilldown = await twinService
+    .drilldown(backendBaseUrl.value, featureId)
+    .catch(() => null)
+
+  const drilldownSegment = drilldown ? toRecord(drilldown.segment) : {}
+  const telemetryFeatureId = toText(drilldownSegment.featureId) || featureId
+  const telemetry = await twinService
+    .telemetryLatest(backendBaseUrl.value, [telemetryFeatureId])
+    .catch(() => [])
+
+  const linkedBuildingNames = drilldown
+    ? drilldown.linkedBuildings
+        .map((item) => {
+          const row = toRecord(item)
+          return toText(row.name) || toText(row.id)
+        })
+        .filter((item): item is string => Boolean(item))
+    : []
+
+  const linkedBuildingIds = drilldown
+    ? toStringArray(
+        drilldown.linkedBuildings.map((item) => {
+          const row = toRecord(item)
+          return row.id
+        })
+      )
+    : []
+
+  const impactedRooms = drilldown
+    ? drilldown.impactedRooms.map((item) => {
+        const row = toRecord(item)
+        return {
+          id: toText(row.id) || '',
+          buildingId: toText(row.buildingId) || '',
+          floorId: toText(row.floorId) || '',
+          floorNo: toNumber(row.floorNo),
+          roomNo: toText(row.roomNo) || '',
+          roomName: toText(row.roomName) || '',
+          roomType: toText(row.roomType) || '',
+          status: toText(row.status) || 'unknown',
+          areaM2: toNumber(row.areaM2),
+        }
+      })
+    : []
+
+  const linkedEquipments = drilldown
+    ? drilldown.equipments.map((item) => {
+        const row = toRecord(item)
+        return {
+          id: toText(row.id) || '',
+          equipmentType: toText(row.equipmentType) || 'unknown',
+          name: toText(row.name) || toText(row.id) || 'unknown-equipment',
+          status: toText(row.status) || 'unknown',
+          featureId: toText(row.featureId) || undefined,
+          nodeId: toText(row.nodeId) || undefined,
+          buildingId: toText(row.buildingId) || undefined,
+        }
+      })
+    : []
+
+  const linkedValves = drilldown
+    ? toStringArray(
+        drilldown.valves.map((item) => {
+          const row = toRecord(item)
+          return row.id
+        })
+      )
+    : []
+
+  const topologyNodeIds = drilldown
+    ? toStringArray(
+        drilldown.nodes.map((item) => {
+          const row = toRecord(item)
+          return row.id
+        })
+      )
+    : []
+
+  const pressure = telemetry.find(item => item.metric === 'pressure')?.value
+    ?? toNumber(properties.pressure)
+    ?? 0
+  const flowRate = telemetry.find(item => item.metric === 'flow')?.value
+    ?? toNumber(properties.flowRate)
+    ?? toNumber(properties.flow)
+    ?? 0
+
+  const depth = toNumber(properties.depth)
+    ?? toNumber(properties.depth_m)
+    ?? toNumber(properties.buried_depth)
+    ?? 0
+
+  const installDate =
+    toText(properties.installDate)
+    || toText(properties.install_date)
+    || toText(properties.start_date)
+    || '未知'
+
+  const lastMaintain =
+    toText(properties.lastMaintain)
+    || toText(properties.last_maintain)
+    || toText(properties.maintenance_date)
+    || '未知'
+
+  const status = normalizePipeStatus(properties.status)
+  const healthScore = computePipeHealthScore(status, pressure, flowRate, linkedValves.length)
+
+  return {
+    id: featureId,
+    type: normalizePipeType(properties, featureId),
+    status,
+    pressure,
+    flowRate,
+    coordinates: [],
+    diameter: normalizeDiameter(properties),
+    material: toText(properties.material) || '未知',
+    depth,
+    installDate,
+    lastMaintain,
+    connectedBuildingIds: linkedBuildingNames,
+    topologyNodeIds,
+    linkedValves,
+    impactedRooms,
+    linkedEquipments,
+    healthScore,
+    healthSummary: summarizeHealth(healthScore),
+    faultImpactScope: {
+      impactedBuildingCount: linkedBuildingIds.length,
+      impactedRoomCount: impactedRooms.length,
+      impactedEquipmentCount: linkedEquipments.length,
+      keyBuildingIds: linkedBuildingIds.slice(0, 6),
+    },
+  } as PipeNode
+}
+
 /**
  * 处理地图选择事件
  * 将 GeoJSON 特征转换为对应的资产对象（Building 或 PipeNode）
  * @param item - 选中的项（可能是 GeoJSON 特征、Building 或 PipeNode）
  */
-const handleSelection = (item: PipeNode | Building | GeoJsonFeature | null) => {
+const handleSelection = async (item: PipeNode | Building | GeoJsonFeature | null) => {
+  const token = ++selectionToken.value
   if (!item) {
     selectedItem.value = null
     return
@@ -111,93 +335,46 @@ const handleSelection = (item: PipeNode | Building | GeoJsonFeature | null) => {
     const properties = feature.properties || {}
     const featureId = String(feature.id)
     
-    // 检查是否是建筑（通过 properties.building 判断）
+    // 建筑资产：直接基于真实 GeoJSON 属性构建，不再走本地 Mock BUILDINGS 映射
     if (properties.building) {
-      // 尝试精确匹配 id
-      let building = BUILDINGS.find(b => featureId === b.id || featureId.includes(b.id))
-      
-      // 如果找不到，尝试根据 properties 中的 name 匹配
-      if (!building && properties.name) {
-        const name = String(properties.name)
-        building = BUILDINGS.find(b => name.includes(b.name) || b.name.includes(name))
-      }
-      
-      // 如果还是找不到，从 GeoJSON properties 动态创建 Building 对象
-      if (!building) {
-        const buildingName = properties.name 
-          ? String(properties.name) 
-          : properties.short_name
-          ? String(properties.short_name)
-          : `建筑 ${featureId}`
-        
-        // 根据 building 类型映射到 Building.type
-        const buildingType = String(properties.building || '').toLowerCase()
-        let mappedType: Building['type'] = 'admin'
-        if (buildingType.includes('dorm') || buildingType.includes('dormitory')) {
-          mappedType = 'dorm'
-        } else if (buildingType.includes('lab') || buildingType.includes('laboratory')) {
-          mappedType = 'lab'
-        } else if (buildingType.includes('canteen') || buildingType.includes('restaurant') || properties.amenity === 'restaurant') {
-          mappedType = 'canteen'
-        } else if (buildingType.includes('school') || buildingType.includes('university')) {
-          mappedType = 'admin'
-        }
-        
-        // 估算房间数：如果有楼层信息，每层估算 20-30 个房间
-        let estimatedRooms = 0
-        if (properties['building:levels']) {
-          const levels = parseInt(String(properties['building:levels']), 10)
-          if (!isNaN(levels)) {
-            estimatedRooms = levels * 25 // 每层估算 25 个房间
-          }
-        }
-        
-        // 创建动态 Building 对象
-        building = {
-          id: featureId,
-          name: buildingName,
-          type: mappedType,
-          status: 'normal',
-          coordinates: { x: 0, y: 0 }, // GeoJSON 坐标需要从 geometry 中提取，这里暂时使用默认值
-          connectedPipeId: 'P-UNKNOWN',
-          rooms: estimatedRooms,
-          keyEquipment: [],
-          powerConsumption: 0
+      let estimatedRooms = 0
+      if (properties['building:levels']) {
+        const levels = Number.parseInt(String(properties['building:levels']), 10)
+        if (!Number.isNaN(levels)) {
+          estimatedRooms = levels * 25
         }
       }
-      
-      if (building) {
-        selectedItem.value = building
-        return
+
+      selectedItem.value = {
+        id: featureId,
+        name: toText(properties.name) || toText(properties.short_name) || `建筑 ${featureId}`,
+        type: normalizeBuildingType(properties as Record<string, unknown>),
+        status: 'normal',
+        coordinates: { x: 0, y: 0 },
+        connectedPipeId: toText(properties.connectedPipeId) || toText(properties.connected_pipe_id) || 'UNKNOWN',
+        rooms: estimatedRooms,
+        keyEquipment: [],
+        powerConsumption: 0,
       }
+      return
     }
     
-    // 检查是否是管道（由道路数据分类生成：pipeType=water|drain|sewage）
+    // 检查是否是管道或管网节点（节点同样支持一键穿透）
     const pipeType = String(properties.pipeType || '').toLowerCase()
-    if (pipeType === 'water' || pipeType === 'drain' || pipeType === 'sewage' || properties.highway) {
-      // 优先按管道类型匹配 Mock 管线
-      let pipeline = PIPELINES.find(p => p.type === pipeType)
-
-      // 兼容兜底：尝试按 id 匹配
-      if (!pipeline) {
-        pipeline = PIPELINES.find(p => featureId === p.id || featureId.includes(p.id))
+    const isPipeNode =
+      typeof properties.nodeType === 'string'
+      || typeof properties.nodeId === 'string'
+      || properties.assetType === 'pipe_node'
+    if (pipeType === 'water' || pipeType === 'drain' || pipeType === 'sewage' || properties.highway || isPipeNode) {
+      try {
+        const pipeAsset = await buildPipeAsset(feature)
+        if (token !== selectionToken.value) return
+        selectedItem.value = pipeAsset
+      } catch {
+        if (token !== selectionToken.value) return
+        selectedItem.value = feature
       }
-
-      // 最后兜底：选第一条
-      if (!pipeline && PIPELINES.length > 0) {
-        pipeline = PIPELINES[0]
-      }
-
-      if (pipeline) {
-        selectedItem.value = {
-          ...pipeline,
-          id: featureId,
-          type: (pipeType === 'water' || pipeType === 'drain' || pipeType === 'sewage')
-            ? pipeType
-            : pipeline.type,
-        }
-        return
-      }
+      return
     }
     
     // 如果找不到对应的资产，保留 GeoJSON 特征（不显示右侧弹窗）

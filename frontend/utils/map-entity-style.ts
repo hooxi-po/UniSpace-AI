@@ -13,6 +13,12 @@ const BUILDING_STYLE = {
   extrudedHeight: 20,
 }
 
+const PIPE_NODE_STYLE = {
+  pointColor: Cesium.Color.fromCssColorString('rgb(30, 220, 230)').withAlpha(0.95),
+  outlineColor: Cesium.Color.fromCssColorString('rgb(12, 36, 52)').withAlpha(0.95),
+  pixelSize: 7,
+}
+
 export function styleGreenEntity(entity: Cesium.Entity) {
   if (!entity.polygon) return
   entity.polygon.material = GREEN_FILL
@@ -32,4 +38,14 @@ export function styleBuildingEntity(entity: Cesium.Entity) {
   entity.polygon.outline = new Cesium.ConstantProperty(true)
   entity.polygon.outlineColor = new Cesium.ConstantProperty(BUILDING_STYLE.outline)
   entity.polygon.outlineWidth = new Cesium.ConstantProperty(BUILDING_STYLE.outlineWidth)
+}
+
+export function stylePipeNodeEntity(entity: Cesium.Entity) {
+  entity.point = new Cesium.PointGraphics({
+    color: PIPE_NODE_STYLE.pointColor,
+    outlineColor: PIPE_NODE_STYLE.outlineColor,
+    outlineWidth: 1.5,
+    pixelSize: PIPE_NODE_STYLE.pixelSize,
+    disableDepthTestDistance: Number.POSITIVE_INFINITY,
+  })
 }

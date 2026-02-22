@@ -103,9 +103,18 @@
 
             <div class="bg-white/5 p-3 border border-white/10 rounded">
               <h4 class="text-tech-blue font-bold mb-2 text-xs uppercase">拓扑关系</h4>
-              <div class="text-xs text-gray-400">
+              <div class="text-xs text-gray-400 space-y-2">
                 <template v-if="isPipe">
-                  该管段向下游供水至 {{ (data as PipeNode).connectedBuildingIds.join(', ') }}，当前链路畅通。
+                  <div>该管段向下游供水至 {{ pipeLinkedTargetsText }}。</div>
+                  <div class="grid grid-cols-2 gap-2 text-[11px]">
+                    <div>关联节点: {{ pipeTopologyNodeCount }}</div>
+                    <div>关联阀门: {{ pipeLinkedValveCount }}</div>
+                    <div>受影响房间: {{ pipeImpactedRoomCount }}</div>
+                    <div>关联设备: {{ pipeLinkedEquipmentCount }}</div>
+                  </div>
+                  <div v-if="pipeRoomPreviewText" class="text-[11px] text-gray-500">
+                    重点房间: {{ pipeRoomPreviewText }}
+                  </div>
                 </template>
                 <template v-else>
                   该建筑接入 {{ (data as Building).connectedPipeId }} 号主管道，位于第 3 加压供水分区。
@@ -139,6 +148,36 @@
               </div>
             </div>
 
+            <div
+              v-if="isPipe"
+              class="bg-black/40 p-3 border border-white/10"
+            >
+              <div class="text-gray-500 text-[10px] mb-1">管网健康评分</div>
+              <div class="flex items-center justify-between">
+                <div class="text-tech-cyan font-bold font-mono text-lg">
+                  {{ pipeHealthScore }}
+                </div>
+                <div
+                  :class="[
+                    'text-[10px] px-2 py-1 rounded border',
+                    pipeHealthSummary === 'healthy'
+                      ? 'text-green-400 border-green-400/40 bg-green-400/10'
+                      : pipeHealthSummary === 'attention'
+                        ? 'text-yellow-400 border-yellow-400/40 bg-yellow-400/10'
+                        : 'text-red-400 border-red-400/40 bg-red-400/10'
+                  ]"
+                >
+                  {{
+                    pipeHealthSummary === 'healthy'
+                      ? '健康'
+                      : pipeHealthSummary === 'attention'
+                        ? '需关注'
+                        : '高风险'
+                  }}
+                </div>
+              </div>
+            </div>
+
             <!-- Equipment Control (Simulated IoT) -->
             <div 
               v-if="!isPipe && (data as Building).keyEquipment.length > 0" 
@@ -157,6 +196,25 @@
                   <button class="flex items-center gap-1 bg-tech-water/20 hover:bg-tech-water/40 text-tech-water px-2 py-1 rounded text-[10px] transition-colors">
                     <Power :size="10" /> 启动
                   </button>
+                </div>
+              </div>
+            </div>
+
+            <div
+              v-if="isPipe && pipeLinkedEquipmentCount > 0"
+              class="border-t border-white/10 pt-4"
+            >
+              <h4 class="text-tech-blue font-bold mb-3 text-xs flex items-center gap-2">
+                <Settings :size="14" /> 关联设备清单
+              </h4>
+              <div class="space-y-2">
+                <div
+                  v-for="equipment in pipeEquipmentPreview"
+                  :key="equipment.id"
+                  class="flex items-center justify-between bg-white/5 p-2 px-3 rounded"
+                >
+                  <span class="text-xs text-gray-300 truncate">{{ equipment.name }}</span>
+                  <span class="text-[10px] text-gray-500">{{ equipment.equipmentType }}</span>
                 </div>
               </div>
             </div>
@@ -213,7 +271,22 @@
               <div>
                 <div class="font-bold">全生命周期提醒</div>
                 上次维保: {{ (data as PipeNode).lastMaintain }}<br/>
-                建议下次维保: 2024-05-01 (剩余 142 天)
+                建议优先处理: {{ pipePriorityAdvice }}
+              </div>
+            </div>
+
+            <div
+              v-if="isPipe"
+              class="mt-2 p-2 bg-red-500/5 border border-red-400/20 rounded text-[10px] text-red-200"
+            >
+              <div class="font-bold mb-1">故障影响范围推演</div>
+              <div>
+                影响楼宇 {{ pipeFaultImpact.impactedBuildingCount }} 栋 /
+                房间 {{ pipeFaultImpact.impactedRoomCount }} 间 /
+                设备 {{ pipeFaultImpact.impactedEquipmentCount }} 台
+              </div>
+              <div v-if="pipeShutdownValvePreview.length" class="mt-1">
+                建议优先关停阀门: {{ pipeShutdownValvePreview.join(', ') }}
               </div>
             </div>
           </div>
@@ -263,6 +336,87 @@ const title = computed(() => {
 const relatedOrders = computed(() => {
   if (!props.data) return []
   return WORK_ORDERS.filter(wo => wo.targetId === props.data!.id)
+})
+
+const pipeLinkedTargetsText = computed(() => {
+  if (!props.data || !isPipe.value) return ''
+  const list = (props.data as PipeNode).connectedBuildingIds || []
+  return list.length ? list.join(', ') : '暂无关联楼宇'
+})
+
+const pipeTopologyNodeCount = computed(() => {
+  if (!props.data || !isPipe.value) return 0
+  return (props.data as PipeNode).topologyNodeIds?.length || 0
+})
+
+const pipeLinkedValveCount = computed(() => {
+  if (!props.data || !isPipe.value) return 0
+  return (props.data as PipeNode).linkedValves?.length || 0
+})
+
+const pipeImpactedRoomCount = computed(() => {
+  if (!props.data || !isPipe.value) return 0
+  return (props.data as PipeNode).impactedRooms?.length || 0
+})
+
+const pipeLinkedEquipmentCount = computed(() => {
+  if (!props.data || !isPipe.value) return 0
+  return (props.data as PipeNode).linkedEquipments?.length || 0
+})
+
+const pipeEquipmentPreview = computed(() => {
+  if (!props.data || !isPipe.value) return []
+  return ((props.data as PipeNode).linkedEquipments || []).slice(0, 5)
+})
+
+const pipeRoomPreviewText = computed(() => {
+  if (!props.data || !isPipe.value) return ''
+  const rooms = ((props.data as PipeNode).impactedRooms || [])
+    .slice(0, 4)
+    .map(room => room.roomName || room.roomNo)
+    .filter(Boolean)
+  return rooms.join(' / ')
+})
+
+const pipeHealthScore = computed(() => {
+  if (!props.data || !isPipe.value) return 0
+  return (props.data as PipeNode).healthScore ?? 0
+})
+
+const pipeHealthSummary = computed(() => {
+  if (!props.data || !isPipe.value) return 'healthy'
+  return (props.data as PipeNode).healthSummary || 'healthy'
+})
+
+const pipeFaultImpact = computed(() => {
+  if (!props.data || !isPipe.value) {
+    return {
+      impactedBuildingCount: 0,
+      impactedRoomCount: 0,
+      impactedEquipmentCount: 0,
+      keyBuildingIds: [],
+    }
+  }
+  return (
+    (props.data as PipeNode).faultImpactScope || {
+      impactedBuildingCount: 0,
+      impactedRoomCount: 0,
+      impactedEquipmentCount: 0,
+      keyBuildingIds: [],
+    }
+  )
+})
+
+const pipeShutdownValvePreview = computed(() => {
+  if (!props.data || !isPipe.value) return []
+  return ((props.data as PipeNode).linkedValves || []).slice(0, 3)
+})
+
+const pipePriorityAdvice = computed(() => {
+  if (!props.data || !isPipe.value) return '常规巡检'
+  if (pipeHealthSummary.value === 'risk') return '优先关停阀门并现场复核'
+  if (pipeHealthSummary.value === 'attention') return '安排24小时内巡检'
+  return '保持常规巡检'
 })
 
 function resetCopyStatusLater() {

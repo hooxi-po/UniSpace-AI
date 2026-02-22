@@ -35,6 +35,8 @@ public class GeoFeatureController {
             @RequestParam(name = "bbox", required = false) String bbox,
             @RequestParam(name = "layers", required = false) String layers,
             @RequestParam(name = "limit", required = false, defaultValue = "2000") int limit,
+            @RequestParam(name = "page", required = false) Integer page,
+            @RequestParam(name = "offset", required = false) Integer offset,
             @RequestParam(name = "visible", required = false) Boolean visible
     ) {
         // bbox: minLon,minLat,maxLon,maxLat (EPSG:4326)
@@ -75,7 +77,17 @@ public class GeoFeatureController {
             params.add(visible);
         }
 
-        params.add(limit);
+        int safeLimit = Math.max(1, Math.min(limit, 5000));
+        long finalOffset = 0L;
+        if (offset != null) {
+            finalOffset = Math.max(0L, offset.longValue());
+        } else if (page != null && page > 1) {
+            long computed = (page.longValue() - 1L) * safeLimit;
+            finalOffset = Math.max(0L, Math.min(computed, Integer.MAX_VALUE));
+        }
+
+        params.add(safeLimit);
+        params.add(finalOffset);
         Object[] finalParams = params.toArray();
 
         String sql = "SELECT jsonb_build_object(" +
@@ -87,7 +99,8 @@ public class GeoFeatureController {
                 "  'geometry', ST_AsGeoJSON(geom)::jsonb" +
                 ")),'[]'::jsonb)" +
                 ") AS fc " +
-                "FROM (SELECT id, layer, geom, properties, visible FROM geo_features " + where + " LIMIT ?) t";
+                "FROM (SELECT id, layer, geom, properties, visible FROM geo_features " + where +
+                " ORDER BY id LIMIT ? OFFSET ?) t";
 
         String json = jdbcTemplate.queryForObject(sql, finalParams, String.class);
         try {

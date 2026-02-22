@@ -38,6 +38,9 @@ public class TwinController {
         root.set("feature", queryFeatureGeoJson(featureId));
 
         ObjectNode segment = querySegmentByFeature(featureId);
+        if (segment == null) {
+            segment = querySegmentByNode(featureId);
+        }
         if (segment == null) root.putNull("segment");
         else root.set("segment", segment);
 
@@ -45,6 +48,18 @@ public class TwinController {
         candidateAssetIds.add(featureId);
         if (segment != null && segment.hasNonNull("id")) {
             candidateAssetIds.add(segment.get("id").asText());
+            String segmentFeatureId = segment.path("featureId").asText("");
+            if (!segmentFeatureId.isBlank()) {
+                candidateAssetIds.add(segmentFeatureId);
+            }
+            String fromNodeId = segment.path("fromNodeId").asText("");
+            if (!fromNodeId.isBlank()) {
+                candidateAssetIds.add(fromNodeId);
+            }
+            String toNodeId = segment.path("toNodeId").asText("");
+            if (!toNodeId.isBlank()) {
+                candidateAssetIds.add(toNodeId);
+            }
         }
 
         ArrayNode nodes = queryNodesByCandidates(candidateAssetIds);
@@ -55,7 +70,12 @@ public class TwinController {
 
         ArrayNode relations = queryRelationsByCandidates(candidateAssetIds);
         root.set("relations", relations);
-        root.set("linkedBuildings", queryLinkedBuildings(relations, featureId));
+        ArrayNode linkedBuildings = queryLinkedBuildings(relations, featureId);
+        root.set("linkedBuildings", linkedBuildings);
+        ArrayNode valves = queryValves(featureId, segment, nodes);
+        root.set("valves", valves);
+        root.set("impactedRooms", queryImpactedRooms(linkedBuildings));
+        root.set("equipments", queryEquipments(featureId, nodes, linkedBuildings, valves));
         return root;
     }
 
@@ -178,6 +198,82 @@ public class TwinController {
         return root;
     }
 
+    @GetMapping(value = "/nodes", produces = MediaType.APPLICATION_JSON_VALUE)
+    public JsonNode listNodes(
+            @RequestParam(name = "bbox", required = false) String bbox,
+            @RequestParam(name = "limit", required = false, defaultValue = "1200") int limit,
+            @RequestParam(name = "page", required = false) Integer page,
+            @RequestParam(name = "offset", required = false) Integer offset
+    ) {
+        int safeLimit = Math.max(1, Math.min(limit, 4000));
+        long finalOffset = 0L;
+        if (offset != null) {
+            finalOffset = Math.max(0L, offset.longValue());
+        } else if (page != null && page > 1) {
+            long computed = (page.longValue() - 1L) * safeLimit;
+            finalOffset = Math.max(0L, Math.min(computed, Integer.MAX_VALUE));
+        }
+
+        String where = "WHERE (n.properties->>'lon') IS NOT NULL AND (n.properties->>'lat') IS NOT NULL";
+        List<Object> params = new ArrayList<>();
+        if (bbox != null && !bbox.isBlank()) {
+            double[] b = parseBbox(bbox);
+            where += " AND (n.properties->>'lon')::double precision BETWEEN ? AND ? " +
+                    "AND (n.properties->>'lat')::double precision BETWEEN ? AND ?";
+            params.add(b[0]);
+            params.add(b[2]);
+            params.add(b[1]);
+            params.add(b[3]);
+        }
+        params.add(safeLimit);
+        params.add(finalOffset);
+
+        String sql = "SELECT " +
+                " n.id, n.feature_id, n.node_type, COALESCE(n.name, n.id) AS name, n.properties, " +
+                " (n.properties->>'lon')::double precision AS lon, " +
+                " (n.properties->>'lat')::double precision AS lat, " +
+                " COALESCE((SELECT COUNT(1) FROM pipe_segments s WHERE s.from_node_id = n.id OR s.to_node_id = n.id), 0) AS segment_count, " +
+                " COALESCE((SELECT CASE " +
+                "   WHEN BOOL_OR(s.status = 'critical') THEN 'critical' " +
+                "   WHEN BOOL_OR(s.status = 'warning') THEN 'warning' " +
+                "   ELSE 'normal' END " +
+                "  FROM pipe_segments s WHERE s.from_node_id = n.id OR s.to_node_id = n.id), 'normal') AS health_status " +
+                "FROM pipe_nodes n " + where +
+                " ORDER BY n.id LIMIT ? OFFSET ?";
+
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, params.toArray());
+        ObjectNode root = objectMapper.createObjectNode();
+        root.put("type", "FeatureCollection");
+        ArrayNode features = objectMapper.createArrayNode();
+        root.set("features", features);
+        for (Map<String, Object> row : rows) {
+            ObjectNode feature = objectMapper.createObjectNode();
+            feature.put("type", "Feature");
+            feature.put("id", String.valueOf(row.get("id")));
+
+            ObjectNode properties = objectMapper.createObjectNode();
+            properties.put("assetType", "pipe_node");
+            properties.put("nodeId", String.valueOf(row.get("id")));
+            properties.put("nodeType", row.get("node_type") == null ? "" : String.valueOf(row.get("node_type")));
+            properties.put("name", String.valueOf(row.get("name")));
+            properties.put("status", row.get("health_status") == null ? "normal" : String.valueOf(row.get("health_status")));
+            Object segmentCount = row.get("segment_count");
+            properties.put("segmentCount", segmentCount instanceof Number ? ((Number) segmentCount).intValue() : 0);
+            properties.set("sourceProperties", parseJsonObject(row.get("properties")));
+            feature.set("properties", properties);
+
+            ObjectNode geometry = objectMapper.createObjectNode();
+            geometry.put("type", "Point");
+            ArrayNode coordinates = objectMapper.createArrayNode();
+            coordinates.add(((Number) row.get("lon")).doubleValue());
+            coordinates.add(((Number) row.get("lat")).doubleValue());
+            geometry.set("coordinates", coordinates);
+            feature.set("geometry", geometry);
+            features.add(feature);
+        }
+        return root;
+    }
+
     private JsonNode queryFeatureGeoJson(String id) {
         String sql = "SELECT jsonb_build_object(" +
                 "'type','Feature'," +
@@ -206,6 +302,14 @@ public class TwinController {
         if (rows.isEmpty()) return null;
         Map<String, Object> row = rows.get(0);
         return toSegmentNode(row);
+    }
+
+    private ObjectNode querySegmentByNode(String nodeId) {
+        String sql = "SELECT id, feature_id, from_node_id, to_node_id, diameter_mm, material, status, properties " +
+                "FROM pipe_segments WHERE from_node_id = ? OR to_node_id = ? ORDER BY updated_at DESC LIMIT 1";
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, nodeId, nodeId);
+        if (rows.isEmpty()) return null;
+        return toSegmentNode(rows.get(0));
     }
 
     private ArrayNode queryNodesByCandidates(Set<String> candidateIds) {
@@ -317,6 +421,191 @@ public class TwinController {
         return linked;
     }
 
+    private ArrayNode queryImpactedRooms(ArrayNode linkedBuildings) {
+        ArrayNode impactedRooms = objectMapper.createArrayNode();
+        Set<String> buildingIds = extractBuildingIds(linkedBuildings);
+        if (buildingIds.isEmpty()) return impactedRooms;
+
+        String placeholders = String.join(",", java.util.Collections.nCopies(buildingIds.size(), "?"));
+        String sql = "SELECT r.id, r.building_id, r.floor_id, r.room_no, COALESCE(r.room_name, '') AS room_name, " +
+                "       COALESCE(r.room_type, '') AS room_type, COALESCE(r.status, '') AS status, r.area_m2, " +
+                "       f.floor_no " +
+                "FROM building_rooms r " +
+                "LEFT JOIN building_floors f ON f.id = r.floor_id " +
+                "WHERE r.building_id IN (" + placeholders + ") " +
+                "ORDER BY r.building_id, f.floor_no NULLS LAST, r.room_no " +
+                "LIMIT 300";
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, buildingIds.toArray());
+        for (Map<String, Object> row : rows) {
+            ObjectNode room = objectMapper.createObjectNode();
+            room.put("id", String.valueOf(row.get("id")));
+            room.put("buildingId", String.valueOf(row.get("building_id")));
+            room.put("floorId", row.get("floor_id") == null ? "" : String.valueOf(row.get("floor_id")));
+            Object floorNo = row.get("floor_no");
+            if (floorNo instanceof Number number) room.put("floorNo", number.intValue());
+            else room.putNull("floorNo");
+            room.put("roomNo", String.valueOf(row.get("room_no")));
+            room.put("roomName", String.valueOf(row.get("room_name")));
+            room.put("roomType", String.valueOf(row.get("room_type")));
+            room.put("status", String.valueOf(row.get("status")));
+            Object area = row.get("area_m2");
+            if (area instanceof Number number) room.put("areaM2", number.doubleValue());
+            else room.putNull("areaM2");
+            impactedRooms.add(room);
+        }
+
+        if (!impactedRooms.isEmpty()) return impactedRooms;
+
+        // Keep response meaningful even before room asset data is fully populated.
+        for (String buildingId : buildingIds) {
+            ObjectNode room = objectMapper.createObjectNode();
+            room.put("id", "room_" + buildingId + "_001");
+            room.put("buildingId", buildingId);
+            room.put("floorId", "");
+            room.put("floorNo", 1);
+            room.put("roomNo", "001");
+            room.put("roomName", "impacted-room-default");
+            room.put("roomType", "unknown");
+            room.put("status", "normal");
+            room.putNull("areaM2");
+            room.put("source", "fallback");
+            impactedRooms.add(room);
+        }
+        return impactedRooms;
+    }
+
+    private ArrayNode queryValves(String featureId, ObjectNode segment, ArrayNode nodes) {
+        ArrayNode valves = objectMapper.createArrayNode();
+        Set<String> nodeIds = extractNodeIds(nodes);
+
+        List<String> conditions = new ArrayList<>();
+        List<Object> params = new ArrayList<>();
+        String segmentId = segment == null ? null : segment.path("id").asText("");
+        String segmentFeatureId = segment == null ? null : segment.path("featureId").asText("");
+        if (segmentId != null && !segmentId.isBlank()) {
+            conditions.add("segment_id = ?");
+            params.add(segmentId);
+        }
+        if (segmentFeatureId != null && !segmentFeatureId.isBlank()) {
+            conditions.add("feature_id = ?");
+            params.add(segmentFeatureId);
+        } else if (featureId != null && !featureId.isBlank()) {
+            conditions.add("feature_id = ?");
+            params.add(featureId);
+        }
+        if (!nodeIds.isEmpty()) {
+            String placeholders = String.join(",", java.util.Collections.nCopies(nodeIds.size(), "?"));
+            conditions.add("node_id IN (" + placeholders + ")");
+            params.addAll(nodeIds);
+        }
+        if (conditions.isEmpty()) return valves;
+
+        String sql = "SELECT id, feature_id, node_id, segment_id, valve_type, status, control_mode, normal_state, properties " +
+                "FROM pipe_valves WHERE " + String.join(" OR ", conditions) + " ORDER BY id LIMIT 200";
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, params.toArray());
+        for (Map<String, Object> row : rows) {
+            ObjectNode valve = objectMapper.createObjectNode();
+            valve.put("id", String.valueOf(row.get("id")));
+            valve.put("featureId", row.get("feature_id") == null ? "" : String.valueOf(row.get("feature_id")));
+            valve.put("nodeId", row.get("node_id") == null ? "" : String.valueOf(row.get("node_id")));
+            valve.put("segmentId", row.get("segment_id") == null ? "" : String.valueOf(row.get("segment_id")));
+            valve.put("valveType", row.get("valve_type") == null ? "" : String.valueOf(row.get("valve_type")));
+            valve.put("status", row.get("status") == null ? "" : String.valueOf(row.get("status")));
+            valve.put("controlMode", row.get("control_mode") == null ? "" : String.valueOf(row.get("control_mode")));
+            valve.put("normalState", row.get("normal_state") == null ? "" : String.valueOf(row.get("normal_state")));
+            valve.set("properties", parseJsonObject(row.get("properties")));
+            valves.add(valve);
+        }
+        return valves;
+    }
+
+    private ArrayNode queryEquipments(String featureId, ArrayNode nodes, ArrayNode linkedBuildings, ArrayNode valves) {
+        ArrayNode equipments = objectMapper.createArrayNode();
+        Set<String> nodeIds = extractNodeIds(nodes);
+
+        List<String> conditions = new ArrayList<>();
+        List<Object> params = new ArrayList<>();
+        if (!nodeIds.isEmpty()) {
+            String placeholders = String.join(",", java.util.Collections.nCopies(nodeIds.size(), "?"));
+            conditions.add("node_id IN (" + placeholders + ")");
+            params.addAll(nodeIds);
+        }
+        if (featureId != null && !featureId.isBlank()) {
+            conditions.add("feature_id = ?");
+            params.add(featureId);
+        }
+
+        if (!conditions.isEmpty()) {
+            String sql = "SELECT id, feature_id, node_id, COALESCE(name, id) AS name, station_type, status, " +
+                    "       design_flow_m3h, design_head_m, power_kw, properties " +
+                    "FROM pump_stations WHERE " + String.join(" OR ", conditions) + " ORDER BY id LIMIT 100";
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, params.toArray());
+            for (Map<String, Object> row : rows) {
+                ObjectNode equipment = objectMapper.createObjectNode();
+                equipment.put("id", String.valueOf(row.get("id")));
+                equipment.put("equipmentType", "pump_station");
+                equipment.put("name", String.valueOf(row.get("name")));
+                equipment.put("featureId", row.get("feature_id") == null ? "" : String.valueOf(row.get("feature_id")));
+                equipment.put("nodeId", row.get("node_id") == null ? "" : String.valueOf(row.get("node_id")));
+                equipment.put("stationType", row.get("station_type") == null ? "" : String.valueOf(row.get("station_type")));
+                equipment.put("status", row.get("status") == null ? "" : String.valueOf(row.get("status")));
+                Object flow = row.get("design_flow_m3h");
+                if (flow instanceof Number number) equipment.put("designFlowM3h", number.doubleValue());
+                else equipment.putNull("designFlowM3h");
+                Object head = row.get("design_head_m");
+                if (head instanceof Number number) equipment.put("designHeadM", number.doubleValue());
+                else equipment.putNull("designHeadM");
+                Object power = row.get("power_kw");
+                if (power instanceof Number number) equipment.put("powerKw", number.doubleValue());
+                else equipment.putNull("powerKw");
+                equipment.set("properties", parseJsonObject(row.get("properties")));
+                equipments.add(equipment);
+            }
+        }
+
+        if (!equipments.isEmpty()) return equipments;
+
+        for (JsonNode valve : valves) {
+            ObjectNode equipment = objectMapper.createObjectNode();
+            equipment.put("id", valve.path("id").asText(""));
+            equipment.put("equipmentType", "valve");
+            equipment.put("name", "valve-" + valve.path("id").asText(""));
+            equipment.put("status", valve.path("status").asText("normal"));
+            equipment.put("nodeId", valve.path("nodeId").asText(""));
+            equipments.add(equipment);
+        }
+        if (!equipments.isEmpty()) return equipments;
+
+        for (String buildingId : extractBuildingIds(linkedBuildings)) {
+            ObjectNode equipment = objectMapper.createObjectNode();
+            equipment.put("id", "eq_" + buildingId);
+            equipment.put("equipmentType", "building_device");
+            equipment.put("name", "building-critical-device");
+            equipment.put("status", "unknown");
+            equipment.put("buildingId", buildingId);
+            equipments.add(equipment);
+        }
+        return equipments;
+    }
+
+    private Set<String> extractNodeIds(ArrayNode nodes) {
+        Set<String> ids = new LinkedHashSet<>();
+        for (JsonNode node : nodes) {
+            String id = node.path("id").asText("");
+            if (!id.isBlank()) ids.add(id);
+        }
+        return ids;
+    }
+
+    private Set<String> extractBuildingIds(ArrayNode linkedBuildings) {
+        Set<String> ids = new LinkedHashSet<>();
+        for (JsonNode building : linkedBuildings) {
+            String id = building.path("id").asText("");
+            if (!id.isBlank()) ids.add(id);
+        }
+        return ids;
+    }
+
     private List<SegmentTopology> queryAllSegments() {
         String sql = "SELECT id, feature_id, from_node_id, to_node_id FROM pipe_segments";
         return jdbcTemplate.query(sql, (rs, rowNum) -> new SegmentTopology(
@@ -354,6 +643,21 @@ public class TwinController {
         } catch (Exception e) {
             return objectMapper.createObjectNode();
         }
+    }
+
+    private static double[] parseBbox(String bbox) {
+        String[] parts = bbox.split(",");
+        if (parts.length != 4) {
+            throw new IllegalArgumentException("bbox must be minLon,minLat,maxLon,maxLat");
+        }
+        double minLon = Double.parseDouble(parts[0].trim());
+        double minLat = Double.parseDouble(parts[1].trim());
+        double maxLon = Double.parseDouble(parts[2].trim());
+        double maxLat = Double.parseDouble(parts[3].trim());
+        if (minLon < -180 || maxLon > 180 || minLat < -90 || maxLat > 90 || minLon > maxLon || minLat > maxLat) {
+            throw new IllegalArgumentException("bbox out of range");
+        }
+        return new double[] {minLon, minLat, maxLon, maxLat};
     }
 
     private record SegmentTopology(

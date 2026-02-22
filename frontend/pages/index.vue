@@ -83,6 +83,7 @@ const layers = ref({
   water: true,
   sewage: true,
   drain: true,
+  pipeNodes: true,
   buildings: true,
   green: true,
 })
@@ -101,6 +102,41 @@ function toNumber(value: unknown) {
 
 function toText(value: unknown) {
   return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function toRecord(value: unknown) {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
+}
+
+function toStringArray(values: unknown[]) {
+  return values
+    .map((value) => {
+      if (typeof value === 'string' && value.trim()) return value.trim()
+      if (value !== undefined && value !== null) return String(value)
+      return ''
+    })
+    .filter(Boolean)
+}
+
+function summarizeHealth(score: number): PipeNode['healthSummary'] {
+  if (score >= 85) return 'healthy'
+  if (score >= 65) return 'attention'
+  return 'risk'
+}
+
+function computePipeHealthScore(
+  status: PipeNode['status'],
+  pressure: number,
+  flowRate: number,
+  valveCount: number
+) {
+  let score = 100
+  if (status === 'warning') score -= 20
+  if (status === 'critical') score -= 40
+  if (pressure < 1.2 || pressure > 4.5) score -= 15
+  if (flowRate <= 0) score -= 20
+  if (valveCount === 0) score -= 5
+  return Math.max(0, Math.min(100, score))
 }
 
 function normalizePipeType(props: Record<string, unknown>, featureId: string): PipeNode['type'] {
@@ -141,23 +177,84 @@ function normalizeBuildingType(props: Record<string, unknown>): Building['type']
 async function buildPipeAsset(feature: GeoJsonFeature) {
   const featureId = String(feature.id)
   const properties = (feature.properties || {}) as Record<string, unknown>
-  const [drilldownResult, telemetryResult] = await Promise.allSettled([
-    twinService.drilldown(backendBaseUrl.value, featureId),
-    twinService.telemetryLatest(backendBaseUrl.value, [featureId]),
-  ])
+  const drilldown = await twinService
+    .drilldown(backendBaseUrl.value, featureId)
+    .catch(() => null)
 
-  const linkedBuildingNames =
-    drilldownResult.status === 'fulfilled'
-      ? drilldownResult.value.linkedBuildings
-          .map((item) => {
-            const name = toText((item as Record<string, unknown>).name)
-            if (name) return name
-            return toText((item as Record<string, unknown>).id)
-          })
-          .filter((item): item is string => Boolean(item))
-      : []
+  const drilldownSegment = drilldown ? toRecord(drilldown.segment) : {}
+  const telemetryFeatureId = toText(drilldownSegment.featureId) || featureId
+  const telemetry = await twinService
+    .telemetryLatest(backendBaseUrl.value, [telemetryFeatureId])
+    .catch(() => [])
 
-  const telemetry = telemetryResult.status === 'fulfilled' ? telemetryResult.value : []
+  const linkedBuildingNames = drilldown
+    ? drilldown.linkedBuildings
+        .map((item) => {
+          const row = toRecord(item)
+          return toText(row.name) || toText(row.id)
+        })
+        .filter((item): item is string => Boolean(item))
+    : []
+
+  const linkedBuildingIds = drilldown
+    ? toStringArray(
+        drilldown.linkedBuildings.map((item) => {
+          const row = toRecord(item)
+          return row.id
+        })
+      )
+    : []
+
+  const impactedRooms = drilldown
+    ? drilldown.impactedRooms.map((item) => {
+        const row = toRecord(item)
+        return {
+          id: toText(row.id) || '',
+          buildingId: toText(row.buildingId) || '',
+          floorId: toText(row.floorId) || '',
+          floorNo: toNumber(row.floorNo),
+          roomNo: toText(row.roomNo) || '',
+          roomName: toText(row.roomName) || '',
+          roomType: toText(row.roomType) || '',
+          status: toText(row.status) || 'unknown',
+          areaM2: toNumber(row.areaM2),
+        }
+      })
+    : []
+
+  const linkedEquipments = drilldown
+    ? drilldown.equipments.map((item) => {
+        const row = toRecord(item)
+        return {
+          id: toText(row.id) || '',
+          equipmentType: toText(row.equipmentType) || 'unknown',
+          name: toText(row.name) || toText(row.id) || 'unknown-equipment',
+          status: toText(row.status) || 'unknown',
+          featureId: toText(row.featureId) || undefined,
+          nodeId: toText(row.nodeId) || undefined,
+          buildingId: toText(row.buildingId) || undefined,
+        }
+      })
+    : []
+
+  const linkedValves = drilldown
+    ? toStringArray(
+        drilldown.valves.map((item) => {
+          const row = toRecord(item)
+          return row.id
+        })
+      )
+    : []
+
+  const topologyNodeIds = drilldown
+    ? toStringArray(
+        drilldown.nodes.map((item) => {
+          const row = toRecord(item)
+          return row.id
+        })
+      )
+    : []
+
   const pressure = telemetry.find(item => item.metric === 'pressure')?.value
     ?? toNumber(properties.pressure)
     ?? 0
@@ -183,10 +280,13 @@ async function buildPipeAsset(feature: GeoJsonFeature) {
     || toText(properties.maintenance_date)
     || '未知'
 
+  const status = normalizePipeStatus(properties.status)
+  const healthScore = computePipeHealthScore(status, pressure, flowRate, linkedValves.length)
+
   return {
     id: featureId,
     type: normalizePipeType(properties, featureId),
-    status: normalizePipeStatus(properties.status),
+    status,
     pressure,
     flowRate,
     coordinates: [],
@@ -196,6 +296,18 @@ async function buildPipeAsset(feature: GeoJsonFeature) {
     installDate,
     lastMaintain,
     connectedBuildingIds: linkedBuildingNames,
+    topologyNodeIds,
+    linkedValves,
+    impactedRooms,
+    linkedEquipments,
+    healthScore,
+    healthSummary: summarizeHealth(healthScore),
+    faultImpactScope: {
+      impactedBuildingCount: linkedBuildingIds.length,
+      impactedRoomCount: impactedRooms.length,
+      impactedEquipmentCount: linkedEquipments.length,
+      keyBuildingIds: linkedBuildingIds.slice(0, 6),
+    },
   } as PipeNode
 }
 
@@ -247,9 +359,13 @@ const handleSelection = async (item: PipeNode | Building | GeoJsonFeature | null
       return
     }
     
-    // 检查是否是管道（由道路数据分类生成：pipeType=water|drain|sewage）
+    // 检查是否是管道或管网节点（节点同样支持一键穿透）
     const pipeType = String(properties.pipeType || '').toLowerCase()
-    if (pipeType === 'water' || pipeType === 'drain' || pipeType === 'sewage' || properties.highway) {
+    const isPipeNode =
+      typeof properties.nodeType === 'string'
+      || typeof properties.nodeId === 'string'
+      || properties.assetType === 'pipe_node'
+    if (pipeType === 'water' || pipeType === 'drain' || pipeType === 'sewage' || properties.highway || isPipeNode) {
       try {
         const pipeAsset = await buildPipeAsset(feature)
         if (token !== selectionToken.value) return

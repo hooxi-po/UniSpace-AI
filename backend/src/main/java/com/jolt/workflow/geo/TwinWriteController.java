@@ -269,7 +269,8 @@ public class TwinWriteController {
 
         upsertPipeNode(endpoints.fromNodeId(), endpoints.startLon(), endpoints.startLat());
         upsertPipeNode(endpoints.toNodeId(), endpoints.endLon(), endpoints.endLat());
-        upsertPipeSegment(featureId, endpoints.fromNodeId(), endpoints.toNodeId());
+        String segmentId = upsertPipeSegment(featureId, endpoints.fromNodeId(), endpoints.toNodeId());
+        refreshTopologyRelations(featureId, segmentId, endpoints.fromNodeId(), endpoints.toNodeId());
     }
 
     private void syncSegmentAttributesFromFeature(String featureId) {
@@ -361,7 +362,7 @@ public class TwinWriteController {
         );
     }
 
-    private void upsertPipeSegment(String featureId, String fromNodeId, String toNodeId) {
+    private String upsertPipeSegment(String featureId, String fromNodeId, String toNodeId) {
         String sql = "INSERT INTO pipe_segments (" +
                 "id, feature_id, from_node_id, to_node_id, diameter_mm, material, status, properties" +
                 ") " +
@@ -385,6 +386,123 @@ public class TwinWriteController {
         if (changed == 0) {
             throw new IllegalStateException("feature_not_found");
         }
+        String segmentId = jdbcTemplate.query(
+                "SELECT id FROM pipe_segments WHERE feature_id = ? LIMIT 1",
+                ps -> ps.setString(1, featureId),
+                rs -> rs.next() ? rs.getString("id") : null
+        );
+        if (segmentId == null || segmentId.isBlank()) {
+            throw new IllegalStateException("segment_sync_failed");
+        }
+        return segmentId;
+    }
+
+    private void refreshTopologyRelations(String featureId, String segmentId, String fromNodeId, String toNodeId) {
+        jdbcTemplate.update(
+                "DELETE FROM asset_relations " +
+                        "WHERE source_id = ? AND source_type = 'pipe' AND relation_type = 'serves'",
+                featureId
+        );
+        jdbcTemplate.update(
+                "WITH src AS (SELECT geom FROM geo_features WHERE id = ?), nearest_building AS (" +
+                        "  SELECT b.id AS building_id, ST_Distance(b.geom::geography, src.geom::geography) AS distance_m " +
+                        "  FROM geo_features b, src " +
+                        "  WHERE b.layer = 'buildings' " +
+                        "  ORDER BY b.geom <-> src.geom " +
+                        "  LIMIT 1" +
+                        ") " +
+                        "INSERT INTO asset_relations (source_id, source_type, target_id, target_type, relation_type, properties) " +
+                        "SELECT ?, 'pipe', building_id, 'building', 'serves', " +
+                        "       jsonb_build_object('distanceMeters', round(distance_m::numeric, 2), 'autoSynced', true) " +
+                        "FROM nearest_building " +
+                        "ON CONFLICT (source_id, source_type, target_id, target_type, relation_type) DO UPDATE " +
+                        "SET properties = EXCLUDED.properties",
+                featureId,
+                featureId
+        );
+
+        if (segmentId == null || segmentId.isBlank()) {
+            return;
+        }
+
+        jdbcTemplate.update(
+                "DELETE FROM asset_relations " +
+                        "WHERE source_id = ? AND source_type = 'pipe_segment' AND relation_type = 'connects'",
+                segmentId
+        );
+        jdbcTemplate.update(
+                "INSERT INTO asset_relations (source_id, source_type, target_id, target_type, relation_type, properties) " +
+                        "SELECT ?, 'pipe_segment', m.id, 'manhole', 'connects', jsonb_build_object('autoSynced', true) " +
+                        "FROM pipe_manholes m " +
+                        "WHERE m.node_id IN (?, ?) " +
+                        "ON CONFLICT (source_id, source_type, target_id, target_type, relation_type) DO NOTHING",
+                segmentId,
+                fromNodeId,
+                toNodeId
+        );
+
+        jdbcTemplate.update(
+                "DELETE FROM asset_relations " +
+                        "WHERE source_type = 'manhole' AND relation_type = 'controls' " +
+                        "  AND source_id IN (SELECT id FROM pipe_manholes WHERE node_id IN (?, ?))",
+                fromNodeId,
+                toNodeId
+        );
+        jdbcTemplate.update(
+                "INSERT INTO asset_relations (source_id, source_type, target_id, target_type, relation_type, properties) " +
+                        "SELECT m.id, 'manhole', v.id, 'valve', 'controls', jsonb_build_object('autoSynced', true) " +
+                        "FROM pipe_manholes m " +
+                        "JOIN pipe_valves v ON v.node_id = m.node_id " +
+                        "WHERE m.node_id IN (?, ?) " +
+                        "ON CONFLICT (source_id, source_type, target_id, target_type, relation_type) DO NOTHING",
+                fromNodeId,
+                toNodeId
+        );
+
+        jdbcTemplate.update(
+                "DELETE FROM asset_relations " +
+                        "WHERE source_type = 'valve' AND relation_type = 'feeds' " +
+                        "  AND source_id IN (SELECT id FROM pipe_valves WHERE node_id IN (?, ?))",
+                fromNodeId,
+                toNodeId
+        );
+        jdbcTemplate.update(
+                "INSERT INTO asset_relations (source_id, source_type, target_id, target_type, relation_type, properties) " +
+                        "SELECT v.id, 'valve', p.id, 'pump_station', 'feeds', jsonb_build_object('autoSynced', true) " +
+                        "FROM pipe_valves v " +
+                        "JOIN pump_stations p ON p.node_id = v.node_id " +
+                        "WHERE v.node_id IN (?, ?) " +
+                        "ON CONFLICT (source_id, source_type, target_id, target_type, relation_type) DO NOTHING",
+                fromNodeId,
+                toNodeId
+        );
+
+        jdbcTemplate.update(
+                "DELETE FROM asset_relations " +
+                        "WHERE source_type = 'pump_station' AND relation_type = 'serves' " +
+                        "  AND source_id IN (SELECT id FROM pump_stations WHERE node_id IN (?, ?))",
+                fromNodeId,
+                toNodeId
+        );
+        jdbcTemplate.update(
+                "WITH pump_features AS (" +
+                        "  SELECT p.id AS pump_id, g.geom " +
+                        "  FROM pump_stations p " +
+                        "  JOIN geo_features g ON g.id = p.feature_id " +
+                        "  WHERE p.node_id IN (?, ?)" +
+                        "), nearest_building AS (" +
+                        "  SELECT pf.pump_id, b.id AS building_id, " +
+                        "         row_number() OVER (PARTITION BY pf.pump_id ORDER BY pf.geom <-> b.geom) AS rn " +
+                        "  FROM pump_features pf " +
+                        "  JOIN geo_features b ON b.layer = 'buildings'" +
+                        ") " +
+                        "INSERT INTO asset_relations (source_id, source_type, target_id, target_type, relation_type, properties) " +
+                        "SELECT pump_id, 'pump_station', building_id, 'building', 'serves', jsonb_build_object('autoSynced', true) " +
+                        "FROM nearest_building WHERE rn = 1 " +
+                        "ON CONFLICT (source_id, source_type, target_id, target_type, relation_type) DO NOTHING",
+                fromNodeId,
+                toNodeId
+        );
     }
 
     private double toDoubleOrThrow(Object raw, String code) {

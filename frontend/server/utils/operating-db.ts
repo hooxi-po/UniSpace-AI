@@ -1,4 +1,4 @@
-import { readFile, writeFile } from 'node:fs/promises'
+import { access, readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
 export type SpaceStatus = '公开招租' | '招租结束' | '已出租' | '维修中'
@@ -61,15 +61,36 @@ export interface OperatingDB {
   rentBills: OperatingRentBill[]
 }
 
-const DB_PATH = resolve(process.cwd(), 'frontend/server/data/operating.json')
+const DB_PATH_CANDIDATES = [
+  resolve(process.cwd(), 'server/data/operating.json'),
+  resolve(process.cwd(), 'frontend/server/data/operating.json'),
+]
+let cachedDBPath: string | null = null
+
+async function getDBPath() {
+  if (cachedDBPath) return cachedDBPath
+
+  for (const path of DB_PATH_CANDIDATES) {
+    try {
+      await access(path)
+      cachedDBPath = path
+      return path
+    } catch {
+      // continue
+    }
+  }
+
+  cachedDBPath = DB_PATH_CANDIDATES[0]
+  return cachedDBPath
+}
 
 export async function readOperatingDB(): Promise<OperatingDB> {
-  const raw = await readFile(DB_PATH, 'utf-8')
+  const raw = await readFile(await getDBPath(), 'utf-8')
   return JSON.parse(raw) as OperatingDB
 }
 
 export async function writeOperatingDB(db: OperatingDB) {
-  await writeFile(DB_PATH, JSON.stringify(db, null, 2), 'utf-8')
+  await writeFile(await getDBPath(), JSON.stringify(db, null, 2), 'utf-8')
 }
 
 export async function getSpaces() {

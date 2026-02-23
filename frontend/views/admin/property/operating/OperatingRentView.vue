@@ -65,7 +65,10 @@ const filteredBills = computed(() => {
   let result = rentBills.value
 
   if (statusFilter.value !== 'all') {
-    result = result.filter((b) => b.status === statusFilter.value)
+    result = result.filter((b) => {
+      if (statusFilter.value === 'Unpaid') return b.status === 'Unpaid' || b.status === 'PartialPaid'
+      return b.status === statusFilter.value
+    })
   }
 
   return result

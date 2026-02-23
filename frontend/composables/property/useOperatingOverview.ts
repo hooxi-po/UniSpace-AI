@@ -1,12 +1,44 @@
 import { computed } from 'vue'
 import { getOperatingOverview } from '~/services/operating'
 
+const PERIOD_PATTERN = /^\d{4}-\d{2}$/
+
+function getLocalPeriod(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+}
+
+function getRecentMonths(endMonth: string, count: number) {
+  const [year, month] = endMonth.split('-').map(Number)
+  const base = Number.isFinite(year) && Number.isFinite(month)
+    ? new Date(year, month - 1, 1)
+    : new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+  const months: string[] = []
+
+  for (let i = count - 1; i >= 0; i -= 1) {
+    const d = new Date(base.getFullYear(), base.getMonth() - i, 1)
+    months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+  }
+
+  return months
+}
+
 export function useOperatingOverview() {
   const { data, pending, error, refresh } = useAsyncData('operating-overview', () => getOperatingOverview())
 
   const spaces = computed(() => data.value?.spaces || [])
   const contracts = computed(() => data.value?.contracts || [])
   const rentBills = computed(() => data.value?.rentBills || [])
+  const periods = computed(() => {
+    const values = rentBills.value
+      .map(b => b.period)
+      .filter((period): period is string => PERIOD_PATTERN.test(period))
+    return [...new Set(values)].sort()
+  })
+  const activePeriod = computed(() => {
+    const currentPeriod = getLocalPeriod()
+    if (periods.value.includes(currentPeriod)) return currentPeriod
+    return periods.value[periods.value.length - 1] || currentPeriod
+  })
 
   const stats = computed(() => {
     const activeContracts = contracts.value.filter(c => c.status === 'Active').length
@@ -20,11 +52,9 @@ export function useOperatingOverview() {
       .filter(b => b.status === 'Overdue')
       .reduce((sum, b) => sum + (b.totalAmount - b.paidAmount), 0)
 
-    // 当前 mock 用固定月份；后续可由接口返回“当前月份”或服务端计算
-    const month = '2025-01'
     const monthlyIncome = rentBills.value
-      .filter(b => b.period === month && b.status === 'Paid')
-      .reduce((sum, b) => sum + b.paidAmount, 0)
+      .filter(b => b.period === activePeriod.value)
+      .reduce((sum, b) => sum + Math.min(b.totalAmount, Math.max(0, b.paidAmount || 0)), 0)
 
     const availableSpaces = spaces.value.filter(s => s.status === '公开招租').length
 
@@ -55,13 +85,15 @@ export function useOperatingOverview() {
   })
 
   const rentTrend = computed(() => {
-    const months = ['2024-10', '2024-11', '2024-12', '2025-01']
+    const months = periods.value.length > 0
+      ? periods.value.slice(-4)
+      : getRecentMonths(activePeriod.value, 4)
     const receivablePerMonth = contracts.value.reduce((sum, c) => sum + c.rentPerMonth, 0) / 10000
 
     return months.map(m => {
       const paid = rentBills.value
-        .filter(b => b.period === m && b.status === 'Paid')
-        .reduce((sum, b) => sum + b.paidAmount, 0)
+        .filter(b => b.period === m)
+        .reduce((sum, b) => sum + Math.min(b.totalAmount, Math.max(0, b.paidAmount || 0)), 0)
         / 10000
 
       return {
@@ -73,14 +105,12 @@ export function useOperatingOverview() {
   })
 
   const collectionRates = computed(() => {
-    const month = '2025-01'
-
     return contracts.value.map(c => {
-      const bills = rentBills.value.filter(b => b.contractId === c.id && b.period === month)
-      const paid = bills.filter(b => b.status === 'Paid').reduce((sum, b) => sum + b.paidAmount, 0)
+      const bills = rentBills.value.filter(b => b.contractId === c.id && b.period === activePeriod.value)
+      const paid = bills.reduce((sum, b) => sum + Math.min(b.totalAmount, Math.max(0, b.paidAmount || 0)), 0)
       const total = bills.reduce((sum, b) => sum + b.totalAmount, 0)
       // 方案 A：若本月无账单，则视为无应收，展示 0%
-      const rate = total > 0 ? (paid / total) * 100 : 0
+      const rate = total > 0 ? Math.min(100, (paid / total) * 100) : 0
 
       return {
         contractId: c.id,
@@ -93,7 +123,9 @@ export function useOperatingOverview() {
   const tenantRankings = computed(() => {
     return contracts.value.map(c => {
       const bills = rentBills.value.filter(b => b.contractId === c.id)
-      const totalReceived = bills.filter(b => b.status === 'Paid' || b.status === 'PartialPaid').reduce((sum, b) => sum + b.paidAmount, 0)
+      const totalReceived = bills.reduce((sum, b) => {
+        return sum + Math.min(b.totalAmount, Math.max(0, b.paidAmount || 0))
+      }, 0)
       const outstanding = bills.filter(b => b.status !== 'Paid').reduce((sum, b) => sum + (b.totalAmount - b.paidAmount), 0)
       
       // 模拟评分逻辑：根据欠费情况给分
@@ -128,5 +160,3 @@ export function useOperatingOverview() {
     tenantRankings,
   }
 }
-
-

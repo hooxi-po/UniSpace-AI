@@ -160,22 +160,25 @@ function getTierMultiplier(excessPercent: number): number {
 
 // --- 核心业务逻辑 (Business Logic) ---
 
-import { readBuildingsDB } from './buildings-db'
-
 /**
  * 核心逻辑：获取指定月份的个人用房明细汇总 (PersonUsage)
- * 修复：从 buildings.json 获取实际面积，支持从 charging.json 覆盖面积
+ * 修复：从可编辑的 fixation-stock 台账获取实际面积，支持从 charging.json 覆盖面积
  */
 export async function listPersonUsagesByMonth(month: string): Promise<PersonUsage[]> {
   const persons = await listPersons()
   const allocations = await listRoomAllocations()
-  const bDb = await readBuildingsDB()
+  const rooms = await listRooms()
   
-  // 建立 roomKey -> area 映射
+  // 建立 roomId / roomKey -> area 映射（roomKey: BLD-001::101）
   const roomAreaMap = new Map<string, number>()
-  for (const r of bDb.rooms) {
+  for (const r of rooms) {
+    const area = Number(r.area) || 0
+    roomAreaMap.set(r.id, area)
     const key = `${r.buildingCode || r.buildingName}::${r.roomNo}`
-    roomAreaMap.set(key, r.area || 0)
+    roomAreaMap.set(key, area)
+    if (r.buildingCode) {
+      roomAreaMap.set(`RM-${r.buildingCode}-${r.roomNo}`, area)
+    }
   }
 
   // 面积覆盖规则：从现有 charging.json 提取（如果存在）
@@ -203,16 +206,12 @@ export async function listPersonUsagesByMonth(month: string): Promise<PersonUsag
   for (const roomId in roomGroups) {
     const roomAllocations = roomGroups[roomId]
     
-    // 修复：roomId 可能是 "RM-BLD-001-101" 或 "BLD-001::101"
-    let area = 0
-    const room = bDb.rooms.find(r => r.id === roomId || r.id === `RM-${roomId.replace('::', '-')}`)
-    if (room) {
-      area = room.area || 0
-    } else {
-      // 兜底：尝试解析 roomId 格式
-      const key = roomId.includes('::') ? roomId : roomId.replace('RM-', '').replace('-', '::')
-      area = roomAreaMap.get(key) || 0
-    }
+    // roomId 可能是 "RM-BLD-001-101" 或 "BLD-001::101"
+    const roomMatch = roomId.match(/^RM-(BLD-\d+)-(.+)$/)
+    const roomKey = roomId.includes('::')
+      ? roomId
+      : (roomMatch ? `${roomMatch[1]}::${roomMatch[2]}` : roomId)
+    const area = roomAreaMap.get(roomId) || roomAreaMap.get(roomKey) || 0
 
     if (area === 0) continue
 

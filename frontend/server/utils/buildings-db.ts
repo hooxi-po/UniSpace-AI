@@ -1,5 +1,5 @@
 import { promises as fs } from 'node:fs'
-import { resolve } from 'node:path'
+import { basename, dirname, resolve } from 'node:path'
 
 export type FundSource = 'Fiscal' | 'SelfRaised' | 'Mixed'
 export type AssetStatus = 'DisposalPending' | 'PendingReview' | 'PendingArchive' | 'Archived'
@@ -47,11 +47,47 @@ type DbShape = {
   rooms: RoomRow[]
 }
 
-// 使用项目根目录作为稳定基准：Nuxt dev 的 cwd 可能是 frontend/，否则会出现 frontend/frontend/... 的错误路径
-const DB_FILE = resolve(process.cwd(), 'server/data/buildings.json')
+const isFrontendCwd = basename(process.cwd()) === 'frontend'
+const DB_FILE_CANDIDATES = isFrontendCwd
+  ? [
+      resolve(process.cwd(), 'server/data/buildings.json'),
+      resolve(process.cwd(), 'frontend/server/data/buildings.json'),
+    ]
+  : [
+      resolve(process.cwd(), 'frontend/server/data/buildings.json'),
+      resolve(process.cwd(), 'server/data/buildings.json'),
+    ]
+let cachedDbFile: string | null = null
+
+async function getBuildingsDbPath() {
+  if (cachedDbFile) return cachedDbFile
+
+  for (const candidate of DB_FILE_CANDIDATES) {
+    try {
+      await fs.access(candidate)
+      cachedDbFile = candidate
+      return candidate
+    } catch {
+      // continue
+    }
+  }
+
+  for (const candidate of DB_FILE_CANDIDATES) {
+    try {
+      await fs.access(dirname(candidate))
+      cachedDbFile = candidate
+      return candidate
+    } catch {
+      // continue
+    }
+  }
+
+  cachedDbFile = DB_FILE_CANDIDATES[0]
+  return cachedDbFile
+}
 
 export async function readBuildingsDB(): Promise<DbShape> {
-  const raw = await fs.readFile(DB_FILE, 'utf-8')
+  const raw = await fs.readFile(await getBuildingsDbPath(), 'utf-8')
   const parsed = JSON.parse(raw) as DbShape
   return {
     buildings: Array.isArray(parsed.buildings) ? parsed.buildings : [],
@@ -60,8 +96,9 @@ export async function readBuildingsDB(): Promise<DbShape> {
 }
 
 export async function writeBuildingsDB(next: DbShape) {
-  await fs.mkdir(resolve(DB_FILE, '..'), { recursive: true })
-  await fs.writeFile(DB_FILE, JSON.stringify(next, null, 2), 'utf-8')
+  const dbFile = await getBuildingsDbPath()
+  await fs.mkdir(dirname(dbFile), { recursive: true })
+  await fs.writeFile(dbFile, JSON.stringify(next, null, 2), 'utf-8')
 }
 
 export async function listBuildings() {

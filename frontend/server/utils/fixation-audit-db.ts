@@ -90,21 +90,60 @@ export type Project = {
 
 type DbShape = { list: Project[] }
 
-const DB_FILE = path.resolve(process.cwd(), 'frontend/server/data/fixation-audit.json')
+const isFrontendCwd = path.basename(process.cwd()) === 'frontend'
+const DB_FILE_CANDIDATES = isFrontendCwd
+  ? [
+      path.resolve(process.cwd(), 'server', 'data', 'fixation-audit.json'),
+      path.resolve(process.cwd(), 'frontend', 'server', 'data', 'fixation-audit.json'),
+    ]
+  : [
+      path.resolve(process.cwd(), 'frontend', 'server', 'data', 'fixation-audit.json'),
+      path.resolve(process.cwd(), 'server', 'data', 'fixation-audit.json'),
+    ]
+let cachedDbFile: string | null = null
+
+async function getDbFilePath() {
+  if (cachedDbFile) return cachedDbFile
+
+  for (const candidate of DB_FILE_CANDIDATES) {
+    try {
+      await fs.access(candidate)
+      cachedDbFile = candidate
+      return candidate
+    } catch {
+      // continue
+    }
+  }
+
+  for (const candidate of DB_FILE_CANDIDATES) {
+    try {
+      await fs.access(path.dirname(candidate))
+      cachedDbFile = candidate
+      return candidate
+    } catch {
+      // continue
+    }
+  }
+
+  cachedDbFile = DB_FILE_CANDIDATES[0]
+  return cachedDbFile
+}
 
 async function ensureDbFile() {
-  await fs.mkdir(path.dirname(DB_FILE), { recursive: true })
+  const dbFile = await getDbFilePath()
+  await fs.mkdir(path.dirname(dbFile), { recursive: true })
   try {
-    await fs.access(DB_FILE)
+    await fs.access(dbFile)
   } catch {
     const init: DbShape = { list: [] }
-    await fs.writeFile(DB_FILE, JSON.stringify(init, null, 2), 'utf-8')
+    await fs.writeFile(dbFile, JSON.stringify(init, null, 2), 'utf-8')
   }
 }
 
 export async function readAuditDb(): Promise<DbShape> {
   await ensureDbFile()
-  const raw = await fs.readFile(DB_FILE, 'utf-8')
+  const dbFile = await getDbFilePath()
+  const raw = await fs.readFile(dbFile, 'utf-8')
   let db: DbShape = { list: [] }
   try {
     const parsed = JSON.parse(raw)
@@ -169,16 +208,23 @@ export async function readAuditDb(): Promise<DbShape> {
       } else {
         // 保留业务字段
         const old = db.list[existingIdx]
-        db.list[existingIdx] = {
+        const mergedStatus = old.status || projectData.status
+        const mergedProject: Project = {
           ...old,
           ...projectData,
+          status: mergedStatus,
+          isArchived: mergedStatus === 'Archived',
+          milestones: old.milestones || [],
           attachments: old.attachments || [],
           splitItems: old.splitItems || [],
           roomFunctionPlan: old.roomFunctionPlan || [],
           roomFunctionPlanConfirmed: old.roomFunctionPlanConfirmed,
           gaojibiaoData: old.gaojibiaoData
         }
-        changed = true
+        if (JSON.stringify(mergedProject) !== JSON.stringify(old)) {
+          db.list[existingIdx] = mergedProject
+          changed = true
+        }
       }
     }
 
@@ -219,7 +265,7 @@ export async function readAuditDb(): Promise<DbShape> {
     if (db.list.length !== initialLen) changed = true
 
     if (changed) {
-      await fs.writeFile(DB_FILE, JSON.stringify(db, null, 2), 'utf-8')
+      await fs.writeFile(dbFile, JSON.stringify(db, null, 2), 'utf-8')
     }
   } catch (e) {
     console.error('Sync fixation audit from buildings failed:', e)
@@ -230,7 +276,7 @@ export async function readAuditDb(): Promise<DbShape> {
 
 export async function writeAuditDb(next: DbShape) {
   await ensureDbFile()
-  await fs.writeFile(DB_FILE, JSON.stringify(next, null, 2), 'utf-8')
+  await fs.writeFile(await getDbFilePath(), JSON.stringify(next, null, 2), 'utf-8')
 }
 
 export async function listProjects(): Promise<Project[]> {

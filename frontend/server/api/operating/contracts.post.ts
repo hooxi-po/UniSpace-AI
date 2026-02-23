@@ -12,6 +12,8 @@ type Body = {
   status: 'Active' | 'Expiring'
 }
 
+const ALLOWED_CONTRACT_STATUS = new Set<Body['status']>(['Active', 'Expiring'])
+
 export default defineEventHandler(async (event) => {
   const body = await readBody<Body>(event)
 
@@ -23,6 +25,17 @@ export default defineEventHandler(async (event) => {
   }
   if (!body.startDate) throw createError({ statusCode: 400, statusMessage: 'startDate_required' })
   if (!body.endDate) throw createError({ statusCode: 400, statusMessage: 'endDate_required' })
+  if (!ALLOWED_CONTRACT_STATUS.has(body.status)) {
+    throw createError({ statusCode: 400, statusMessage: 'status_invalid' })
+  }
+  const startTime = new Date(body.startDate).getTime()
+  const endTime = new Date(body.endDate).getTime()
+  if (Number.isNaN(startTime) || Number.isNaN(endTime)) {
+    throw createError({ statusCode: 400, statusMessage: 'date_invalid' })
+  }
+  if (startTime > endTime) {
+    throw createError({ statusCode: 400, statusMessage: 'date_range_invalid' })
+  }
 
   const db = await readOperatingDB()
 
@@ -34,13 +47,18 @@ export default defineEventHandler(async (event) => {
   // 合同编号唯一性校验（编辑时排除自身）
   const conflict = db.contracts.find((c) => c.contractNo === body.contractNo.trim() && c.id !== (body.id || ''))
   if (conflict) throw createError({ statusCode: 409, statusMessage: 'contractNo_conflict' })
+  const spaceConflict = db.contracts.find((c) => c.spaceId === body.spaceId && c.id !== (body.id || ''))
+  if (spaceConflict) throw createError({ statusCode: 409, statusMessage: 'space_contract_conflict' })
 
   if (isEdit) {
     const idx = db.contracts.findIndex((c) => c.id === body.id)
     if (idx < 0) throw createError({ statusCode: 404, statusMessage: 'contract_not_found' })
 
+    const previous = db.contracts[idx]
+    const previousSpaceId = previous.spaceId
+
     db.contracts[idx] = {
-      ...db.contracts[idx],
+      ...previous,
       contractNo: body.contractNo.trim(),
       spaceId: body.spaceId,
       spaceName: space.name,
@@ -49,6 +67,21 @@ export default defineEventHandler(async (event) => {
       startDate: body.startDate,
       endDate: body.endDate,
       status: body.status,
+    }
+
+    if (previousSpaceId !== body.spaceId) {
+      const oldHasOtherContract = db.contracts.some((c) => c.id !== body.id && c.spaceId === previousSpaceId)
+      if (!oldHasOtherContract) {
+        const oldSpaceIdx = db.spaces.findIndex((s) => s.id === previousSpaceId)
+        if (oldSpaceIdx >= 0) {
+          db.spaces[oldSpaceIdx] = { ...db.spaces[oldSpaceIdx], status: '公开招租' }
+        }
+      }
+    }
+
+    const newSpaceIdx = db.spaces.findIndex((s) => s.id === body.spaceId)
+    if (newSpaceIdx >= 0) {
+      db.spaces[newSpaceIdx] = { ...db.spaces[newSpaceIdx], status: '已出租', monthlyRent: body.rentPerMonth }
     }
   } else {
     db.contracts.unshift({
@@ -79,4 +112,3 @@ export default defineEventHandler(async (event) => {
     contract,
   }
 })
-

@@ -12,7 +12,9 @@ export default defineEventHandler(async (event) => {
   const body = await readBody<Body>(event)
 
   if (!body?.billId) throw createError({ statusCode: 400, statusMessage: 'billId_required' })
-  if (!body?.amount || body.amount <= 0) throw createError({ statusCode: 400, statusMessage: 'amount_invalid' })
+  if (typeof body?.amount !== 'number' || Number.isNaN(body.amount) || body.amount <= 0) {
+    throw createError({ statusCode: 400, statusMessage: 'amount_invalid' })
+  }
   if (!body?.method) throw createError({ statusCode: 400, statusMessage: 'method_required' })
   if (!body?.transactionNo) throw createError({ statusCode: 400, statusMessage: 'transactionNo_required' })
 
@@ -22,14 +24,25 @@ export default defineEventHandler(async (event) => {
   if (idx < 0) throw createError({ statusCode: 404, statusMessage: 'bill_not_found' })
 
   const bill = db.rentBills[idx]
+  const currentPaidAmount = bill.paidAmount || 0
+  const remainingAmount = bill.totalAmount - currentPaidAmount
+
+  if (remainingAmount <= 0) {
+    throw createError({ statusCode: 409, statusMessage: 'bill_already_paid' })
+  }
+  if (body.amount > remainingAmount) {
+    throw createError({ statusCode: 400, statusMessage: 'amount_exceeds_remaining' })
+  }
+
   const newPaidAmount = (bill.paidAmount || 0) + body.amount
   const isFullyPaid = newPaidAmount >= bill.totalAmount
+  const nextStatus = isFullyPaid ? 'Paid' : (bill.status === 'Overdue' ? 'Overdue' : 'PartialPaid')
 
   // 更新账单状态
   db.rentBills[idx] = {
     ...bill,
     paidAmount: newPaidAmount,
-    status: isFullyPaid ? 'Paid' : 'PartialPaid',
+    status: nextStatus,
     paidDate: new Date().toISOString().slice(0, 10),
     paymentMethod: body.method,
     transactionNo: body.transactionNo,
@@ -51,4 +64,3 @@ export default defineEventHandler(async (event) => {
     bill: db.rentBills[idx],
   }
 })
-

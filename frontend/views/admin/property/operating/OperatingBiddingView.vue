@@ -196,6 +196,16 @@ function resetForm() {
   errorMsg.value = ''
 }
 
+function syncSpaceBids(spaceId: string, nextBids: OperatingBidItem[]) {
+  spaces.value = spaces.value.map((space) => {
+    if (space.id !== spaceId) return space
+    return { ...space, bids: nextBids }
+  })
+  if (activeSpace.value?.id === spaceId) {
+    activeSpace.value = { ...activeSpace.value, bids: nextBids }
+  }
+}
+
 async function openBidDialog(space: OperatingSpaceItem) {
   activeSpace.value = space
   resetForm()
@@ -217,6 +227,7 @@ async function reloadBids() {
   try {
     const resp = await getOperatingBids(activeSpace.value.id)
     bids.value = resp.bids
+    syncSpaceBids(activeSpace.value.id, resp.bids)
   } catch (e: any) {
     errorMsg.value = e?.statusMessage || e?.message || '加载竞标列表失败'
   } finally {
@@ -644,4 +655,3 @@ async function submitBid() {
   }
 }
 </style>
-

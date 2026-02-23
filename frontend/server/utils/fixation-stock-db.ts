@@ -116,8 +116,20 @@ async function ensureDbFile() {
 }
 
 async function ensureSyncedFromBuildings() {
-  // 读取 buildings.json，并覆盖同步到 fixation-stock.json（保留 functionMain/functionSub 等功能字段）
+  // 仅在本地台账为空时，用 buildings.json 做初始化，避免读请求覆盖业务写入
   await ensureDbFile()
+
+  const currentRaw = await fs.readFile(DB_FILE, 'utf-8')
+  let current: DbShape = { buildings: [], rooms: [] }
+  try {
+    const parsed = JSON.parse(currentRaw)
+    if (parsed && Array.isArray(parsed.buildings) && Array.isArray(parsed.rooms)) {
+      current = parsed as DbShape
+    }
+  } catch {}
+  if (current.buildings.length > 0 || current.rooms.length > 0) {
+    return
+  }
 
   let buildingsRaw: string
   try {
@@ -136,16 +148,6 @@ async function ensureSyncedFromBuildings() {
 
   const srcBuildings: any[] = Array.isArray(buildingsDb?.buildings) ? buildingsDb.buildings : []
   const srcRooms: any[] = Array.isArray(buildingsDb?.rooms) ? buildingsDb.rooms : []
-
-  // 先读取现有 fixation-stock（为了保留 functionMain/functionSub）
-  const currentRaw = await fs.readFile(DB_FILE, 'utf-8')
-  let current: DbShape = { buildings: [], rooms: [] }
-  try {
-    const parsed = JSON.parse(currentRaw)
-    if (parsed && Array.isArray(parsed.buildings) && Array.isArray(parsed.rooms)) {
-      current = parsed as DbShape
-    }
-  } catch {}
 
   const keepFnMap = new Map<string, { functionMain?: string; functionSub?: string }>()
   for (const r of current.rooms || []) {

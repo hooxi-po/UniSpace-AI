@@ -109,16 +109,19 @@ const emit = defineEmits<{
 }>()
 
 const floorOptions = ['一', '二', '三', '四', '五', '六', '七']
+const purposeOptions: OperatingSpaceItem['purpose'][] = ['商铺', '办公室', '培训中心', '实验场地']
 
-const form = reactive({
+const defaultForm = {
   buildingName: '',
   floor: '一',
   roomNumber: '101',
-  purpose: '商铺',
+  purpose: '商铺' as OperatingSpaceItem['purpose'],
   area: null as number | null,
   monthlyRent: null as number | null,
-  description: ''
-})
+  description: '',
+}
+
+const form = reactive({ ...defaultForm })
 
 const roomNumberOptions = computed(() => {
   const floorIdx = floorOptions.indexOf(form.floor) + 1
@@ -129,41 +132,65 @@ const isFormValid = computed(() => {
   return form.buildingName.trim() && form.area && form.area > 0 && form.monthlyRent && form.monthlyRent > 0
 })
 
+function normalizePurpose(value: unknown, fallback: OperatingSpaceItem['purpose'] = '商铺'): OperatingSpaceItem['purpose'] {
+  return purposeOptions.includes(value as OperatingSpaceItem['purpose'])
+    ? (value as OperatingSpaceItem['purpose'])
+    : fallback
+}
+
+function resetForm() {
+  form.buildingName = defaultForm.buildingName
+  form.floor = defaultForm.floor
+  form.roomNumber = defaultForm.roomNumber
+  form.purpose = defaultForm.purpose
+  form.area = defaultForm.area
+  form.monthlyRent = defaultForm.monthlyRent
+  form.description = defaultForm.description
+}
+
 function applyInitial(val: OperatingSpaceItem | null | undefined) {
+  resetForm()
+
   if (!val) {
-    form.buildingName = ''
-    form.floor = '一'
-    form.roomNumber = '101'
-    form.purpose = '商铺'
-    form.area = null
-    form.monthlyRent = null
-    form.description = ''
     return
   }
 
-  // 优先使用结构化字段（若后端/Mock 已提供）
-  if (val.buildingName) form.buildingName = val.buildingName
-  if (val.description) form.description = val.description
+  const source = val as Partial<OperatingSpaceItem>
+  const hasStructuredBuildingName = 'buildingName' in source
+  const hasStructuredFloor = 'floor' in source
+  const hasStructuredRoomNumber = 'roomNumber' in source
+  const hasStructuredPurpose = 'purpose' in source
+  const hasStructuredDescription = 'description' in source
 
-  // 兜底：从名称解析（兼容两种格式）
+  // 先按结构化字段完整回填（包括空字符串场景）
+  form.buildingName = hasStructuredBuildingName ? String(source.buildingName ?? '') : defaultForm.buildingName
+  form.floor = hasStructuredFloor ? String(source.floor ?? '') : defaultForm.floor
+  form.roomNumber = hasStructuredRoomNumber ? String(source.roomNumber ?? '') : defaultForm.roomNumber
+  form.purpose = hasStructuredPurpose ? normalizePurpose(source.purpose, defaultForm.purpose) : defaultForm.purpose
+  form.area = typeof source.area === 'number' ? source.area : null
+  form.monthlyRent = typeof source.monthlyRent === 'number' ? source.monthlyRent : null
+  form.description = hasStructuredDescription ? String(source.description ?? '') : defaultForm.description
+
+  // 兜底：仅当结构化字段缺失时，从名称解析（兼容两种格式）
   // 1) "一层 101 商铺"
   // 2) "创新创业中心416" -> buildingName=创新创业中心, roomNumber=416, floor 根据 roomNumber 首位推断
-  const name = String(val.name ?? '').trim()
+  const name = String(source.name ?? '').trim()
 
-  const withSpaces = name.match(/^(.+?)层\s+(\d{3,4})\s+(.+)$/)
+  const withSpaces = name.match(/^(.+?)层\s+(\d{3,4}(?:[-－]\d{2,4})?)\s+(.+)$/)
   if (withSpaces) {
-    form.floor = withSpaces[1]
-    form.roomNumber = withSpaces[2]
-    form.purpose = withSpaces[3]
+    if (!hasStructuredFloor) form.floor = withSpaces[1]
+    if (!hasStructuredRoomNumber) form.roomNumber = withSpaces[2]
+    if (!hasStructuredPurpose) form.purpose = normalizePurpose(withSpaces[3], form.purpose)
   } else {
-    const compact = name.match(/^(.*?)(\d{3,4})$/)
+    const compact = name.match(/^(.*?)(\d{3,4}(?:[-－]\d{2,4})?)$/)
     if (compact) {
       const maybeBuilding = compact[1].trim()
       const room = compact[2]
-      if (!form.buildingName && maybeBuilding) form.buildingName = maybeBuilding
-      form.roomNumber = room
+      if (!hasStructuredBuildingName && maybeBuilding) form.buildingName = maybeBuilding
+      if (!hasStructuredRoomNumber) form.roomNumber = room
       // 通过房号首位推断楼层：416 -> 四层，1203 -> 十二层（仅用于 UI 回填）
-      const floorNumStr = room.length === 3 ? room.slice(0, 1) : room.slice(0, 2)
+      const roomStart = room.split(/[-－]/)[0]
+      const floorNumStr = roomStart.length === 3 ? roomStart.slice(0, 1) : roomStart.slice(0, 2)
       const floorMap: Record<string, string> = {
         '1': '一',
         '2': '二',
@@ -181,18 +208,15 @@ function applyInitial(val: OperatingSpaceItem | null | undefined) {
         '14': '十四',
         '15': '十五',
       }
-      form.floor = floorMap[floorNumStr] ?? form.floor
+      if (!hasStructuredFloor) form.floor = floorMap[floorNumStr] ?? form.floor
     }
   }
-
-  // 如果仍然没解析出楼栋，保留空值让用户补齐
-  form.area = val.area
-  form.monthlyRent = val.monthlyRent
 }
 
 watch(
-  () => props.initial,
-  (val) => {
+  () => [props.isOpen, props.initial] as const,
+  ([isOpen, val]) => {
+    if (!isOpen) return
     applyInitial(val)
   },
   { immediate: true }

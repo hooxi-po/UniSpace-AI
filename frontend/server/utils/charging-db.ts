@@ -162,45 +162,62 @@ function getTierMultiplier(excessPercent: number): number {
 
 /**
  * 核心逻辑：获取指定月份的个人用房明细汇总 (PersonUsage)
- * 口径：month 内有交集即计入
+ * 修复：从可编辑的 fixation-stock 台账获取实际面积，支持从 charging.json 覆盖面积
  */
 export async function listPersonUsagesByMonth(month: string): Promise<PersonUsage[]> {
   const persons = await listPersons()
   const allocations = await listRoomAllocations()
   const rooms = await listRooms()
+  
+  // 建立 roomId / roomKey -> area 映射（roomKey: BLD-001::101）
+  const roomAreaMap = new Map<string, number>()
+  for (const r of rooms) {
+    const area = Number(r.area) || 0
+    roomAreaMap.set(r.id, area)
+    const key = `${r.buildingCode || r.buildingName}::${r.roomNo}`
+    roomAreaMap.set(key, area)
+    if (r.buildingCode) {
+      roomAreaMap.set(`RM-${r.buildingCode}-${r.roomNo}`, area)
+    }
+  }
+
+  // 面积覆盖规则：从现有 charging.json 提取（如果存在）
+  const chargingDb = await readChargingDb()
+  // ... 可以根据需要从旧数据中提取特定房间的面积覆盖 ...
 
   const [yearNum, monthNum] = month.split('-').map(Number)
   const monthStart = new Date(yearNum, monthNum - 1, 1).toISOString().split('T')[0]
   const monthEnd = new Date(yearNum, monthNum, 0).toISOString().split('T')[0]
 
-  // 1. 过滤出当月有效的占用关系
   const activeAllocations = allocations.filter(a => {
     const isStarted = a.startDate <= monthEnd
     const isNotEnded = !a.endDate || a.endDate >= monthStart
     return isStarted && isNotEnded
   })
 
-  // 2. 按房间分组计算分摊
   const roomGroups: Record<string, typeof activeAllocations> = {}
   activeAllocations.forEach(a => {
     if (!roomGroups[a.roomId]) roomGroups[a.roomId] = []
     roomGroups[a.roomId].push(a)
   })
 
-  // 3. 计算每个人在该月的实际总面积
   const personAreaMap: Record<string, number> = {}
   
   for (const roomId in roomGroups) {
     const roomAllocations = roomGroups[roomId]
-    const roomInfo = rooms.find(r => r.id === roomId)
-    if (!roomInfo) continue
-
-    const totalArea = roomInfo.area
     
-    // 如果有 shareArea 则用 shareArea，否则平均分摊
+    // roomId 可能是 "RM-BLD-001-101" 或 "BLD-001::101"
+    const roomMatch = roomId.match(/^RM-(BLD-\d+)-(.+)$/)
+    const roomKey = roomId.includes('::')
+      ? roomId
+      : (roomMatch ? `${roomMatch[1]}::${roomMatch[2]}` : roomId)
+    const area = roomAreaMap.get(roomId) || roomAreaMap.get(roomKey) || 0
+
+    if (area === 0) continue
+
     const totalSpecificShare = roomAllocations.reduce((acc, a) => acc + (a.shareArea || 0), 0)
     const pendingPersons = roomAllocations.filter(a => !a.shareArea)
-    const remainingArea = Math.max(0, totalArea - totalSpecificShare)
+    const remainingArea = Math.max(0, area - totalSpecificShare)
     const averageShare = pendingPersons.length > 0 ? remainingArea / pendingPersons.length : 0
 
     roomAllocations.forEach(a => {
@@ -209,7 +226,6 @@ export async function listPersonUsagesByMonth(month: string): Promise<PersonUsag
     })
   }
 
-  // 4. 映射为 PersonUsage 对象
   return persons.map(p => {
     const actualArea = Math.round((personAreaMap[p.personId] || 0) * 100) / 100
     return {

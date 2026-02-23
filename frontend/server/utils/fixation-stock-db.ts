@@ -87,7 +87,9 @@ export type Room = {
   roomNo: string // 房间号
   floor: number // 楼层
   area: number // 面积（㎡）
-  type: 'Admin' | 'Teaching' | 'Lab' | 'Student' | 'Commercial' | 'Logistics' // 房间类型
+  // fixation 存量房间类型：保持现有枚举，TeacherApartment 通过 typeRaw 做兼容
+  type: 'Admin' | 'Teaching' | 'Lab' | 'Student' | 'Commercial' | 'Logistics'
+  typeRaw?: 'TeacherApartment'
   status: 'Empty' | 'Occupied' // 状态
   department: string // 使用部门
   sourceProjectId?: string // 来源工程项目ID（可选）
@@ -101,6 +103,7 @@ type DbShape = {
 }
 
 const DB_FILE = path.resolve(process.cwd(), 'server', 'data', 'fixation-stock.json')
+const BUILDINGS_DB_FILE = path.resolve(process.cwd(), 'server', 'data', 'buildings.json')
 
 async function ensureDbFile() {
   await fs.mkdir(path.dirname(DB_FILE), { recursive: true })
@@ -112,10 +115,127 @@ async function ensureDbFile() {
   }
 }
 
-export async function readStockDb(): Promise<DbShape> {
+async function ensureSyncedFromBuildings() {
+  // 仅在本地台账为空时，用 buildings.json 做初始化，避免读请求覆盖业务写入
   await ensureDbFile()
-  const raw = await fs.readFile(DB_FILE, 'utf-8')
+
+  const currentRaw = await fs.readFile(DB_FILE, 'utf-8')
+  let current: DbShape = { buildings: [], rooms: [] }
   try {
+    const parsed = JSON.parse(currentRaw)
+    if (parsed && Array.isArray(parsed.buildings) && Array.isArray(parsed.rooms)) {
+      current = parsed as DbShape
+    }
+  } catch {}
+  if (current.buildings.length > 0 || current.rooms.length > 0) {
+    return
+  }
+
+  let buildingsRaw: string
+  try {
+    buildingsRaw = await fs.readFile(BUILDINGS_DB_FILE, 'utf-8')
+  } catch {
+    // 若未找到 buildings 数据源，则不做同步
+    return
+  }
+
+  let buildingsDb: any
+  try {
+    buildingsDb = JSON.parse(buildingsRaw)
+  } catch {
+    return
+  }
+
+  const srcBuildings: any[] = Array.isArray(buildingsDb?.buildings) ? buildingsDb.buildings : []
+  const srcRooms: any[] = Array.isArray(buildingsDb?.rooms) ? buildingsDb.rooms : []
+
+  const keepFnMap = new Map<string, { functionMain?: string; functionSub?: string }>()
+  for (const r of current.rooms || []) {
+    const k = `${r.buildingCode || r.buildingName}::${r.roomNo}`
+    keepFnMap.set(k, { functionMain: r.functionMain, functionSub: r.functionSub })
+  }
+
+  const nextBuildings: Building[] = srcBuildings.map((b: any) => {
+    const contractAmount = Number(b.contractAmount ?? 0)
+    const auditAmount = b.auditAmount !== undefined ? Number(b.auditAmount) : undefined
+    const auditReductionRate =
+      auditAmount !== undefined && contractAmount > 0
+        ? Number((((contractAmount - auditAmount) / contractAmount) * 100).toFixed(2))
+        : undefined
+
+    return {
+      id: `BLD-${b.code}`,
+      code: String(b.code || '').trim(),
+      name: String(b.projectName || b.buildingName || '').trim(),
+      contractor: b.contractor ? String(b.contractor).trim() : '未指定',
+      contractAmount,
+      auditAmount,
+      auditReductionRate,
+      status: 'DisposalPending' as const,
+      completionDate: b.actualEndDate || b.plannedEndDate || new Date().toISOString().split('T')[0],
+      hasCadData: true,
+      fundSource: (b.fundSource || 'Fiscal') as any,
+      location: b.location ? String(b.location).trim() : '-',
+      plannedArea: b.plannedArea !== undefined ? Number(b.plannedArea) : undefined,
+      floorCount: b.floorCount !== undefined ? Number(b.floorCount) : undefined,
+      roomCount: b.roomCount !== undefined ? Number(b.roomCount) : undefined,
+      plannedStartDate: b.plannedStartDate || '',
+      plannedEndDate: b.plannedEndDate || '',
+      actualStartDate: b.actualStartDate || undefined,
+      actualEndDate: b.actualEndDate || undefined,
+      projectManager: b.projectManager || '',
+      supervisor: b.supervisor || '',
+      milestones: [],
+      attachments: [],
+      splitItems: [],
+      roomFunctionPlan: [],
+      isOverdue: false,
+      isArchived: false,
+    }
+  }).filter(b => b.code && b.name)
+
+  const nextRooms: Room[] = srcRooms.map((r: any) => {
+    const buildingCode = r.buildingCode ? String(r.buildingCode).trim() : undefined
+    const buildingName = String(r.buildingName || '').trim()
+    const roomNo = String(r.roomNo || '').trim()
+    const k = `${buildingCode || buildingName}::${roomNo}`
+    const keep = keepFnMap.get(k) || {}
+
+    // TeacherApartment 兼容：fixation 侧 type 仍用 Student，但额外保留 typeRaw
+    const typeIn = String(r.type || 'Admin')
+    const type = (typeIn === 'TeacherApartment' ? 'Student' : typeIn) as any
+    const typeRaw = typeIn === 'TeacherApartment' ? ('TeacherApartment' as const) : undefined
+
+    return {
+      id: String(r.id || `RM-${buildingCode || buildingName}-${roomNo}`),
+      buildingName,
+      buildingCode,
+      roomNo,
+      floor: Number(r.floor || (Number(roomNo.slice(0, 1)) || 1)),
+      area: Number(r.area || 0),
+      type,
+      typeRaw,
+      status: (r.status || 'Empty') as any,
+      department: String(r.department || ''),
+      sourceProjectId: undefined,
+      // 来自 buildings.json 的主类/亚类：优先保留既有台账 functionMain/functionSub
+      functionMain: keep.functionMain ?? (r.mainCategory ? String(r.mainCategory) : undefined),
+      functionSub: keep.functionSub ?? (r.subCategory ? String(r.subCategory) : undefined),
+    }
+  }).filter(r => r.buildingName && r.roomNo)
+
+  const next: DbShape = {
+    buildings: nextBuildings,
+    rooms: nextRooms,
+  }
+
+  await fs.writeFile(DB_FILE, JSON.stringify(next, null, 2), 'utf-8')
+}
+
+export async function readStockDb(): Promise<DbShape> {
+  await ensureSyncedFromBuildings()
+  const raw = await fs.readFile(DB_FILE, 'utf-8')
+  try { 
     const parsed = JSON.parse(raw)
     if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.buildings) || !Array.isArray(parsed.rooms)) {
       return { buildings: [], rooms: [] }

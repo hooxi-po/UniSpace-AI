@@ -1,3 +1,19 @@
 {
-  "list": []
+  "list": [
+    {
+      "id": "LOG-STOCK-SYNC-1771762914689",
+      "at": "2026-02-22T12:21:54.689Z",
+      "operator": "当前用户",
+      "module": "fixation",
+      "action": "syncRoomFunctions",
+      "projectId": "STOCK-BLD-002",
+      "summary": "同步房间功能：更新 140，新增 0",
+      "detail": {
+        "projectId": "STOCK-BLD-002",
+        "planCount": 140,
+        "updatedRooms": 140,
+        "addedRooms": 0
+      }
+    }
+  ]
 }

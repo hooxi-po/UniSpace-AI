@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
+import { withFileLock, writeJsonAtomic } from './file-db'
 
 export type AllocationNotification = {
   id: string
@@ -43,13 +44,16 @@ export async function readAllocationNotificationsDb(): Promise<DbShape> {
 
 export async function writeAllocationNotificationsDb(next: DbShape) {
   await ensureDbFile()
-  await fs.writeFile(DB_FILE, JSON.stringify(next, null, 2), 'utf-8')
+  await withFileLock(DB_FILE, async () => {
+    await writeJsonAtomic(DB_FILE, next)
+  })
 }
 
 export async function addAllocationNotification(notification: AllocationNotification): Promise<AllocationNotification> {
-  const db = await readAllocationNotificationsDb()
-  db.list.unshift(notification)
-  await writeAllocationNotificationsDb(db)
+  await withFileLock(DB_FILE, async () => {
+    const db = await readAllocationNotificationsDb()
+    db.list.unshift(notification)
+    await writeJsonAtomic(DB_FILE, db)
+  })
   return notification
 }
-

@@ -8,7 +8,6 @@
 - **构建工具**: Vite (Nuxt 内置)
 - **样式**: Tailwind CSS
 - **图标**: Lucide Vue Next
-- **图表**: Recharts
 - **AI**: Google Generative AI (Gemini)
 - **语言**: TypeScript
 
@@ -27,10 +26,15 @@ npm install
 cp .env.example .env
 ```
 
-编辑 `.env` 文件，添加你的 Gemini API Key：
+编辑 `.env` 文件，添加你的 Gemini API Key（如需通过 Nuxt server 代理后端写接口，也需配置后端写接口凭据）：
 ```env
 GEMINI_API_KEY=your_api_key_here
+BACKEND_WRITE_AUTH_ENABLED=true
+BACKEND_ADMIN_USER=admin
+BACKEND_ADMIN_PASSWORD=replace_with_strong_password
 ```
+说明：当 `BACKEND_WRITE_AUTH_ENABLED=true` 时，前端写代理路由会要求调用方提供 HTTP Basic 凭据（与 `BACKEND_ADMIN_USER/BACKEND_ADMIN_PASSWORD` 一致）。
+管理后台在首次执行写操作时会弹出浏览器凭据输入框，验证通过后本次会话内会自动复用凭据。
 
 ### 3. 启动开发服务器
 

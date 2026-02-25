@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
+import { withFileLock, writeJsonAtomic } from './file-db'
 
 type FundSource = 'Fiscal' | 'SelfRaised' | 'Mixed'
 type AssetStatus = 'DisposalPending'
@@ -103,7 +104,9 @@ export async function readProjectsDb(): Promise<DbShape> {
 
 export async function writeProjectsDb(next: DbShape) {
   await ensureDbFile()
-  await fs.writeFile(DB_FILE, JSON.stringify(next, null, 2), 'utf-8')
+  await withFileLock(DB_FILE, async () => {
+    await writeJsonAtomic(DB_FILE, next)
+  })
 }
 
 export async function listFixationProjects(): Promise<FixationProject[]> {
@@ -112,8 +115,10 @@ export async function listFixationProjects(): Promise<FixationProject[]> {
 }
 
 export async function addProject(project: FixationProject): Promise<FixationProject> {
-  const db = await readProjectsDb()
-  db.list.unshift(project)
-  await writeProjectsDb(db)
+  await withFileLock(DB_FILE, async () => {
+    const db = await readProjectsDb()
+    db.list.unshift(project)
+    await writeJsonAtomic(DB_FILE, db)
+  })
   return project
 }

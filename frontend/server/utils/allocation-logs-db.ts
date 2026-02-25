@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
+import { withFileLock, writeJsonAtomic } from './file-db'
 
 export type AllocationLogAction =
   | 'createRequest'
@@ -49,7 +50,9 @@ export async function readAllocationLogsDb(): Promise<DbShape> {
 
 export async function writeAllocationLogsDb(next: DbShape) {
   await ensureDbFile()
-  await fs.writeFile(DB_FILE, JSON.stringify(next, null, 2), 'utf-8')
+  await withFileLock(DB_FILE, async () => {
+    await writeJsonAtomic(DB_FILE, next)
+  })
 }
 
 export async function listAllocationLogs(): Promise<AllocationOperationLog[]> {
@@ -58,9 +61,10 @@ export async function listAllocationLogs(): Promise<AllocationOperationLog[]> {
 }
 
 export async function addAllocationLog(log: AllocationOperationLog): Promise<AllocationOperationLog> {
-  const db = await readAllocationLogsDb()
-  db.list.unshift(log)
-  await writeAllocationLogsDb(db)
+  await withFileLock(DB_FILE, async () => {
+    const db = await readAllocationLogsDb()
+    db.list.unshift(log)
+    await writeJsonAtomic(DB_FILE, db)
+  })
   return log
 }
-

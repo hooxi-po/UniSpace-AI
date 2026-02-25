@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
+import { withFileLock, writeJsonAtomic } from './file-db'
 
 export type AllocationStatus = 
   | 'Pending'       // 待审批
@@ -123,7 +124,9 @@ export async function readAllocationDb(): Promise<DbShape> {
 
 export async function writeAllocationDb(next: DbShape) {
   await ensureDbFile()
-  await fs.writeFile(DB_FILE, JSON.stringify(next, null, 2), 'utf-8')
+  await withFileLock(DB_FILE, async () => {
+    await writeJsonAtomic(DB_FILE, next)
+  })
 }
 
 export async function listAllocationRequests(): Promise<AllocationRequest[]> {
@@ -142,33 +145,41 @@ export async function listTemporaryBorrows(): Promise<TemporaryBorrow[]> {
 }
 
 export async function addAllocationRequest(request: AllocationRequest): Promise<AllocationRequest> {
-  const db = await readAllocationDb()
-  db.list.unshift(request)
-  await writeAllocationDb(db)
+  await withFileLock(DB_FILE, async () => {
+    const db = await readAllocationDb()
+    db.list.unshift(request)
+    await writeJsonAtomic(DB_FILE, db)
+  })
   return request
 }
 
 export async function addAdjustmentRequest(request: AdjustmentRequest): Promise<AdjustmentRequest> {
-  const db = await readAllocationDb()
-  db.adjustments.unshift(request)
-  await writeAllocationDb(db)
+  await withFileLock(DB_FILE, async () => {
+    const db = await readAllocationDb()
+    db.adjustments.unshift(request)
+    await writeJsonAtomic(DB_FILE, db)
+  })
   return request
 }
 
 export async function updateAllocationRequest(id: string, updates: Partial<AllocationRequest>): Promise<AllocationRequest | null> {
-  const db = await readAllocationDb()
-  const idx = db.list.findIndex(r => r.id === id)
-  if (idx === -1) return null
-  db.list[idx] = { ...db.list[idx], ...updates }
-  await writeAllocationDb(db)
-  return db.list[idx]
+  return await withFileLock(DB_FILE, async () => {
+    const db = await readAllocationDb()
+    const idx = db.list.findIndex(r => r.id === id)
+    if (idx === -1) return null
+    db.list[idx] = { ...db.list[idx], ...updates }
+    await writeJsonAtomic(DB_FILE, db)
+    return db.list[idx]
+  })
 }
 
 export async function updateAdjustmentRequest(id: string, updates: Partial<AdjustmentRequest>): Promise<AdjustmentRequest | null> {
-  const db = await readAllocationDb()
-  const idx = db.adjustments.findIndex(r => r.id === id)
-  if (idx === -1) return null
-  db.adjustments[idx] = { ...db.adjustments[idx], ...updates }
-  await writeAllocationDb(db)
-  return db.adjustments[idx]
+  return await withFileLock(DB_FILE, async () => {
+    const db = await readAllocationDb()
+    const idx = db.adjustments.findIndex(r => r.id === id)
+    if (idx === -1) return null
+    db.adjustments[idx] = { ...db.adjustments[idx], ...updates }
+    await writeJsonAtomic(DB_FILE, db)
+    return db.adjustments[idx]
+  })
 }

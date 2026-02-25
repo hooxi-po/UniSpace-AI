@@ -110,6 +110,8 @@ UniSpace-AI/
 ### 方式 A：一键启动（推荐）
 
 ```bash
+cp .env.example .env
+# 按需修改 .env（至少配置 POSTGRES_PASSWORD / APP_ADMIN_PASSWORD / GEMINI_API_KEY）
 chmod +x start.sh
 ./start.sh
 ```
@@ -135,7 +137,7 @@ docker compose up -d
 - Port：`5432`
 - Database：`unispace`
 - Username：`postgres`
-- Password：`postgres`
+- Password：读取环境变量 `POSTGRES_PASSWORD`
 
 #### 2) 启动后端
 
@@ -158,21 +160,30 @@ npm run dev
 
 ### 后端（backend）
 
-`backend/src/main/resources/application.properties` 中支持如下变量（均有默认值）：
+`backend/src/main/resources/application.properties` 中支持如下变量：
 
 - `DB_URL`（默认：`jdbc:postgresql://localhost:5432/unispace`）
 - `DB_USER`（默认：`postgres`）
-- `DB_PASSWORD`（默认：`postgres`）
+- `DB_PASSWORD`（必需，建议强口令）
+- `APP_SECURITY_WRITE_AUTH_ENABLED`（默认：`true`，开启后端写接口鉴权）
+- `APP_ADMIN_USER`（默认：`admin`）
+- `APP_ADMIN_PASSWORD`（当写接口鉴权开启时必需）
 
 ### 前端（frontend）
 
 `frontend/nuxt.config.ts` 中：
 
 - `GEMINI_API_KEY`：Nuxt server 侧读取的 Gemini API Key（**必需**，否则 `/api/chat` 会 500）
+- `BACKEND_WRITE_AUTH_ENABLED`（默认：继承 `APP_SECURITY_WRITE_AUTH_ENABLED`；为 `false` 时 Nuxt 代理后端写接口不再附加 Basic 头）
+- `BACKEND_ADMIN_USER` / `BACKEND_ADMIN_PASSWORD`：当 `BACKEND_WRITE_AUTH_ENABLED=true` 时用于 Nuxt server 侧代理后端写接口（可复用 `APP_ADMIN_USER` / `APP_ADMIN_PASSWORD`）
+- 当 `BACKEND_WRITE_AUTH_ENABLED=true` 时，`/api/backend/*` 写路由还会校验调用方请求头中的 HTTP Basic（需与 `BACKEND_ADMIN_USER` / `BACKEND_ADMIN_PASSWORD` 一致）
 
 示例：
 
 ```bash
+cp .env.example .env
+vi .env
+
 export GEMINI_API_KEY=YOUR_KEY
 ```
 
@@ -192,7 +203,7 @@ export GEMINI_API_KEY=YOUR_KEY
 - `pages/admin.vue`
   - 后台大厅（浅色字节后台风格）：
     - 使用左侧菜单布局（组件：`components/admin/AdminLayout.vue`、`components/admin/AdminSider.vue`），资产中心包含二级菜单：建筑 / 管道
-    - 资产中心：从后端 GeoJSON API 拉取真实数据（`GET http://localhost:8080/api/v1/features?layers=buildings|pipes`），并支持搜索、可见性切换、要素 CRUD（新增/编辑/删除）
+    - 资产中心：读取走后端 GeoJSON API（`GET /api/v1/features?...`），写操作走 Nuxt server 代理（`/api/backend/*`），并支持搜索、可见性切换、要素 CRUD
     - 组件化：表格/弹窗/操作已拆分为 `components/admin/GeoFeatureTable.vue`、`components/admin/AssetFeatureDialog.vue`、`components/admin/AssetDeleteDialog.vue`、`components/admin/AssetRowActions.vue`、`components/admin/AssetVisibilitySwitch.vue`
     - 资产 CRUD 逻辑收敛到 `composables/admin/useAssetCrud.ts`，请求封装在 `services/geo-features.ts`
     - 编辑体验：支持「表单模式（默认）」+「高级 JSON」双模式
@@ -398,6 +409,8 @@ curl "http://localhost:8080/api/v1/features?layers=buildings,pipes&limit=5" | he
 ## API 列表（后端）
 
 > 路径前缀：`/api/v1`
+>
+> 安全策略：`GET /api/**` 公开；`POST/PUT/PATCH/DELETE /api/**` 需要 HTTP Basic（`APP_ADMIN_USER` / `APP_ADMIN_PASSWORD`）。
 
 ### `GET /api/v1/features`
 
@@ -426,6 +439,8 @@ curl -s "http://localhost:8080/api/v1/features?layers=pipes&limit=10" | cat
 
 用途：新增建筑/管道要素。
 
+鉴权：需要 HTTP Basic（示例：`-u "$APP_ADMIN_USER:$APP_ADMIN_PASSWORD"`）。
+
 Body（示例）：
 
 ```json
@@ -444,17 +459,23 @@ Body（示例）：
 
 用途：更新要素（按 `id` 全量更新 `layer/geometry/properties/visible`）。
 
+鉴权：需要 HTTP Basic。
+
 返回：`{"ok":true,"id":"..."}`（或 400/404）。
 
 ### `DELETE /api/v1/features?id=...`
 
 用途：按 `id` 删除要素。
 
+鉴权：需要 HTTP Basic。
+
 返回：`{"ok":true,"id":"..."}`（或 400/404）。
 
 ### `PUT /api/v1/features/visibility`
 
 用途：按请求体中的 `id` 更新要素可见性（后台大厅的开关会调用该接口）。
+
+鉴权：需要 HTTP Basic。
 
 Body：
 
@@ -467,6 +488,8 @@ Body：
 ### `PUT /api/v1/features/{id}/visibility`（兼容接口）
 
 用途：按路径 `id` 更新可见性。
+
+鉴权：需要 HTTP Basic。
 
 Body：
 

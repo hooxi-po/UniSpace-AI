@@ -1,5 +1,6 @@
-import { access, readFile, writeFile } from 'node:fs/promises'
+import { access, readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
+import { withFileLock, writeJsonAtomic } from './file-db'
 
 export type SpaceStatus = '公开招租' | '招租结束' | '已出租' | '维修中'
 export type ContractStatus = 'Active' | 'Expiring' | 'Expired' | 'Terminated'
@@ -90,7 +91,10 @@ export async function readOperatingDB(): Promise<OperatingDB> {
 }
 
 export async function writeOperatingDB(db: OperatingDB) {
-  await writeFile(await getDBPath(), JSON.stringify(db, null, 2), 'utf-8')
+  const dbPath = await getDBPath()
+  await withFileLock(dbPath, async () => {
+    await writeJsonAtomic(dbPath, db)
+  })
 }
 
 export async function getSpaces() {
@@ -99,7 +103,10 @@ export async function getSpaces() {
 }
 
 export async function writeSpaces(spaces: OperatingSpaceItem[]) {
-  const db = await readOperatingDB()
-  db.spaces = spaces
-  await writeOperatingDB(db)
+  const dbPath = await getDBPath()
+  await withFileLock(dbPath, async () => {
+    const db = await readOperatingDB()
+    db.spaces = spaces
+    await writeJsonAtomic(dbPath, db)
+  })
 }

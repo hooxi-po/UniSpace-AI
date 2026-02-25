@@ -3,7 +3,8 @@ import path from 'node:path'
 
 import { listPersons, type PersonTitle } from './persons-db'
 import { listRoomAllocations } from './room-allocations-db'
-import { listRooms } from './fixation-stock-db'
+import { listFixationRooms } from './fixation-stock-db'
+import { withFileLock, writeJsonAtomic } from './file-db'
 
 export type FeeStatus = 
   | 'Verifying' 
@@ -167,7 +168,7 @@ function getTierMultiplier(excessPercent: number): number {
 export async function listPersonUsagesByMonth(month: string): Promise<PersonUsage[]> {
   const persons = await listPersons()
   const allocations = await listRoomAllocations()
-  const rooms = await listRooms()
+  const rooms = await listFixationRooms()
   
   // 建立 roomId / roomKey -> area 映射（roomKey: BLD-001::101）
   const roomAreaMap = new Map<string, number>()
@@ -279,12 +280,14 @@ export async function generatePersonBillsByMonth(month: string): Promise<PersonF
   }).filter(b => b.amount > 0) // 只对有费用的生成账单
 
   // 写入数据库（覆盖同月）
-  const db = await readChargingDb()
-  db.personBills = [
-    ...db.personBills.filter((b: PersonFeeBill) => b.month !== month),
-    ...newBills
-  ]
-  await writeChargingDb(db)
+  await withFileLock(DB_FILE, async () => {
+    const db = await readChargingDb()
+    db.personBills = [
+      ...db.personBills.filter((b: PersonFeeBill) => b.month !== month),
+      ...newBills
+    ]
+    await writeJsonAtomic(DB_FILE, db)
+  })
 
   return newBills
 }
@@ -295,19 +298,21 @@ export async function listPersonBillsByYear(year: number): Promise<PersonFeeBill
 }
 
 export async function addPersonPayment(payment: PersonPayment): Promise<PersonPayment> {
-  const db = await readChargingDb()
-  
-  // 1. 记录缴费
-  db.personPayments.unshift(payment)
-  
-  // 2. 更新账单状态
-  const billIdx = db.personBills.findIndex((b: PersonFeeBill) => b.id === payment.billId)
-  if (billIdx !== -1) {
-    db.personBills[billIdx].status = 'Completed'
-    db.personBills[billIdx].paidAt = payment.paymentDate
-  }
-  
-  await writeChargingDb(db)
+  await withFileLock(DB_FILE, async () => {
+    const db = await readChargingDb()
+
+    // 1. 记录缴费
+    db.personPayments.unshift(payment)
+
+    // 2. 更新账单状态
+    const billIdx = db.personBills.findIndex((b: PersonFeeBill) => b.id === payment.billId)
+    if (billIdx !== -1) {
+      db.personBills[billIdx].status = 'Completed'
+      db.personBills[billIdx].paidAt = payment.paymentDate
+    }
+
+    await writeJsonAtomic(DB_FILE, db)
+  })
   return payment
 }
 
@@ -401,7 +406,9 @@ export async function readChargingDb(): Promise<DbShape> {
 
 export async function writeChargingDb(next: DbShape) {
   await ensureDbFile()
-  await fs.writeFile(DB_FILE, JSON.stringify(next, null, 2), 'utf-8')
+  await withFileLock(DB_FILE, async () => {
+    await writeJsonAtomic(DB_FILE, next)
+  })
 }
 
 export async function listDepartmentFees(): Promise<ExtendedDepartmentFee[]> {
@@ -410,18 +417,22 @@ export async function listDepartmentFees(): Promise<ExtendedDepartmentFee[]> {
 }
 
 export async function updateDepartmentFee(id: string, updates: Partial<ExtendedDepartmentFee>): Promise<ExtendedDepartmentFee | null> {
-  const db = await readChargingDb()
-  const idx = db.fees.findIndex((f: ExtendedDepartmentFee) => f.id === id)
-  if (idx === -1) return null
-  db.fees[idx] = { ...db.fees[idx], ...updates }
-  await writeChargingDb(db)
-  return db.fees[idx]
+  return await withFileLock(DB_FILE, async () => {
+    const db = await readChargingDb()
+    const idx = db.fees.findIndex((f: ExtendedDepartmentFee) => f.id === id)
+    if (idx === -1) return null
+    db.fees[idx] = { ...db.fees[idx], ...updates }
+    await writeJsonAtomic(DB_FILE, db)
+    return db.fees[idx]
+  })
 }
 
 export async function addReminder(reminder: ReminderRecord): Promise<ReminderRecord> {
-  const db = await readChargingDb()
-  db.reminders.unshift(reminder)
-  await writeChargingDb(db)
+  await withFileLock(DB_FILE, async () => {
+    const db = await readChargingDb()
+    db.reminders.unshift(reminder)
+    await writeJsonAtomic(DB_FILE, db)
+  })
   return reminder
 }
 

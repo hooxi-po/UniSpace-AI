@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
+import { withFileLock, writeJsonAtomic } from './file-db'
 
 export type RoomAllocation = {
   allocationId: string
@@ -43,7 +44,9 @@ export async function readRoomAllocationsDb(): Promise<DbShape> {
 
 export async function writeRoomAllocationsDb(next: DbShape) {
   await ensureDbFile()
-  await fs.writeFile(DB_FILE, JSON.stringify(next, null, 2), 'utf-8')
+  await withFileLock(DB_FILE, async () => {
+    await writeJsonAtomic(DB_FILE, next)
+  })
 }
 
 export async function listRoomAllocations(): Promise<RoomAllocation[]> {
@@ -52,18 +55,21 @@ export async function listRoomAllocations(): Promise<RoomAllocation[]> {
 }
 
 export async function addRoomAllocation(allocation: RoomAllocation): Promise<RoomAllocation> {
-  const db = await readRoomAllocationsDb()
-  db.allocations.unshift(allocation)
-  await writeRoomAllocationsDb(db)
+  await withFileLock(DB_FILE, async () => {
+    const db = await readRoomAllocationsDb()
+    db.allocations.unshift(allocation)
+    await writeJsonAtomic(DB_FILE, db)
+  })
   return allocation
 }
 
 export async function endRoomAllocation(allocationId: string, endDate: string): Promise<RoomAllocation | null> {
-  const db = await readRoomAllocationsDb()
-  const idx = db.allocations.findIndex(a => a.allocationId === allocationId)
-  if (idx === -1) return null
-  db.allocations[idx] = { ...db.allocations[idx], endDate }
-  await writeRoomAllocationsDb(db)
-  return db.allocations[idx]
+  return await withFileLock(DB_FILE, async () => {
+    const db = await readRoomAllocationsDb()
+    const idx = db.allocations.findIndex(a => a.allocationId === allocationId)
+    if (idx === -1) return null
+    db.allocations[idx] = { ...db.allocations[idx], endDate }
+    await writeJsonAtomic(DB_FILE, db)
+    return db.allocations[idx]
+  })
 }
-

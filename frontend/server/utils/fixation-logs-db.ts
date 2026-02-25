@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
+import { withFileLock, writeJsonAtomic } from './file-db'
 
 export type FixationLogAction =
   | 'updateProject'
@@ -54,7 +55,9 @@ export async function readFixationLogsDb(): Promise<DbShape> {
 
 export async function writeFixationLogsDb(next: DbShape) {
   await ensureDbFile()
-  await fs.writeFile(DB_FILE, JSON.stringify(next, null, 2), 'utf-8')
+  await withFileLock(DB_FILE, async () => {
+    await writeJsonAtomic(DB_FILE, next)
+  })
 }
 
 export async function listFixationLogs(): Promise<FixationOperationLog[]> {
@@ -63,9 +66,10 @@ export async function listFixationLogs(): Promise<FixationOperationLog[]> {
 }
 
 export async function addFixationLog(log: FixationOperationLog): Promise<FixationOperationLog> {
-  const db = await readFixationLogsDb()
-  db.list.unshift(log)
-  await writeFixationLogsDb(db)
+  await withFileLock(DB_FILE, async () => {
+    const db = await readFixationLogsDb()
+    db.list.unshift(log)
+    await writeJsonAtomic(DB_FILE, db)
+  })
   return log
 }
-

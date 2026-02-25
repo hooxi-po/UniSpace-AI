@@ -2,12 +2,18 @@ package com.jolt.workflow.config;
 
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 @Component
 @RequiredArgsConstructor
+@ConditionalOnProperty(name = "app.db.init.enabled", havingValue = "true", matchIfMissing = true)
 public class DbInit {
+
+    private static final Logger log = LoggerFactory.getLogger(DbInit.class);
 
     private final JdbcTemplate jdbc;
 
@@ -28,9 +34,9 @@ public class DbInit {
                 CREATE INDEX IF NOT EXISTS geo_features_visible_idx
                 ON geo_features(visible)
                 """);
-            System.out.println("[DB INIT] Added geo_features.visible column automatically");
+            log.info("db_init_added_geo_features_visible_column");
         } else {
-            System.out.println("[DB INIT] geo_features.visible column already exists");
+            log.info("db_init_geo_features_visible_column_exists");
         }
     }
 }

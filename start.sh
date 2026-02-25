@@ -4,8 +4,97 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRONTEND_DIR="$ROOT_DIR/frontend"
 BACKEND_DIR="$ROOT_DIR/backend"
+ENV_FILE="$ROOT_DIR/.env"
 
 COMPOSE_CMD=""
+
+trim_value() {
+  local value="$1"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf '%s' "$value"
+}
+
+strip_matching_quotes() {
+  local value="$1"
+  if [ "${#value}" -ge 2 ]; then
+    local first_char="${value:0:1}"
+    local last_char="${value: -1}"
+    if { [ "$first_char" = "'" ] && [ "$last_char" = "'" ]; } || { [ "$first_char" = '"' ] && [ "$last_char" = '"' ]; }; then
+      printf '%s' "${value:1:${#value}-2}"
+      return
+    fi
+  fi
+  printf '%s' "$value"
+}
+
+parse_quoted_value() {
+  local raw="$1"
+  local quote="${raw:0:1}"
+  local body rest char
+  local i escaped=0
+
+  body="${raw:1}"
+  for ((i=0; i<${#body}; i++)); do
+    char="${body:i:1}"
+
+    if [ "$quote" = '"' ] && [ "$char" = '\' ] && [ $escaped -eq 0 ]; then
+      escaped=1
+      continue
+    fi
+
+    if [ "$char" = "$quote" ] && [ $escaped -eq 0 ]; then
+      rest="${body:i+1}"
+      rest="$(trim_value "$rest")"
+      if [ -z "$rest" ] || [[ "$rest" == \#* ]]; then
+        printf '%s' "${body:0:i}"
+        return
+      fi
+      break
+    fi
+
+    escaped=0
+  done
+
+  printf '%s' "$(strip_matching_quotes "$raw")"
+}
+
+parse_env_file() {
+  local env_file="$1"
+  local line key value first_char
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%$'\r'}"
+    line="$(trim_value "$line")"
+    [ -z "$line" ] && continue
+    case "$line" in
+      \#*) continue ;;
+    esac
+
+    if [[ "$line" == export[[:space:]]* ]]; then
+      line="$(trim_value "${line#export}")"
+    fi
+    [[ "$line" != *=* ]] && continue
+
+    key="$(trim_value "${line%%=*}")"
+    value="$(trim_value "${line#*=}")"
+    [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+
+    first_char="${value:0:1}"
+    if [ "$first_char" = "'" ] || [ "$first_char" = '"' ]; then
+      value="$(parse_quoted_value "$value")"
+    else
+      value="${value%%[[:space:]]#*}"
+      value="$(trim_value "$value")"
+    fi
+
+    printf -v "$key" '%s' "$value"
+    export "$key"
+  done < "$env_file"
+}
+
+if [ -f "$ENV_FILE" ]; then
+  parse_env_file "$ENV_FILE"
+fi
 
 # 检查依赖
 if ! command -v java >/dev/null 2>&1; then
@@ -30,6 +119,31 @@ if [ ! -d "$FRONTEND_DIR" ] || [ ! -d "$BACKEND_DIR" ]; then
   echo "[ERROR] 未找到 frontend/ 或 backend/ 目录" >&2
   exit 1
 fi
+
+is_truthy() {
+  local value
+  value="$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]')"
+  case "$value" in
+    1|true|yes|on) return 0 ;;
+    0|false|no|off|'') return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+if [ -z "${DB_PASSWORD:-}" ] && [ -z "${POSTGRES_PASSWORD:-}" ]; then
+  echo "[ERROR] 缺少 DB_PASSWORD/POSTGRES_PASSWORD（至少配置一个）" >&2
+  exit 1
+fi
+
+if [ -z "${APP_ADMIN_PASSWORD:-}" ] && is_truthy "${APP_SECURITY_WRITE_AUTH_ENABLED:-true}"; then
+  echo "[ERROR] 缺少 APP_ADMIN_PASSWORD（后端写接口鉴权必需，可在 .env 中配置）" >&2
+  exit 1
+fi
+
+export DB_PASSWORD="${DB_PASSWORD:-${POSTGRES_PASSWORD:-}}"
+export POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-${DB_PASSWORD:-}}"
+export BACKEND_ADMIN_USER="${BACKEND_ADMIN_USER:-${APP_ADMIN_USER:-admin}}"
+export BACKEND_ADMIN_PASSWORD="${BACKEND_ADMIN_PASSWORD:-${APP_ADMIN_PASSWORD:-}}"
 
 # 端口占用检测
 find_port_pids() {

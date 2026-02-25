@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
+import { withFileLock, writeJsonAtomic } from './file-db'
 
 type FundSource = 'Fiscal' | 'SelfRaised' | 'Mixed'
 type AssetStatus = 'DisposalPending'
@@ -293,42 +294,52 @@ export async function readStockDb(): Promise<DbShape> {
 
 export async function writeStockDb(next: DbShape) {
   await ensureDbFile()
-  await fs.writeFile(DB_FILE, JSON.stringify(next, null, 2), 'utf-8')
+  await withFileLock(DB_FILE, async () => {
+    await writeJsonAtomic(DB_FILE, next)
+  })
 }
 
-export async function listBuildings(): Promise<Building[]> {
+export async function listFixationBuildings(): Promise<Building[]> {
   const db = await readStockDb()
   return db.buildings
 }
 
-export async function listRooms(): Promise<Room[]> {
+export async function listFixationRooms(): Promise<Room[]> {
   const db = await readStockDb()
   return db.rooms
 }
 
 export async function addBuildings(buildings: Building[]): Promise<Building[]> {
-  const db = await readStockDb()
-  const existingCodes = new Set(db.buildings.map(b => b.code))
-  const toAdd = buildings.filter(b => b.code && !existingCodes.has(b.code))
-  db.buildings.unshift(...toAdd)
-  await writeStockDb(db)
+  const toAdd = await withFileLock(DB_FILE, async () => {
+    const db = await readStockDb()
+    const existingCodes = new Set(db.buildings.map(b => b.code))
+    const nextToAdd = buildings.filter(b => b.code && !existingCodes.has(b.code))
+    db.buildings.unshift(...nextToAdd)
+    await writeJsonAtomic(DB_FILE, db)
+    return nextToAdd
+  })
   return toAdd
 }
 
 export async function addRooms(rooms: Room[]): Promise<Room[]> {
-  const db = await readStockDb()
-  const existingKeySet = new Set(db.rooms.map(r => `${r.buildingName}::${r.roomNo}`))
-  const toAdd = rooms.filter(r => r.buildingName && r.roomNo && !existingKeySet.has(`${r.buildingName}::${r.roomNo}`))
-  db.rooms.unshift(...toAdd)
-  await writeStockDb(db)
+  const toAdd = await withFileLock(DB_FILE, async () => {
+    const db = await readStockDb()
+    const existingKeySet = new Set(db.rooms.map(r => `${r.buildingName}::${r.roomNo}`))
+    const nextToAdd = rooms.filter(r => r.buildingName && r.roomNo && !existingKeySet.has(`${r.buildingName}::${r.roomNo}`))
+    db.rooms.unshift(...nextToAdd)
+    await writeJsonAtomic(DB_FILE, db)
+    return nextToAdd
+  })
   return toAdd
 }
 
 export async function updateRoom(id: string, updates: Partial<Room>): Promise<Room | null> {
-  const db = await readStockDb()
-  const idx = db.rooms.findIndex(r => r.id === id)
-  if (idx === -1) return null
-  db.rooms[idx] = { ...db.rooms[idx], ...updates }
-  await writeStockDb(db)
-  return db.rooms[idx]
+  return await withFileLock(DB_FILE, async () => {
+    const db = await readStockDb()
+    const idx = db.rooms.findIndex(r => r.id === id)
+    if (idx === -1) return null
+    db.rooms[idx] = { ...db.rooms[idx], ...updates }
+    await writeJsonAtomic(DB_FILE, db)
+    return db.rooms[idx]
+  })
 }

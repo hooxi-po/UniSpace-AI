@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
+import { withFileLock, writeJsonAtomic } from './file-db'
 
 export type GaojibiaoRow = {
   projectId: string
@@ -43,7 +44,9 @@ export async function readGaojibiaoDb(): Promise<DbShape> {
 
 export async function writeGaojibiaoDb(next: DbShape) {
   await ensureDbFile()
-  await fs.writeFile(DB_FILE, JSON.stringify(next, null, 2), 'utf-8')
+  await withFileLock(DB_FILE, async () => {
+    await writeJsonAtomic(DB_FILE, next)
+  })
 }
 
 export async function listGaojibiaoRows(): Promise<GaojibiaoRow[]> {
@@ -52,17 +55,18 @@ export async function listGaojibiaoRows(): Promise<GaojibiaoRow[]> {
 }
 
 export async function upsertGaojibiaoRow(row: Omit<GaojibiaoRow, 'updatedAt'> & { updatedAt?: string }): Promise<GaojibiaoRow> {
-  const db = await readGaojibiaoDb()
   const nextRow: GaojibiaoRow = {
     ...row,
     updatedAt: row.updatedAt || new Date().toISOString(),
   }
 
-  const idx = db.list.findIndex(r => r.projectId === nextRow.projectId)
-  if (idx === -1) db.list.push(nextRow)
-  else db.list[idx] = { ...db.list[idx], ...nextRow }
+  await withFileLock(DB_FILE, async () => {
+    const db = await readGaojibiaoDb()
+    const idx = db.list.findIndex(r => r.projectId === nextRow.projectId)
+    if (idx === -1) db.list.push(nextRow)
+    else db.list[idx] = { ...db.list[idx], ...nextRow }
+    await writeJsonAtomic(DB_FILE, db)
+  })
 
-  await writeGaojibiaoDb(db)
   return nextRow
 }
-

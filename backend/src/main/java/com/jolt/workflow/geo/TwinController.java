@@ -6,10 +6,10 @@ import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -86,11 +86,31 @@ public class TwinController {
     ) {
         String direction = "up".equalsIgnoreCase(directionRaw) ? "up" : "down";
         List<SegmentTopology> segments = queryAllSegments();
+        Map<String, SegmentTopology> segmentsById = new HashMap<>(segments.size());
+        Map<String, SegmentTopology> segmentsByFeatureId = new HashMap<>(segments.size());
+        Map<String, List<SegmentTopology>> downstreamIndex = new HashMap<>();
+        Map<String, List<SegmentTopology>> upstreamIndex = new HashMap<>();
+        for (SegmentTopology segment : segments) {
+            segmentsById.put(segment.id(), segment);
+            if (segment.featureId() != null && !segment.featureId().isBlank()) {
+                segmentsByFeatureId.putIfAbsent(segment.featureId(), segment);
+            }
+            if (segment.fromNodeId() != null && !segment.fromNodeId().isBlank()) {
+                downstreamIndex
+                        .computeIfAbsent(segment.fromNodeId(), ignored -> new ArrayList<>())
+                        .add(segment);
+            }
+            if (segment.toNodeId() != null && !segment.toNodeId().isBlank()) {
+                upstreamIndex
+                        .computeIfAbsent(segment.toNodeId(), ignored -> new ArrayList<>())
+                        .add(segment);
+            }
+        }
 
-        SegmentTopology startSegment = segments.stream()
-                .filter(s -> Objects.equals(s.id(), startId) || Objects.equals(s.featureId(), startId))
-                .findFirst()
-                .orElse(null);
+        SegmentTopology startSegment = segmentsById.get(startId);
+        if (startSegment == null) {
+            startSegment = segmentsByFeatureId.get(startId);
+        }
 
         ObjectNode root = objectMapper.createObjectNode();
         root.put("startId", startId);
@@ -120,23 +140,19 @@ public class TwinController {
         if (startSegment.fromNodeId() != null) visitedNodeIds.add(startSegment.fromNodeId());
         if (startSegment.toNodeId() != null) visitedNodeIds.add(startSegment.toNodeId());
 
+        Map<String, List<SegmentTopology>> adjacency = "up".equals(direction) ? upstreamIndex : downstreamIndex;
         while (!queue.isEmpty()) {
             SegmentTopology current = queue.removeFirst();
-            for (SegmentTopology next : segments) {
-                if (visitedSegmentIds.contains(next.id())) continue;
-                boolean linked;
-                if ("up".equals(direction)) {
-                    linked = current.fromNodeId() != null
-                            && next.toNodeId() != null
-                            && current.fromNodeId().equals(next.toNodeId());
-                } else {
-                    linked = current.toNodeId() != null
-                            && next.fromNodeId() != null
-                            && current.toNodeId().equals(next.fromNodeId());
-                }
-                if (!linked) continue;
-
-                visitedSegmentIds.add(next.id());
+            String nodeId = "up".equals(direction) ? current.fromNodeId() : current.toNodeId();
+            if (nodeId == null || nodeId.isBlank()) {
+                continue;
+            }
+            List<SegmentTopology> candidates = adjacency.get(nodeId);
+            if (candidates == null || candidates.isEmpty()) {
+                continue;
+            }
+            for (SegmentTopology next : candidates) {
+                if (!visitedSegmentIds.add(next.id())) continue;
                 if (next.featureId() != null && !next.featureId().isBlank()) {
                     visitedFeatureIds.add(next.featureId());
                 }
@@ -228,18 +244,25 @@ public class TwinController {
         params.add(safeLimit);
         params.add(finalOffset);
 
-        String sql = "SELECT " +
+        String sql = "WITH segment_refs AS (" +
+                "  SELECT id AS segment_id, from_node_id AS node_id, status FROM pipe_segments WHERE from_node_id IS NOT NULL " +
+                "  UNION ALL " +
+                "  SELECT id AS segment_id, to_node_id AS node_id, status FROM pipe_segments WHERE to_node_id IS NOT NULL" +
+                "), segment_stats AS (" +
+                "  SELECT node_id, COUNT(DISTINCT segment_id) AS segment_count, CASE " +
+                "    WHEN BOOL_OR(status = 'critical') THEN 'critical' " +
+                "    WHEN BOOL_OR(status = 'warning') THEN 'warning' " +
+                "    ELSE 'normal' END AS health_status " +
+                "  FROM segment_refs GROUP BY node_id" +
+                ") SELECT " +
                 " n.id, n.feature_id, n.node_type, COALESCE(n.name, n.id) AS name, n.properties, " +
                 " (n.properties->>'lon')::double precision AS lon, " +
                 " (n.properties->>'lat')::double precision AS lat, " +
-                " COALESCE((SELECT COUNT(1) FROM pipe_segments s WHERE s.from_node_id = n.id OR s.to_node_id = n.id), 0) AS segment_count, " +
-                " COALESCE((SELECT CASE " +
-                "   WHEN BOOL_OR(s.status = 'critical') THEN 'critical' " +
-                "   WHEN BOOL_OR(s.status = 'warning') THEN 'warning' " +
-                "   ELSE 'normal' END " +
-                "  FROM pipe_segments s WHERE s.from_node_id = n.id OR s.to_node_id = n.id), 'normal') AS health_status " +
-                "FROM pipe_nodes n " + where +
-                " ORDER BY n.id LIMIT ? OFFSET ?";
+                " COALESCE(ss.segment_count, 0) AS segment_count, " +
+                " COALESCE(ss.health_status, 'normal') AS health_status " +
+                "FROM pipe_nodes n " +
+                "LEFT JOIN segment_stats ss ON ss.node_id = n.id " +
+                where + " ORDER BY n.id LIMIT ? OFFSET ?";
 
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, params.toArray());
         ObjectNode root = objectMapper.createObjectNode();

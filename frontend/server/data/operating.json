@@ -1,9 +1,33 @@
 {
   "spaces": [
-    { "id": "SP-001", "name": "一层 101 商铺", "area": 120, "status": "公开招租", "monthlyRent": 9600 },
-    { "id": "SP-002", "name": "二层 201 办公室", "area": 150, "status": "已出租", "monthlyRent": 12000 },
-    { "id": "SP-003", "name": "一层 103 商铺", "area": 80, "status": "已出租", "monthlyRent": 8000 },
-    { "id": "SP-004", "name": "三层 301-305 培训中心", "area": 500, "status": "已出租", "monthlyRent": 50000 }
+    {
+      "id": "SP-001",
+      "name": "一层 101 商铺",
+      "area": 120,
+      "status": "公开招租",
+      "monthlyRent": 9600
+    },
+    {
+      "id": "SP-002",
+      "name": "二层 201 办公室",
+      "area": 150,
+      "status": "已出租",
+      "monthlyRent": 12000
+    },
+    {
+      "id": "SP-003",
+      "name": "一层 103 商铺",
+      "area": 80,
+      "status": "已出租",
+      "monthlyRent": 8000
+    },
+    {
+      "id": "SP-004",
+      "name": "三层 301-305 培训中心",
+      "area": 500,
+      "status": "已出租",
+      "monthlyRent": 50000
+    }
   ],
   "contracts": [
     {
@@ -42,54 +66,56 @@
   ],
   "rentBills": [
     {
+      "reminderCount": 0,
+      "paidAmount": 12000,
+      "lateFee": 0,
       "id": "RB-2025-001",
       "contractId": "CT-2024-001",
       "spaceName": "二层 201 办公室",
       "tenant": "福建星火科技有限公司",
       "period": "2025-01",
       "rentAmount": 12000,
-      "lateFee": 0,
       "totalAmount": 12000,
-      "status": "Paid",
-      "paidAmount": 12000
+      "status": "Paid"
     },
     {
+      "reminderCount": 0,
+      "paidAmount": 0,
+      "lateFee": 0,
       "id": "RB-2025-002",
       "contractId": "CT-2023-005",
       "spaceName": "一层 103 商铺",
       "tenant": "福州美食坊餐饮管理有限公司",
       "period": "2025-01",
       "rentAmount": 8000,
-      "lateFee": 0,
       "totalAmount": 8000,
-      "status": "Unpaid",
-      "paidAmount": 0
+      "status": "Unpaid"
     },
     {
+      "reminderCount": 0,
+      "paidAmount": 0,
+      "lateFee": 240,
       "id": "RB-2024-12-005",
       "contractId": "CT-2023-005",
       "spaceName": "一层 103 商铺",
       "tenant": "福州美食坊餐饮管理有限公司",
       "period": "2024-12",
       "rentAmount": 8000,
-      "lateFee": 240,
       "totalAmount": 8240,
-      "status": "Overdue",
-      "paidAmount": 0
+      "status": "Overdue"
     },
     {
+      "reminderCount": 0,
+      "paidAmount": 50000,
+      "lateFee": 0,
       "id": "RB-2025-003",
       "contractId": "CT-2024-008",
       "spaceName": "三层 301-305 培训中心",
       "tenant": "福建教育培训集团",
       "period": "2025-01",
       "rentAmount": 50000,
-      "lateFee": 0,
       "totalAmount": 50000,
-      "status": "Paid",
-      "paidAmount": 50000
+      "status": "Paid"
     }
   ]
 }
-
-

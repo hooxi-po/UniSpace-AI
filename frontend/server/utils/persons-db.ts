@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
+import { withFileLock, writeJsonAtomic } from './file-db'
 
 export type PersonTitle = 'Assistant' | 'Lecturer' | 'AssociateProfessor' | 'Professor' | 'Other'
 
@@ -48,7 +49,9 @@ export async function readPersonsDb(): Promise<DbShape> {
 
 export async function writePersonsDb(next: DbShape) {
   await ensureDbFile()
-  await fs.writeFile(DB_FILE, JSON.stringify(next, null, 2), 'utf-8')
+  await withFileLock(DB_FILE, async () => {
+    await writeJsonAtomic(DB_FILE, next)
+  })
 }
 
 export async function listPersons(): Promise<Person[]> {
@@ -57,10 +60,12 @@ export async function listPersons(): Promise<Person[]> {
 }
 
 export async function upsertPerson(person: Person): Promise<Person> {
-  const db = await readPersonsDb()
-  const idx = db.persons.findIndex(p => p.personId === person.personId)
-  if (idx === -1) db.persons.unshift(person)
-  else db.persons[idx] = { ...db.persons[idx], ...person }
-  await writePersonsDb(db)
+  await withFileLock(DB_FILE, async () => {
+    const db = await readPersonsDb()
+    const idx = db.persons.findIndex(p => p.personId === person.personId)
+    if (idx === -1) db.persons.unshift(person)
+    else db.persons[idx] = { ...db.persons[idx], ...person }
+    await writeJsonAtomic(DB_FILE, db)
+  })
   return person
 }

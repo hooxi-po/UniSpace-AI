@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs'
 import { basename, dirname, resolve } from 'node:path'
+import { withFileLock, writeJsonAtomic } from './file-db'
 
 export type FundSource = 'Fiscal' | 'SelfRaised' | 'Mixed'
 export type AssetStatus = 'DisposalPending' | 'PendingReview' | 'PendingArchive' | 'Archived'
@@ -97,8 +98,10 @@ export async function readBuildingsDB(): Promise<DbShape> {
 
 export async function writeBuildingsDB(next: DbShape) {
   const dbFile = await getBuildingsDbPath()
-  await fs.mkdir(dirname(dbFile), { recursive: true })
-  await fs.writeFile(dbFile, JSON.stringify(next, null, 2), 'utf-8')
+  await withFileLock(dbFile, async () => {
+    await fs.mkdir(dirname(dbFile), { recursive: true })
+    await writeJsonAtomic(dbFile, next)
+  })
 }
 
 export async function listBuildings() {
@@ -139,43 +142,48 @@ export async function upsertBuilding(row: BuildingRow) {
   if (!nextRow.code) throw new Error('building.code required')
   if (!nextRow.projectName) throw new Error('building.projectName required')
 
-  const db = await readBuildingsDB()
-  const idx = db.buildings.findIndex(b => b.code === nextRow.code)
-  if (idx === -1) db.buildings.unshift(nextRow)
-  else db.buildings[idx] = { ...db.buildings[idx], ...nextRow }
-
-  await writeBuildingsDB(db)
+  const dbFile = await getBuildingsDbPath()
+  await withFileLock(dbFile, async () => {
+    const db = await readBuildingsDB()
+    const idx = db.buildings.findIndex(b => b.code === nextRow.code)
+    if (idx === -1) db.buildings.unshift(nextRow)
+    else db.buildings[idx] = { ...db.buildings[idx], ...nextRow }
+    await writeJsonAtomic(dbFile, db)
+  })
   return nextRow
 }
 
 export async function upsertRooms(newRooms: RoomRow[]) {
   const rooms = Array.isArray(newRooms) ? newRooms : []
-  const db = await readBuildingsDB()
+  const dbFile = await getBuildingsDbPath()
+  await withFileLock(dbFile, async () => {
+    const db = await readBuildingsDB()
 
-  const idxById = new Map<string, number>()
-  db.rooms.forEach((r, idx) => idxById.set(r.id, idx))
+    const idxById = new Map<string, number>()
+    db.rooms.forEach((r, idx) => idxById.set(r.id, idx))
 
-  for (const r of rooms) {
-    if (!r || !r.id) continue
-    const next: RoomRow = {
-      ...r,
-      id: String(r.id).trim(),
-      buildingCode: r.buildingCode ? String(r.buildingCode).trim() : undefined,
-      buildingName: String(r.buildingName || '').trim(),
-      roomNo: String(r.roomNo || '').trim(),
+    for (const r of rooms) {
+      if (!r || !r.id) continue
+      const next: RoomRow = {
+        ...r,
+        id: String(r.id).trim(),
+        buildingCode: r.buildingCode ? String(r.buildingCode).trim() : undefined,
+        buildingName: String(r.buildingName || '').trim(),
+        roomNo: String(r.roomNo || '').trim(),
+      }
+      if (!next.buildingName || !next.roomNo) continue
+
+      const hit = idxById.get(next.id)
+      if (hit === undefined) {
+        db.rooms.unshift(next)
+        idxById.set(next.id, 0)
+      } else {
+        db.rooms[hit] = { ...db.rooms[hit], ...next }
+      }
     }
-    if (!next.buildingName || !next.roomNo) continue
 
-    const hit = idxById.get(next.id)
-    if (hit === undefined) {
-      db.rooms.unshift(next)
-      idxById.set(next.id, 0)
-    } else {
-      db.rooms[hit] = { ...db.rooms[hit], ...next }
-    }
-  }
-
-  await writeBuildingsDB(db)
+    await writeJsonAtomic(dbFile, db)
+  })
   return rooms
 }
 

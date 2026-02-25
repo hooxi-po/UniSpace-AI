@@ -5,11 +5,17 @@ import javax.sql.DataSource;
 import lombok.RequiredArgsConstructor;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.output.MigrateResult;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 @Component
 @RequiredArgsConstructor
+@ConditionalOnProperty(name = "app.db.init.enabled", havingValue = "true", matchIfMissing = true)
 public class DbMigrationInit {
+
+    private static final Logger log = LoggerFactory.getLogger(DbMigrationInit.class);
 
     private final DataSource dataSource;
 
@@ -24,11 +30,11 @@ public class DbMigrationInit {
             .load()
             .migrate();
 
-        System.out.printf(
-            "[DB MIGRATION] success=%s, migrationsExecuted=%d, targetSchemaVersion=%s%n",
-            result.success,
-            result.migrationsExecuted,
-            result.targetSchemaVersion
+        log.info(
+                "db_migration_complete success={} migrationsExecuted={} targetSchemaVersion={}",
+                result.success,
+                result.migrationsExecuted,
+                result.targetSchemaVersion
         );
     }
 }

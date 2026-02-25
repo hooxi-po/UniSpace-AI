@@ -1,9 +1,10 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { readBuildingsDB } from './buildings-db'
+import { withFileLock, writeJsonAtomic } from './file-db'
 
 export type AssetCategory = 'Building' | 'Land' | 'Structure' | 'Equipment' | 'Greening' | 'Other'
-export type AssetStatus = 'DisposalPending' | 'PendingReview' | 'PendingArchive' | 'Archived'
+export type FixationAssetStatus = 'DisposalPending' | 'PendingReview' | 'PendingArchive' | 'Archived'
 export type ProjectMilestone = 'Approval'
 
 export type Attachment = {
@@ -54,7 +55,7 @@ export type Project = {
   contractAmount: number
   auditAmount?: number
   auditReductionRate?: number
-  status: AssetStatus
+  status: FixationAssetStatus
   completionDate: string
   hasCadData: boolean
   fundSource: 'Fiscal' | 'SelfRaised' | 'Mixed'
@@ -140,9 +141,7 @@ async function ensureDbFile() {
   }
 }
 
-export async function readAuditDb(): Promise<DbShape> {
-  await ensureDbFile()
-  const dbFile = await getDbFilePath()
+async function readAuditDbInternal(dbFile: string, persistIfChanged: boolean): Promise<DbShape> {
   const raw = await fs.readFile(dbFile, 'utf-8')
   let db: DbShape = { list: [] }
   try {
@@ -252,7 +251,6 @@ export async function readAuditDb(): Promise<DbShape> {
     }
 
     // 3) 清理多余/错误的 ID (如旧的 STOCK-BLD-BLD-*)
-    const bCodes = new Set(bDb.buildings.map(b => b.code))
     const validIds = new Set(bDb.buildings.map(b => `STOCK-BLD-${b.code.split('-')[1]}`))
     
     const initialLen = db.list.length
@@ -264,8 +262,8 @@ export async function readAuditDb(): Promise<DbShape> {
     })
     if (db.list.length !== initialLen) changed = true
 
-    if (changed) {
-      await fs.writeFile(dbFile, JSON.stringify(db, null, 2), 'utf-8')
+    if (changed && persistIfChanged) {
+      await writeJsonAtomic(dbFile, db)
     }
   } catch (e) {
     console.error('Sync fixation audit from buildings failed:', e)
@@ -274,9 +272,20 @@ export async function readAuditDb(): Promise<DbShape> {
   return db
 }
 
+export async function readAuditDb(): Promise<DbShape> {
+  await ensureDbFile()
+  const dbFile = await getDbFilePath()
+  return await withFileLock(dbFile, async () => {
+    return await readAuditDbInternal(dbFile, true)
+  })
+}
+
 export async function writeAuditDb(next: DbShape) {
   await ensureDbFile()
-  await fs.writeFile(await getDbFilePath(), JSON.stringify(next, null, 2), 'utf-8')
+  const dbFile = await getDbFilePath()
+  await withFileLock(dbFile, async () => {
+    await writeJsonAtomic(dbFile, next)
+  })
 }
 
 export async function listProjects(): Promise<Project[]> {
@@ -285,57 +294,81 @@ export async function listProjects(): Promise<Project[]> {
 }
 
 export async function updateProject(id: string, updates: Partial<Project>): Promise<Project | null> {
-  const db = await readAuditDb()
-  const idx = db.list.findIndex(p => p.id === id)
-  if (idx === -1) return null
-  db.list[idx] = { ...db.list[idx], ...updates }
-  await writeAuditDb(db)
-  return db.list[idx]
+  await ensureDbFile()
+  const dbFile = await getDbFilePath()
+  return await withFileLock(dbFile, async () => {
+    const db = await readAuditDbInternal(dbFile, true)
+    const idx = db.list.findIndex(p => p.id === id)
+    if (idx === -1) return null
+    db.list[idx] = { ...db.list[idx], ...updates }
+    await writeJsonAtomic(dbFile, db)
+    return db.list[idx]
+  })
 }
 
 export async function addAttachment(projectId: string, attachment: Attachment): Promise<Project | null> {
-  const db = await readAuditDb()
-  const idx = db.list.findIndex(p => p.id === projectId)
-  if (idx === -1) return null
-  db.list[idx].attachments.push(attachment)
-  await writeAuditDb(db)
-  return db.list[idx]
+  await ensureDbFile()
+  const dbFile = await getDbFilePath()
+  return await withFileLock(dbFile, async () => {
+    const db = await readAuditDbInternal(dbFile, true)
+    const idx = db.list.findIndex(p => p.id === projectId)
+    if (idx === -1) return null
+    db.list[idx].attachments.push(attachment)
+    await writeJsonAtomic(dbFile, db)
+    return db.list[idx]
+  })
 }
 
 export async function updateAttachment(projectId: string, attId: string, updates: Partial<Attachment>): Promise<Project | null> {
-  const db = await readAuditDb()
-  const p = db.list.find(p => p.id === projectId)
-  if (!p) return null
-  const idx = p.attachments.findIndex(a => a.id === attId)
-  if (idx === -1) return null
-  p.attachments[idx] = { ...p.attachments[idx], ...updates }
-  await writeAuditDb(db)
-  return p
+  await ensureDbFile()
+  const dbFile = await getDbFilePath()
+  return await withFileLock(dbFile, async () => {
+    const db = await readAuditDbInternal(dbFile, true)
+    const p = db.list.find(p => p.id === projectId)
+    if (!p) return null
+    const idx = p.attachments.findIndex(a => a.id === attId)
+    if (idx === -1) return null
+    p.attachments[idx] = { ...p.attachments[idx], ...updates }
+    await writeJsonAtomic(dbFile, db)
+    return p
+  })
 }
 
 export async function deleteAttachment(projectId: string, attId: string): Promise<Project | null> {
-  const db = await readAuditDb()
-  const p = db.list.find(p => p.id === projectId)
-  if (!p) return null
-  p.attachments = p.attachments.filter(a => a.id !== attId)
-  await writeAuditDb(db)
-  return p
+  await ensureDbFile()
+  const dbFile = await getDbFilePath()
+  return await withFileLock(dbFile, async () => {
+    const db = await readAuditDbInternal(dbFile, true)
+    const p = db.list.find(p => p.id === projectId)
+    if (!p) return null
+    p.attachments = p.attachments.filter(a => a.id !== attId)
+    await writeJsonAtomic(dbFile, db)
+    return p
+  })
 }
 
 export async function addSplitItem(projectId: string, item: AssetSplitItem): Promise<Project | null> {
-  const db = await readAuditDb()
-  const p = db.list.find(p => p.id === projectId)
-  if (!p) return null
-  p.splitItems.push(item)
-  await writeAuditDb(db)
-  return p
+  await ensureDbFile()
+  const dbFile = await getDbFilePath()
+  return await withFileLock(dbFile, async () => {
+    const db = await readAuditDbInternal(dbFile, true)
+    const p = db.list.find(p => p.id === projectId)
+    if (!p) return null
+    p.splitItems.push(item)
+    await writeJsonAtomic(dbFile, db)
+    return p
+  })
 }
 
 export async function deleteSplitItem(projectId: string, itemId: string): Promise<Project | null> {
-  const db = await readAuditDb()
-  const p = db.list.find(p => p.id === projectId)
-  if (!p) return null
-  p.splitItems = p.splitItems.filter(i => i.id !== itemId)
-  await writeAuditDb(db)
-  return p
+  await ensureDbFile()
+  const dbFile = await getDbFilePath()
+  return await withFileLock(dbFile, async () => {
+    const db = await readAuditDbInternal(dbFile, true)
+    const p = db.list.find(p => p.id === projectId)
+    if (!p) return null
+    p.splitItems = p.splitItems.filter(i => i.id !== itemId)
+    await writeJsonAtomic(dbFile, db)
+    return p
+  })
 }

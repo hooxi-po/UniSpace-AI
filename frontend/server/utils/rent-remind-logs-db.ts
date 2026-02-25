@@ -1,5 +1,6 @@
-import { access, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { access, mkdir, readFile } from 'node:fs/promises'
 import { basename, dirname, resolve } from 'node:path'
+import { withFileLock, writeJsonAtomic } from './file-db'
 
 export type RentRemindLogItem = {
   id: string
@@ -58,18 +59,23 @@ export async function readRentRemindLogsDB(): Promise<RentRemindLogsDB> {
 
 export async function writeRentRemindLogsDB(db: RentRemindLogsDB) {
   const dbPath = await getDbPath()
-  await mkdir(dirname(dbPath), { recursive: true })
-  await writeFile(dbPath, JSON.stringify(db, null, 2), 'utf-8')
+  await withFileLock(dbPath, async () => {
+    await mkdir(dirname(dbPath), { recursive: true })
+    await writeJsonAtomic(dbPath, db)
+  })
 }
 
 export async function appendRentRemindLog(item: Omit<RentRemindLogItem, 'id'>) {
-  const db = await readRentRemindLogsDB()
   const log: RentRemindLogItem = {
     id: `remind_${Date.now()}_${Math.random().toString(16).slice(2)}`,
     ...item,
   }
 
-  db.logs.unshift(log)
-  await writeRentRemindLogsDB(db)
+  const dbPath = await getDbPath()
+  await withFileLock(dbPath, async () => {
+    const db = await readRentRemindLogsDB()
+    db.logs.unshift(log)
+    await writeJsonAtomic(dbPath, db)
+  })
   return log
 }

@@ -1,3 +1,5 @@
+import { fetchWithProxyWriteAuth } from './proxy-write-auth'
+
 export type AssetLayer = 'buildings' | 'pipes'
 
 export type GeoJsonGeometry = {
@@ -40,8 +42,10 @@ async function readError(res: Response) {
   return `HTTP ${res.status}`
 }
 
-async function requestJson(url: string, init?: RequestInit) {
-  const res = await fetch(url, init)
+async function requestJson(url: string, init?: RequestInit, useWriteAuth = false) {
+  const res = useWriteAuth
+    ? await fetchWithProxyWriteAuth(url, init)
+    : await fetch(url, init)
   if (!res.ok) {
     throw new Error(await readError(res))
   }
@@ -55,7 +59,7 @@ async function requestJson(url: string, init?: RequestInit) {
 
 export const geoFeatureService = {
   async list(
-    backendBaseUrl: string,
+    _backendBaseUrl: string,
     options: { layer: AssetLayer; limit?: number; visible?: boolean }
   ) {
     const params = new URLSearchParams()
@@ -66,39 +70,39 @@ export const geoFeatureService = {
     }
 
     const json = (await requestJson(
-      `${backendBaseUrl}/api/v1/features?${params.toString()}`
+      `/api/backend/features?${params.toString()}`
     )) as GeoJsonFeatureCollection
 
     return Array.isArray(json?.features) ? json.features : []
   },
 
-  create(backendBaseUrl: string, payload: GeoFeaturePayload) {
-    return requestJson(`${backendBaseUrl}/api/v1/features`, {
+  create(_backendBaseUrl: string, payload: GeoFeaturePayload) {
+    return requestJson('/api/backend/features', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
-    })
+    }, true)
   },
 
-  update(backendBaseUrl: string, payload: GeoFeaturePayload) {
-    return requestJson(`${backendBaseUrl}/api/v1/features`, {
+  update(_backendBaseUrl: string, payload: GeoFeaturePayload) {
+    return requestJson('/api/backend/features', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
-    })
+    }, true)
   },
 
-  remove(backendBaseUrl: string, id: string) {
-    return requestJson(`${backendBaseUrl}/api/v1/features?id=${encodeURIComponent(id)}`, {
+  remove(_backendBaseUrl: string, id: string) {
+    return requestJson(`/api/backend/features?id=${encodeURIComponent(id)}`, {
       method: 'DELETE',
-    })
+    }, true)
   },
 
-  setVisibility(backendBaseUrl: string, id: string, visible: boolean) {
-    return requestJson(`${backendBaseUrl}/api/v1/features/visibility`, {
+  setVisibility(_backendBaseUrl: string, id: string, visible: boolean) {
+    return requestJson('/api/backend/features/visibility', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, visible }),
-    })
+    }, true)
   },
 } as const

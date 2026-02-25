@@ -19,6 +19,12 @@ export default defineNuxtConfig({
   runtimeConfig: {
     // 服务端可访问的私有配置
     geminiApiKey: process.env.GEMINI_API_KEY || '',
+    backendWriteAuthEnabled:
+      process.env.BACKEND_WRITE_AUTH_ENABLED
+      || process.env.APP_SECURITY_WRITE_AUTH_ENABLED
+      || 'true',
+    backendAdminUser: process.env.BACKEND_ADMIN_USER || process.env.APP_ADMIN_USER || 'admin',
+    backendAdminPassword: process.env.BACKEND_ADMIN_PASSWORD || process.env.APP_ADMIN_PASSWORD || '',
     
     // 客户端可访问的公共配置
     public: {

@@ -1,3 +1,5 @@
+import { fetchWithProxyWriteAuth } from './proxy-write-auth'
+
 export type TwinDirection = 'up' | 'down'
 
 async function readError(res: Response) {
@@ -10,8 +12,10 @@ async function readError(res: Response) {
   return `HTTP ${res.status}`
 }
 
-async function requestJson<T>(url: string, init?: RequestInit) {
-  const res = await fetch(url, init)
+async function requestJson<T>(url: string, init?: RequestInit, useWriteAuth = false) {
+  const res = useWriteAuth
+    ? await fetchWithProxyWriteAuth(url, init)
+    : await fetch(url, init)
   if (!res.ok) {
     throw new Error(await readError(res))
   }
@@ -83,33 +87,35 @@ export const twinService = {
   },
 
   updatePipeGeometry(
-    backendBaseUrl: string,
+    _backendBaseUrl: string,
     id: string,
     geometry: { type: string; coordinates: unknown },
     updatedBy = 'admin-ui'
   ) {
     return requestJson<{ ok: boolean; id: string; action: string }>(
-      `${backendBaseUrl}/api/v1/twin/pipes/${encodeURIComponent(id)}/geometry`,
+      `/api/backend/twin/pipes/${encodeURIComponent(id)}/geometry`,
       {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ geometry, updatedBy }),
-      }
+      },
+      true
     )
   },
 
   updatePipeProperties(
-    backendBaseUrl: string,
+    _backendBaseUrl: string,
     id: string,
     payload: { properties: Record<string, unknown>; visible?: boolean; updatedBy?: string }
   ) {
     return requestJson<{ ok: boolean; id: string; action: string }>(
-      `${backendBaseUrl}/api/v1/twin/pipes/${encodeURIComponent(id)}/properties`,
+      `/api/backend/twin/pipes/${encodeURIComponent(id)}/properties`,
       {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-      }
+      },
+      true
     )
   },
 

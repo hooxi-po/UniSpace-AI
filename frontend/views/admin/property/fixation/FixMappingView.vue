@@ -141,7 +141,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { AlertCircle, CheckCircle2, Save, Search, X } from 'lucide-vue-next'
-import { useFixationAudit } from '~/composables/useFixationAudit'
+import { useFixationAudit } from '~/composables/property/useFixationAudit'
 import { reportsService } from '~/services/reports'
 import type { Project } from '~/server/utils/fixation-audit-db'
 

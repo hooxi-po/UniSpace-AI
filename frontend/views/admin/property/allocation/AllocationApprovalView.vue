@@ -161,7 +161,7 @@
 import { computed, reactive, ref } from 'vue'
 import { CheckCircle2, Eye, MapPin, RefreshCw, Search, XCircle } from 'lucide-vue-next'
 import type { AllocationRequest } from '~/server/utils/allocation-db'
-import { useAllocationApproval } from '~/composables/useAllocationApproval'
+import { useAllocationApproval } from '~/composables/property/useAllocationApproval'
 import ApplyHousingRequestModal from '~/components/admin/property/allocation/components/ApplyHousingRequestModal.vue'
 import AllocateRoomsModal from '~/components/admin/property/allocation/components/AllocateRoomsModal.vue'
 import AllocationRequestDetailModal from '~/components/admin/property/allocation/components/AllocationRequestDetailModal.vue'

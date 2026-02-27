@@ -18,7 +18,7 @@ export function useAllocationAnalysis() {
         allocationService.fetchRequests(),
         fixationService.fetchStock(),
         $fetch<{ list: AdjustmentRequest[] }>('/api/allocation/adjustments'),
-        $fetch<{ list: TemporaryBorrow[] }>('/api/allocation/borrows')
+        $fetch<{ list: TemporaryBorrow[] }>('/api/allocation/borrows'),
       ])
       requests.value = reqRes.list
       rooms.value = stockRes.rooms
@@ -57,7 +57,7 @@ export function useAllocationAnalysis() {
       availableRooms,
       occupiedRooms,
       totalAvailableArea,
-      expiringBorrows
+      expiringBorrows,
     }
   })
 
@@ -69,7 +69,7 @@ export function useAllocationAnalysis() {
       return {
         name,
         total: buildingRooms.length,
-        available
+        available,
       }
     }).sort((a, b) => b.total - a.total)
   })
@@ -82,7 +82,8 @@ export function useAllocationAnalysis() {
     loading,
     stats,
     buildingDistribution,
-    fetchData
+    fetchData,
   }
 }
+
 

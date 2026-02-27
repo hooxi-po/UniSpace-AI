@@ -118,7 +118,7 @@
 import { computed, ref } from 'vue'
 import { Edit, RefreshCw, Search } from 'lucide-vue-next'
 import type { Room } from '~/server/utils/fixation-stock-db'
-import { useAllocationAssignment } from '~/composables/useAllocationAssignment'
+import { useAllocationAssignment } from '~/composables/property/useAllocationAssignment'
 import RoomEditModal from '~/components/admin/property/allocation/components/RoomEditModal.vue'
 
 const {

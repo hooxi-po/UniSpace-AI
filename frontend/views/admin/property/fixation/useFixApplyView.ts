@@ -1,6 +1,6 @@
 import { computed, reactive, ref } from 'vue'
 import type { AssetCategory, AssetSplitItem, Attachment, Project } from '~/server/utils/fixation-audit-db'
-import { useFixationAudit } from '~/composables/useFixationAudit'
+import { useFixationAudit } from '~/composables/property/useFixationAudit'
 
 export function useFixApplyView() {
   const {

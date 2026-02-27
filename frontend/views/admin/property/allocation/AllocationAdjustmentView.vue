@@ -1,126 +1,98 @@
 <template>
   <div class="page">
-    <div class="header">
+    <div class="pageHeader">
       <div>
-        <h2 class="title">用房调整</h2>
-        <p class="subtitle">管理换房申请、退房申请以及临时借用。处理从申请到交接完成的全生命周期。</p>
+        <h2 class="title">用房调整与借用</h2>
+        <p class="subtitle">管理调整申请、临时借用与回收归还</p>
       </div>
-      <div class="headerActions">
-        <button class="btnGhost" @click="openApply('Exchange')">
-          <ArrowLeftRight :size="14" /> 申请换房
+      <div class="actions">
+        <button class="btn" :disabled="adjustmentsLoading" @click="fetchAdjustments">
+          <RefreshCw :size="16" :class="adjustmentsLoading ? 'spinning' : ''" />
+          刷新
         </button>
-        <button class="btnGhost" @click="openApply('Return')">
-          <RotateCcw :size="14" /> 申请退房
-        </button>
-        <button class="btnGhost" @click="borrowModalShow = true">
-          <Plus :size="14" /> 录入借用
-        </button>
-        <button class="btnPrimary" @click="fetchAdjustments">
-          <RefreshCw :size="14" :class="{ spinning: adjustmentsLoading }" /> 刷新
+        <button class="btn btn--primary" @click="showAdjustmentModal = true">
+          <Plus :size="16" />
+          新增调整申请
         </button>
       </div>
     </div>
 
-    <div class="stats">
-      <div class="statCard">
-        <div class="statValue">{{ pendingCount }}</div>
-        <div class="statLabel">待审批调整</div>
-      </div>
-      <div class="statCard">
-        <div class="statValue">{{ allocatedCount }}</div>
-        <div class="statLabel">待交接调整</div>
-      </div>
-      <div class="statCard">
-        <div class="statValue">{{ expiringBorrowsCount }}</div>
-        <div class="statLabel">即将到期借用 (30天内)</div>
+    <div class="listCard">
+      <div class="listTitle"><ArrowLeftRight :size="16" /> 调整申请</div>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>申请部门</th>
+            <th>原房间</th>
+            <th>状态</th>
+            <th>申请日期</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="it in adjustments" :key="it.id">
+            <td>{{ it.department }}</td>
+            <td>{{ it.fromBuildingName }}{{ it.fromRoomNo }}</td>
+            <td>
+              <span class="tag">{{ statusText(it.status) }}</span>
+            </td>
+            <td>{{ it.createdAt }}</td>
+            <td class="rowActions">
+              <button class="btn btn--mini" @click="openDetail(it)">
+                <Eye :size="14" /> 查看
+              </button>
+              <button v-if="it.status === 'Pending'" class="btn btn--mini" @click="approve(it.id)">审批通过</button>
+              <button v-if="it.status === 'Approved'" class="btn btn--mini" @click="allocate(it.id)">分配房间</button>
+              <button v-if="it.status === 'Allocated'" class="btn btn--mini" @click="complete(it.id)">确认完成</button>
+            </td>
+          </tr>
+          <tr v-if="adjustments.length === 0">
+            <td colspan="5" class="empty">暂无调整申请</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="listCard">
+      <div class="listTitle"><RotateCcw :size="16" /> 临时借用</div>
+      <TemporaryBorrowList :borrows="borrows" :loading="borrowsLoading" />
+      <div class="borrowActions">
+        <button class="btn" @click="fetchBorrows">刷新借用列表</button>
+        <button class="btn btn--primary" @click="showBorrowModal = true">新增临时借用</button>
       </div>
     </div>
 
-    <div class="mainContent">
-      <div class="leftCol">
-        <div class="card">
-          <div class="cardHeader">
-            <h3 class="cardTitle">调整申请列表</h3>
-          </div>
-          <div class="tableWrap">
-            <div v-if="adjustmentsLoading" class="loading">加载中...</div>
-            <table v-else class="table">
-              <thead>
-                <tr>
-                  <th>申请编号</th>
-                  <th>部门</th>
-                  <th>原房间</th>
-                  <th>目标房间</th>
-                  <th>状态</th>
-                  <th class="right">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="adj in adjustments" :key="adj.id" class="row">
-                  <td class="mono">{{ adj.id }}</td>
-                  <td>{{ adj.department }}</td>
-                  <td>{{ adj.fromBuildingName }}{{ adj.fromRoomNo }}</td>
-                  <td>
-                    <span v-if="adj.toBuildingName">{{ adj.toBuildingName }}{{ adj.toRoomNo }}</span>
-                    <span v-else class="muted">待分配</span>
-                  </td>
-                  <td>
-                    <span :class="['badge', getStatusClass(adj.status)]">
-                      {{ getStatusLabel(adj.status) }}
-                    </span>
-                  </td>
-                  <td class="right">
-                    <button class="link" @click="openDetail(adj)">
-                      <Eye :size="14" /> 详情
-                    </button>
-                  </td>
-                </tr>
-                <tr v-if="adjustments.length === 0">
-                  <td colspan="6" class="empty">暂无调整申请</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <div class="rightCol">
-        <TemporaryBorrowList :borrows="borrows" :loading="borrowsLoading" />
-      </div>
-    </div>
-
-    <!-- 弹窗组件 -->
     <AdjustmentRequestModal
-      v-if="applyModal.show"
-      :type="applyModal.type"
-      :buildings="buildingNames"
-      @close="applyModal.show = false"
-      @submit="handleApply"
+      v-if="showAdjustmentModal"
+      type="Exchange"
+      :buildings="buildingOptions"
+      @close="showAdjustmentModal = false"
+      @submit="onCreateAdjustment"
     />
 
     <AdjustmentDetailModal
-      v-if="selectedAdj"
-      :request="selectedAdj"
+      v-if="detailItem"
+      :request="detailItem"
       :stock-rooms="stockRooms"
-      @close="selectedAdj = null"
-      @approve="handleApprove"
-      @allocate="handleAllocate"
-      @complete="handleComplete"
+      @close="detailItem = null"
+      @approve="approve"
+      @allocate="allocateFromModal"
+      @complete="complete"
     />
 
     <TemporaryBorrowModal
-      v-if="borrowModalShow"
-      :buildings="buildingNames"
-      @close="borrowModalShow = false"
-      @submit="handleCreateBorrow"
+      v-if="showBorrowModal"
+      :buildings="buildingOptions"
+      @close="showBorrowModal = false"
+      @submit="onCreateBorrow"
     />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { ArrowLeftRight, RotateCcw, RefreshCw, Eye, Plus } from 'lucide-vue-next'
-import { useAllocationAdjustment } from '~/composables/useAllocationAdjustment'
+import { useAllocationAdjustment } from '~/composables/property/useAllocationAdjustment'
 import AdjustmentRequestModal from '~/components/admin/property/allocation/components/AdjustmentRequestModal.vue'
 import AdjustmentDetailModal from '~/components/admin/property/allocation/components/AdjustmentDetailModal.vue'
 import TemporaryBorrowList from '~/components/admin/property/allocation/components/TemporaryBorrowList.vue'
@@ -137,237 +109,97 @@ const {
   allocateAdjustment,
   completeAdjustment,
   createBorrow,
-  fetchAdjustments
+  fetchAdjustments,
+  fetchBorrows,
 } = useAllocationAdjustment()
 
-const applyModal = reactive({
-  show: false,
-  type: 'Exchange' as 'Exchange' | 'Return'
+const showAdjustmentModal = ref(false)
+const showBorrowModal = ref(false)
+const detailItem = ref<any>(null)
+
+const buildingOptions = computed(() => {
+  return [...new Set((stockRooms.value || []).map((r: any) => String(r.buildingName || '')).filter(Boolean))]
 })
 
-const borrowModalShow = ref(false)
-const selectedAdj = ref<any>(null)
-
-const buildingNames = computed(() => {
-  const set = new Set(stockRooms.value.map(r => r.buildingName))
-  return Array.from(set) as string[]
-})
-
-const pendingCount = computed(() => (adjustments.value || []).filter(a => a.status === 'Pending').length)
-const allocatedCount = computed(() => (adjustments.value || []).filter(a => a.status === 'Allocated').length)
-const expiringBorrowsCount = computed(() => {
-  const now = Date.now()
-  const thirtyDays = 30 * 24 * 60 * 60 * 1000
-  return (borrows.value || []).filter(b => b.status === 'Active' && (new Date(b.endDate).getTime() - now) <= thirtyDays).length
-})
-
-function openApply(type: 'Exchange' | 'Return') {
-  applyModal.type = type
-  applyModal.show = true
+function statusText(status: string) {
+  switch (status) {
+    case 'Pending': return '待审批'
+    case 'Approved': return '已审批'
+    case 'Allocated': return '已分配'
+    case 'Completed': return '已完成'
+    default: return status
+  }
 }
 
-async function handleApply(data: any) {
-  await createAdjustment(data)
-  applyModal.show = false
-  alert('申请提交成功')
+function openDetail(item: any) {
+  detailItem.value = item
 }
 
-async function handleCreateBorrow(data: any) {
-  await createBorrow(data)
-  borrowModalShow.value = false
-  alert('临时借用记录已保存')
+async function onCreateAdjustment(payload: any) {
+  await createAdjustment(payload)
+  showAdjustmentModal.value = false
 }
 
-function openDetail(adj: any) {
-  selectedAdj.value = adj
-}
-
-async function handleApprove(id: string) {
+async function approve(id: string) {
   await approveAdjustment(id)
-  selectedAdj.value = (adjustments.value || []).find(a => a.id === id)
 }
 
-async function handleAllocate(id: string, room: any) {
-  await allocateAdjustment(id, room)
-  selectedAdj.value = (adjustments.value || []).find(a => a.id === id)
+async function allocate(id: string) {
+  const candidate = (stockRooms.value || []).find((r: any) => r.status === 'Empty')
+  if (!candidate) {
+    alert('暂无可分配空置房间')
+    return
+  }
+  await allocateAdjustment(id, {
+    buildingName: candidate.buildingName,
+    roomNo: candidate.roomNo,
+    area: Number(candidate.area || 0),
+  })
 }
 
-async function handleComplete(id: string) {
+async function allocateFromModal(id: string, room: any) {
+  await allocateAdjustment(id, {
+    buildingName: room.buildingName,
+    roomNo: room.roomNo,
+    area: Number(room.area || 0),
+  })
+}
+
+async function complete(id: string) {
   await completeAdjustment(id)
-  selectedAdj.value = (adjustments.value || []).find(a => a.id === id)
 }
 
-function getStatusLabel(s: string) {
-  const map: any = {
-    Pending: '待审批',
-    Approved: '已批准待配房',
-    Allocated: '已配房',
-    Completed: '已完成',
-    Rejected: '已驳回'
-  }
-  return map[s] || s
-}
-
-function getStatusClass(s: string) {
-  const map: any = {
-    Pending: 'badgeAmber',
-    Approved: 'badgeBlue',
-    Allocated: 'badgeOrange',
-    Completed: 'badgeGreen',
-    Rejected: 'badgeGray'
-  }
-  return map[s] || ''
+async function onCreateBorrow(payload: any) {
+  await createBorrow(payload)
+  showBorrowModal.value = false
 }
 </script>
 
 <style scoped>
-.page {
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-.header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-}
-.title {
-  font-size: 24px;
-  font-weight: 700;
-  color: #1f2329;
-}
-.subtitle {
-  color: #646a73;
-  font-size: 14px;
-  margin-top: 4px;
-}
-.headerActions {
-  display: flex;
-  gap: 12px;
-}
-.btnGhost {
-  border: 1px solid #dee0e3;
-  background: #fff;
-  border-radius: 8px;
-  padding: 8px 12px;
-  font-size: 13px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-}
-.btnPrimary {
-  background: #3370ff;
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  padding: 8px 12px;
-  font-size: 13px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-}
-.stats {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-}
-.statCard {
-  background: #fff;
-  border: 1px solid #dee0e3;
-  border-radius: 12px;
-  padding: 16px;
-}
-.statValue {
-  font-size: 24px;
-  font-weight: 700;
-  color: #1f2329;
-}
-.statLabel {
-  font-size: 12px;
-  color: #646a73;
-  margin-top: 4px;
-}
-.mainContent {
-  display: grid;
-  grid-template-columns: 1fr 350px;
-  gap: 16px;
-  align-items: flex-start;
-}
-.card {
-  background: #fff;
-  border: 1px solid #dee0e3;
-  border-radius: 12px;
-  overflow: hidden;
-}
-.cardHeader {
-  padding: 16px;
-  border-bottom: 1px solid #eef0f2;
-}
-.cardTitle {
-  font-weight: 700;
-  font-size: 16px;
-}
-.tableWrap {
-  overflow-x: auto;
-}
-.table {
-  width: 100%;
-  border-collapse: collapse;
-}
-.table th {
-  text-align: left;
-  padding: 12px 16px;
-  background: #f8fafc;
-  font-size: 13px;
-  color: #646a73;
-}
-.table td {
-  padding: 12px 16px;
-  border-top: 1px solid #eef0f2;
-  font-size: 14px;
-}
-.row:hover {
-  background: #f9fafb;
-}
-.mono {
-  font-family: monospace;
-  color: #646a73;
-}
-.muted {
-  color: #8f959e;
-}
-.right {
-  text-align: right;
-}
-.link {
-  color: #3370ff;
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-.badge {
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 12px;
-}
-.badgeAmber { background: #fff7ed; color: #c2410c; }
-.badgeBlue { background: #eff6ff; color: #1d4ed8; }
-.badgeOrange { background: #fff7ed; color: #9a3412; }
-.badgeGreen { background: #ecfdf5; color: #047857; }
-.badgeGray { background: #f3f4f6; color: #374151; }
+.page { display: grid; gap: 16px; padding: 16px; }
+.pageHeader { display: flex; justify-content: space-between; align-items: center; }
+.title { margin: 0; font-size: 20px; font-weight: 800; }
+.subtitle { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+.actions { display: flex; gap: 8px; }
 
-.spinning {
-  animation: spin 1s linear infinite;
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 12px; background: #fff; cursor: pointer;
 }
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
+.btn--primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+.btn--mini { padding: 4px 8px; font-size: 12px; }
+
+.listCard { border: 1px solid var(--border); border-radius: 12px; background: #fff; padding: 12px; }
+.listTitle { font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+
+.table { width: 100%; border-collapse: collapse; }
+.table th, .table td { border-bottom: 1px solid var(--border-light); padding: 10px; text-align: left; font-size: 13px; }
+.rowActions { display: flex; gap: 6px; flex-wrap: wrap; }
+.tag { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #4338ca; }
+.empty { color: var(--muted); text-align: center; }
+.borrowActions { margin-top: 10px; display: flex; gap: 8px; justify-content: flex-end; }
+
+.spinning { animation: spin 1s linear infinite; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 </style>

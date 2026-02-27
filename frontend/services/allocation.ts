@@ -30,4 +30,11 @@ export const allocationService = {
       body,
     })
   },
+
+  async createLog(body: any) {
+    return $fetch<{ log: AllocationOperationLog }>('/api/allocation/logs', {
+      method: 'POST',
+      body,
+    })
+  },
 } as const

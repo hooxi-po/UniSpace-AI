@@ -167,7 +167,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { Check, Download, FileCheck, Search, X, XCircle } from 'lucide-vue-next'
-import { useFixationAudit } from '~/composables/useFixationAudit'
+import { useFixationAudit } from '~/composables/property/useFixationAudit'
 import type { Attachment } from '~/server/utils/fixation-audit-db'
 
 function downloadTextFile(filename: string, content: string) {

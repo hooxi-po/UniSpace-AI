@@ -64,3 +64,10 @@ export default defineEventHandler(async (event) => {
     bill: db.rentBills[idx],
   }
 })
+
+
+
+
+
+
+

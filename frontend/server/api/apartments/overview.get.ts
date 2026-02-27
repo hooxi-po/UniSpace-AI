@@ -1,24 +1,26 @@
-import { readBuildingsDB } from '~/server/utils/buildings-db'
+import { fetchApartmentRoomsFromBackend } from '~/server/utils/apartment-rooms'
+import { toProxyError } from '~/server/utils/backend-proxy'
 
-export default defineEventHandler(async () => {
-  const bDb = await readBuildingsDB()
-  const apartmentRooms = bDb.rooms.filter(r => r.type === 'TeacherApartment' || r.type === 'Student')
-  
-  const totalRooms = apartmentRooms.length
-  const occupiedRooms = apartmentRooms.filter(r => r.status === 'Occupied').length
-  const availableRooms = totalRooms - occupiedRooms
-  
-  return {
-    source: 'mock-derived',
-    stats: {
-      totalRooms,
-      occupiedRooms,
-      availableRooms,
-      pendingApplications: 3, // 模拟固定值
-      occupancyRate: totalRooms > 0 ? ((occupiedRooms / totalRooms) * 100).toFixed(1) : '0.0',
-      unpaidUtilities: 1250 // 模拟固定值
+export default defineEventHandler(async (event) => {
+  try {
+    const resp = await fetchApartmentRoomsFromBackend({})
+    const totalRooms = resp.rooms.length
+    const occupiedRooms = resp.rooms.filter((r) => String(r.status || '').toLowerCase() === 'occupied').length
+    const availableRooms = Math.max(0, totalRooms - occupiedRooms)
+    const occupancyRate = totalRooms > 0 ? ((occupiedRooms / totalRooms) * 100).toFixed(1) : '0.0'
+
+    return {
+      source: resp.source || 'postgres',
+      stats: {
+        totalRooms,
+        occupiedRooms,
+        availableRooms,
+        pendingApplications: 0,
+        occupancyRate,
+        unpaidUtilities: 0,
+      },
     }
+  } catch (error) {
+    throw toProxyError(event, error)
   }
 })
-
-

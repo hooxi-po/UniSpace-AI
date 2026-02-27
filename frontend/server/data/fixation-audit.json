@@ -97,7 +97,808 @@
       "milestones": [],
       "attachments": [],
       "splitItems": [],
-      "roomFunctionPlan": [],
+      "roomFunctionPlan": [
+        {
+          "id": "PLAN-RM-BLD-001-101",
+          "buildingName": "博学楼",
+          "roomNo": "101",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-102",
+          "buildingName": "博学楼",
+          "roomNo": "102",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-103",
+          "buildingName": "博学楼",
+          "roomNo": "103",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-104",
+          "buildingName": "博学楼",
+          "roomNo": "104",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-105",
+          "buildingName": "博学楼",
+          "roomNo": "105",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-106",
+          "buildingName": "博学楼",
+          "roomNo": "106",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-107",
+          "buildingName": "博学楼",
+          "roomNo": "107",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-108",
+          "buildingName": "博学楼",
+          "roomNo": "108",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-109",
+          "buildingName": "博学楼",
+          "roomNo": "109",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-110",
+          "buildingName": "博学楼",
+          "roomNo": "110",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-111",
+          "buildingName": "博学楼",
+          "roomNo": "111",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-112",
+          "buildingName": "博学楼",
+          "roomNo": "112",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-113",
+          "buildingName": "博学楼",
+          "roomNo": "113",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-114",
+          "buildingName": "博学楼",
+          "roomNo": "114",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-115",
+          "buildingName": "博学楼",
+          "roomNo": "115",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-116",
+          "buildingName": "博学楼",
+          "roomNo": "116",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-117",
+          "buildingName": "博学楼",
+          "roomNo": "117",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-118",
+          "buildingName": "博学楼",
+          "roomNo": "118",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-119",
+          "buildingName": "博学楼",
+          "roomNo": "119",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-120",
+          "buildingName": "博学楼",
+          "roomNo": "120",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-201",
+          "buildingName": "博学楼",
+          "roomNo": "201",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-202",
+          "buildingName": "博学楼",
+          "roomNo": "202",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-203",
+          "buildingName": "博学楼",
+          "roomNo": "203",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-204",
+          "buildingName": "博学楼",
+          "roomNo": "204",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-205",
+          "buildingName": "博学楼",
+          "roomNo": "205",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-206",
+          "buildingName": "博学楼",
+          "roomNo": "206",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-207",
+          "buildingName": "博学楼",
+          "roomNo": "207",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-208",
+          "buildingName": "博学楼",
+          "roomNo": "208",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-209",
+          "buildingName": "博学楼",
+          "roomNo": "209",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-210",
+          "buildingName": "博学楼",
+          "roomNo": "210",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-211",
+          "buildingName": "博学楼",
+          "roomNo": "211",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-212",
+          "buildingName": "博学楼",
+          "roomNo": "212",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-213",
+          "buildingName": "博学楼",
+          "roomNo": "213",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-214",
+          "buildingName": "博学楼",
+          "roomNo": "214",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-215",
+          "buildingName": "博学楼",
+          "roomNo": "215",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-216",
+          "buildingName": "博学楼",
+          "roomNo": "216",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-217",
+          "buildingName": "博学楼",
+          "roomNo": "217",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-218",
+          "buildingName": "博学楼",
+          "roomNo": "218",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-219",
+          "buildingName": "博学楼",
+          "roomNo": "219",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-220",
+          "buildingName": "博学楼",
+          "roomNo": "220",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-301",
+          "buildingName": "博学楼",
+          "roomNo": "301",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-302",
+          "buildingName": "博学楼",
+          "roomNo": "302",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-303",
+          "buildingName": "博学楼",
+          "roomNo": "303",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-304",
+          "buildingName": "博学楼",
+          "roomNo": "304",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-305",
+          "buildingName": "博学楼",
+          "roomNo": "305",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-306",
+          "buildingName": "博学楼",
+          "roomNo": "306",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-307",
+          "buildingName": "博学楼",
+          "roomNo": "307",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-308",
+          "buildingName": "博学楼",
+          "roomNo": "308",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-309",
+          "buildingName": "博学楼",
+          "roomNo": "309",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-310",
+          "buildingName": "博学楼",
+          "roomNo": "310",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-311",
+          "buildingName": "博学楼",
+          "roomNo": "311",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-312",
+          "buildingName": "博学楼",
+          "roomNo": "312",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-313",
+          "buildingName": "博学楼",
+          "roomNo": "313",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-314",
+          "buildingName": "博学楼",
+          "roomNo": "314",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-315",
+          "buildingName": "博学楼",
+          "roomNo": "315",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-316",
+          "buildingName": "博学楼",
+          "roomNo": "316",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-317",
+          "buildingName": "博学楼",
+          "roomNo": "317",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-318",
+          "buildingName": "博学楼",
+          "roomNo": "318",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-319",
+          "buildingName": "博学楼",
+          "roomNo": "319",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-320",
+          "buildingName": "博学楼",
+          "roomNo": "320",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-401",
+          "buildingName": "博学楼",
+          "roomNo": "401",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-402",
+          "buildingName": "博学楼",
+          "roomNo": "402",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-403",
+          "buildingName": "博学楼",
+          "roomNo": "403",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-404",
+          "buildingName": "博学楼",
+          "roomNo": "404",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-405",
+          "buildingName": "博学楼",
+          "roomNo": "405",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-406",
+          "buildingName": "博学楼",
+          "roomNo": "406",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-407",
+          "buildingName": "博学楼",
+          "roomNo": "407",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-408",
+          "buildingName": "博学楼",
+          "roomNo": "408",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-409",
+          "buildingName": "博学楼",
+          "roomNo": "409",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-410",
+          "buildingName": "博学楼",
+          "roomNo": "410",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-411",
+          "buildingName": "博学楼",
+          "roomNo": "411",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-412",
+          "buildingName": "博学楼",
+          "roomNo": "412",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-413",
+          "buildingName": "博学楼",
+          "roomNo": "413",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-414",
+          "buildingName": "博学楼",
+          "roomNo": "414",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-415",
+          "buildingName": "博学楼",
+          "roomNo": "415",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-416",
+          "buildingName": "博学楼",
+          "roomNo": "416",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-417",
+          "buildingName": "博学楼",
+          "roomNo": "417",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-418",
+          "buildingName": "博学楼",
+          "roomNo": "418",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-419",
+          "buildingName": "博学楼",
+          "roomNo": "419",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-420",
+          "buildingName": "博学楼",
+          "roomNo": "420",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-501",
+          "buildingName": "博学楼",
+          "roomNo": "501",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-502",
+          "buildingName": "博学楼",
+          "roomNo": "502",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-503",
+          "buildingName": "博学楼",
+          "roomNo": "503",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-504",
+          "buildingName": "博学楼",
+          "roomNo": "504",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-505",
+          "buildingName": "博学楼",
+          "roomNo": "505",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-506",
+          "buildingName": "博学楼",
+          "roomNo": "506",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-507",
+          "buildingName": "博学楼",
+          "roomNo": "507",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-508",
+          "buildingName": "博学楼",
+          "roomNo": "508",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-509",
+          "buildingName": "博学楼",
+          "roomNo": "509",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-510",
+          "buildingName": "博学楼",
+          "roomNo": "510",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-511",
+          "buildingName": "博学楼",
+          "roomNo": "511",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-512",
+          "buildingName": "博学楼",
+          "roomNo": "512",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-513",
+          "buildingName": "博学楼",
+          "roomNo": "513",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-514",
+          "buildingName": "博学楼",
+          "roomNo": "514",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-515",
+          "buildingName": "博学楼",
+          "roomNo": "515",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-516",
+          "buildingName": "博学楼",
+          "roomNo": "516",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-517",
+          "buildingName": "博学楼",
+          "roomNo": "517",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-518",
+          "buildingName": "博学楼",
+          "roomNo": "518",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-519",
+          "buildingName": "博学楼",
+          "roomNo": "519",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-001-520",
+          "buildingName": "博学楼",
+          "roomNo": "520",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        }
+      ],
       "isOverdue": false,
       "isArchived": true,
       "source": "stock"
@@ -126,7 +927,1128 @@
       "milestones": [],
       "attachments": [],
       "splitItems": [],
-      "roomFunctionPlan": [],
+      "roomFunctionPlan": [
+        {
+          "id": "PLAN-RM-BLD-002-101",
+          "buildingName": "综合实验楼",
+          "roomNo": "101",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-102",
+          "buildingName": "综合实验楼",
+          "roomNo": "102",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-103",
+          "buildingName": "综合实验楼",
+          "roomNo": "103",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-104",
+          "buildingName": "综合实验楼",
+          "roomNo": "104",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-105",
+          "buildingName": "综合实验楼",
+          "roomNo": "105",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-106",
+          "buildingName": "综合实验楼",
+          "roomNo": "106",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-107",
+          "buildingName": "综合实验楼",
+          "roomNo": "107",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-108",
+          "buildingName": "综合实验楼",
+          "roomNo": "108",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-109",
+          "buildingName": "综合实验楼",
+          "roomNo": "109",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-110",
+          "buildingName": "综合实验楼",
+          "roomNo": "110",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-111",
+          "buildingName": "综合实验楼",
+          "roomNo": "111",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-112",
+          "buildingName": "综合实验楼",
+          "roomNo": "112",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-113",
+          "buildingName": "综合实验楼",
+          "roomNo": "113",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-114",
+          "buildingName": "综合实验楼",
+          "roomNo": "114",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-115",
+          "buildingName": "综合实验楼",
+          "roomNo": "115",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-116",
+          "buildingName": "综合实验楼",
+          "roomNo": "116",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-117",
+          "buildingName": "综合实验楼",
+          "roomNo": "117",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-118",
+          "buildingName": "综合实验楼",
+          "roomNo": "118",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-119",
+          "buildingName": "综合实验楼",
+          "roomNo": "119",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-120",
+          "buildingName": "综合实验楼",
+          "roomNo": "120",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-201",
+          "buildingName": "综合实验楼",
+          "roomNo": "201",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-202",
+          "buildingName": "综合实验楼",
+          "roomNo": "202",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-203",
+          "buildingName": "综合实验楼",
+          "roomNo": "203",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-204",
+          "buildingName": "综合实验楼",
+          "roomNo": "204",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-205",
+          "buildingName": "综合实验楼",
+          "roomNo": "205",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-206",
+          "buildingName": "综合实验楼",
+          "roomNo": "206",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-207",
+          "buildingName": "综合实验楼",
+          "roomNo": "207",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-208",
+          "buildingName": "综合实验楼",
+          "roomNo": "208",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-209",
+          "buildingName": "综合实验楼",
+          "roomNo": "209",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-210",
+          "buildingName": "综合实验楼",
+          "roomNo": "210",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-211",
+          "buildingName": "综合实验楼",
+          "roomNo": "211",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-212",
+          "buildingName": "综合实验楼",
+          "roomNo": "212",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-213",
+          "buildingName": "综合实验楼",
+          "roomNo": "213",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-214",
+          "buildingName": "综合实验楼",
+          "roomNo": "214",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-215",
+          "buildingName": "综合实验楼",
+          "roomNo": "215",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-216",
+          "buildingName": "综合实验楼",
+          "roomNo": "216",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-217",
+          "buildingName": "综合实验楼",
+          "roomNo": "217",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-218",
+          "buildingName": "综合实验楼",
+          "roomNo": "218",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-219",
+          "buildingName": "综合实验楼",
+          "roomNo": "219",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-220",
+          "buildingName": "综合实验楼",
+          "roomNo": "220",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-301",
+          "buildingName": "综合实验楼",
+          "roomNo": "301",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-302",
+          "buildingName": "综合实验楼",
+          "roomNo": "302",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-303",
+          "buildingName": "综合实验楼",
+          "roomNo": "303",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-304",
+          "buildingName": "综合实验楼",
+          "roomNo": "304",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-305",
+          "buildingName": "综合实验楼",
+          "roomNo": "305",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-306",
+          "buildingName": "综合实验楼",
+          "roomNo": "306",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-307",
+          "buildingName": "综合实验楼",
+          "roomNo": "307",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-308",
+          "buildingName": "综合实验楼",
+          "roomNo": "308",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-309",
+          "buildingName": "综合实验楼",
+          "roomNo": "309",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-310",
+          "buildingName": "综合实验楼",
+          "roomNo": "310",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-311",
+          "buildingName": "综合实验楼",
+          "roomNo": "311",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-312",
+          "buildingName": "综合实验楼",
+          "roomNo": "312",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-313",
+          "buildingName": "综合实验楼",
+          "roomNo": "313",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-314",
+          "buildingName": "综合实验楼",
+          "roomNo": "314",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-315",
+          "buildingName": "综合实验楼",
+          "roomNo": "315",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-316",
+          "buildingName": "综合实验楼",
+          "roomNo": "316",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-317",
+          "buildingName": "综合实验楼",
+          "roomNo": "317",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-318",
+          "buildingName": "综合实验楼",
+          "roomNo": "318",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-319",
+          "buildingName": "综合实验楼",
+          "roomNo": "319",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-320",
+          "buildingName": "综合实验楼",
+          "roomNo": "320",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-401",
+          "buildingName": "综合实验楼",
+          "roomNo": "401",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-402",
+          "buildingName": "综合实验楼",
+          "roomNo": "402",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-403",
+          "buildingName": "综合实验楼",
+          "roomNo": "403",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-404",
+          "buildingName": "综合实验楼",
+          "roomNo": "404",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-405",
+          "buildingName": "综合实验楼",
+          "roomNo": "405",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-406",
+          "buildingName": "综合实验楼",
+          "roomNo": "406",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-407",
+          "buildingName": "综合实验楼",
+          "roomNo": "407",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-408",
+          "buildingName": "综合实验楼",
+          "roomNo": "408",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-409",
+          "buildingName": "综合实验楼",
+          "roomNo": "409",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-410",
+          "buildingName": "综合实验楼",
+          "roomNo": "410",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-411",
+          "buildingName": "综合实验楼",
+          "roomNo": "411",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-412",
+          "buildingName": "综合实验楼",
+          "roomNo": "412",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-413",
+          "buildingName": "综合实验楼",
+          "roomNo": "413",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-414",
+          "buildingName": "综合实验楼",
+          "roomNo": "414",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-415",
+          "buildingName": "综合实验楼",
+          "roomNo": "415",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-416",
+          "buildingName": "综合实验楼",
+          "roomNo": "416",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-417",
+          "buildingName": "综合实验楼",
+          "roomNo": "417",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-418",
+          "buildingName": "综合实验楼",
+          "roomNo": "418",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-419",
+          "buildingName": "综合实验楼",
+          "roomNo": "419",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-420",
+          "buildingName": "综合实验楼",
+          "roomNo": "420",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-501",
+          "buildingName": "综合实验楼",
+          "roomNo": "501",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-502",
+          "buildingName": "综合实验楼",
+          "roomNo": "502",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-503",
+          "buildingName": "综合实验楼",
+          "roomNo": "503",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-504",
+          "buildingName": "综合实验楼",
+          "roomNo": "504",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-505",
+          "buildingName": "综合实验楼",
+          "roomNo": "505",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-506",
+          "buildingName": "综合实验楼",
+          "roomNo": "506",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-507",
+          "buildingName": "综合实验楼",
+          "roomNo": "507",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-508",
+          "buildingName": "综合实验楼",
+          "roomNo": "508",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-509",
+          "buildingName": "综合实验楼",
+          "roomNo": "509",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-510",
+          "buildingName": "综合实验楼",
+          "roomNo": "510",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-511",
+          "buildingName": "综合实验楼",
+          "roomNo": "511",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-512",
+          "buildingName": "综合实验楼",
+          "roomNo": "512",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-513",
+          "buildingName": "综合实验楼",
+          "roomNo": "513",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-514",
+          "buildingName": "综合实验楼",
+          "roomNo": "514",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-515",
+          "buildingName": "综合实验楼",
+          "roomNo": "515",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-516",
+          "buildingName": "综合实验楼",
+          "roomNo": "516",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-517",
+          "buildingName": "综合实验楼",
+          "roomNo": "517",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-518",
+          "buildingName": "综合实验楼",
+          "roomNo": "518",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-519",
+          "buildingName": "综合实验楼",
+          "roomNo": "519",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-520",
+          "buildingName": "综合实验楼",
+          "roomNo": "520",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-601",
+          "buildingName": "综合实验楼",
+          "roomNo": "601",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-602",
+          "buildingName": "综合实验楼",
+          "roomNo": "602",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-603",
+          "buildingName": "综合实验楼",
+          "roomNo": "603",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-604",
+          "buildingName": "综合实验楼",
+          "roomNo": "604",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-605",
+          "buildingName": "综合实验楼",
+          "roomNo": "605",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-606",
+          "buildingName": "综合实验楼",
+          "roomNo": "606",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-607",
+          "buildingName": "综合实验楼",
+          "roomNo": "607",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-608",
+          "buildingName": "综合实验楼",
+          "roomNo": "608",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-609",
+          "buildingName": "综合实验楼",
+          "roomNo": "609",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-610",
+          "buildingName": "综合实验楼",
+          "roomNo": "610",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-611",
+          "buildingName": "综合实验楼",
+          "roomNo": "611",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-612",
+          "buildingName": "综合实验楼",
+          "roomNo": "612",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-613",
+          "buildingName": "综合实验楼",
+          "roomNo": "613",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-614",
+          "buildingName": "综合实验楼",
+          "roomNo": "614",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-615",
+          "buildingName": "综合实验楼",
+          "roomNo": "615",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-616",
+          "buildingName": "综合实验楼",
+          "roomNo": "616",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-617",
+          "buildingName": "综合实验楼",
+          "roomNo": "617",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-618",
+          "buildingName": "综合实验楼",
+          "roomNo": "618",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-619",
+          "buildingName": "综合实验楼",
+          "roomNo": "619",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-620",
+          "buildingName": "综合实验楼",
+          "roomNo": "620",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-701",
+          "buildingName": "综合实验楼",
+          "roomNo": "701",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-702",
+          "buildingName": "综合实验楼",
+          "roomNo": "702",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-703",
+          "buildingName": "综合实验楼",
+          "roomNo": "703",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-704",
+          "buildingName": "综合实验楼",
+          "roomNo": "704",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-705",
+          "buildingName": "综合实验楼",
+          "roomNo": "705",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-706",
+          "buildingName": "综合实验楼",
+          "roomNo": "706",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-707",
+          "buildingName": "综合实验楼",
+          "roomNo": "707",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-708",
+          "buildingName": "综合实验楼",
+          "roomNo": "708",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-709",
+          "buildingName": "综合实验楼",
+          "roomNo": "709",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-710",
+          "buildingName": "综合实验楼",
+          "roomNo": "710",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-711",
+          "buildingName": "综合实验楼",
+          "roomNo": "711",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-712",
+          "buildingName": "综合实验楼",
+          "roomNo": "712",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-713",
+          "buildingName": "综合实验楼",
+          "roomNo": "713",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-714",
+          "buildingName": "综合实验楼",
+          "roomNo": "714",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-715",
+          "buildingName": "综合实验楼",
+          "roomNo": "715",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-716",
+          "buildingName": "综合实验楼",
+          "roomNo": "716",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-717",
+          "buildingName": "综合实验楼",
+          "roomNo": "717",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-718",
+          "buildingName": "综合实验楼",
+          "roomNo": "718",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-719",
+          "buildingName": "综合实验楼",
+          "roomNo": "719",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-002-720",
+          "buildingName": "综合实验楼",
+          "roomNo": "720",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        }
+      ],
       "isOverdue": false,
       "isArchived": true,
       "source": "stock"
@@ -155,7 +2077,968 @@
       "milestones": [],
       "attachments": [],
       "splitItems": [],
-      "roomFunctionPlan": [],
+      "roomFunctionPlan": [
+        {
+          "id": "PLAN-RM-BLD-003-101",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "101",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-102",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "102",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-103",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "103",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-104",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "104",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-105",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "105",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-106",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "106",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-107",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "107",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-108",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "108",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-109",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "109",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-110",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "110",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-111",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "111",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-112",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "112",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-113",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "113",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-114",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "114",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-115",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "115",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-116",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "116",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-117",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "117",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-118",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "118",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-119",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "119",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-120",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "120",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-201",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "201",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-202",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "202",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-203",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "203",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-204",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "204",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-205",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "205",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-206",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "206",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-207",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "207",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-208",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "208",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-209",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "209",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-210",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "210",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-211",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "211",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-212",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "212",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-213",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "213",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-214",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "214",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-215",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "215",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-216",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "216",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-217",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "217",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-218",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "218",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-219",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "219",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-220",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "220",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-301",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "301",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-302",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "302",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-303",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "303",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-304",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "304",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-305",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "305",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-306",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "306",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-307",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "307",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-308",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "308",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-309",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "309",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-310",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "310",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-311",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "311",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-312",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "312",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-313",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "313",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-314",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "314",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-315",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "315",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-316",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "316",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-317",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "317",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-318",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "318",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-319",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "319",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-320",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "320",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-401",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "401",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-402",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "402",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-403",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "403",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-404",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "404",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-405",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "405",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-406",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "406",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-407",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "407",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-408",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "408",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-409",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "409",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-410",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "410",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-411",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "411",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-412",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "412",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-413",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "413",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-414",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "414",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-415",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "415",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-416",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "416",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-417",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "417",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-418",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "418",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-419",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "419",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-420",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "420",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-501",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "501",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-502",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "502",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-503",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "503",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-504",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "504",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-505",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "505",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-506",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "506",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-507",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "507",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-508",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "508",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-509",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "509",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-510",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "510",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-511",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "511",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-512",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "512",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-513",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "513",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-514",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "514",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-515",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "515",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-516",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "516",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-517",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "517",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-518",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "518",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-519",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "519",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-520",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "520",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-601",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "601",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-602",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "602",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-603",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "603",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-604",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "604",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-605",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "605",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-606",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "606",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-607",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "607",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-608",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "608",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-609",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "609",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-610",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "610",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-611",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "611",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-612",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "612",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-613",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "613",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-614",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "614",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-615",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "615",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-616",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "616",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-617",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "617",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-618",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "618",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-619",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "619",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-003-620",
+          "buildingName": "学生宿舍楼",
+          "roomNo": "620",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        }
+      ],
       "isOverdue": false,
       "isArchived": true,
       "source": "stock"
@@ -184,7 +3067,968 @@
       "milestones": [],
       "attachments": [],
       "splitItems": [],
-      "roomFunctionPlan": [],
+      "roomFunctionPlan": [
+        {
+          "id": "PLAN-RM-BLD-004-101",
+          "buildingName": "创新创业中心",
+          "roomNo": "101",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-102",
+          "buildingName": "创新创业中心",
+          "roomNo": "102",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-103",
+          "buildingName": "创新创业中心",
+          "roomNo": "103",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-104",
+          "buildingName": "创新创业中心",
+          "roomNo": "104",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-105",
+          "buildingName": "创新创业中心",
+          "roomNo": "105",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-106",
+          "buildingName": "创新创业中心",
+          "roomNo": "106",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-107",
+          "buildingName": "创新创业中心",
+          "roomNo": "107",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-108",
+          "buildingName": "创新创业中心",
+          "roomNo": "108",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-109",
+          "buildingName": "创新创业中心",
+          "roomNo": "109",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-110",
+          "buildingName": "创新创业中心",
+          "roomNo": "110",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-111",
+          "buildingName": "创新创业中心",
+          "roomNo": "111",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-112",
+          "buildingName": "创新创业中心",
+          "roomNo": "112",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-113",
+          "buildingName": "创新创业中心",
+          "roomNo": "113",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-114",
+          "buildingName": "创新创业中心",
+          "roomNo": "114",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-115",
+          "buildingName": "创新创业中心",
+          "roomNo": "115",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-116",
+          "buildingName": "创新创业中心",
+          "roomNo": "116",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-117",
+          "buildingName": "创新创业中心",
+          "roomNo": "117",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-118",
+          "buildingName": "创新创业中心",
+          "roomNo": "118",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-119",
+          "buildingName": "创新创业中心",
+          "roomNo": "119",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-120",
+          "buildingName": "创新创业中心",
+          "roomNo": "120",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-201",
+          "buildingName": "创新创业中心",
+          "roomNo": "201",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-202",
+          "buildingName": "创新创业中心",
+          "roomNo": "202",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-203",
+          "buildingName": "创新创业中心",
+          "roomNo": "203",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-204",
+          "buildingName": "创新创业中心",
+          "roomNo": "204",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-205",
+          "buildingName": "创新创业中心",
+          "roomNo": "205",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-206",
+          "buildingName": "创新创业中心",
+          "roomNo": "206",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-207",
+          "buildingName": "创新创业中心",
+          "roomNo": "207",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-208",
+          "buildingName": "创新创业中心",
+          "roomNo": "208",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-209",
+          "buildingName": "创新创业中心",
+          "roomNo": "209",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-210",
+          "buildingName": "创新创业中心",
+          "roomNo": "210",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-211",
+          "buildingName": "创新创业中心",
+          "roomNo": "211",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-212",
+          "buildingName": "创新创业中心",
+          "roomNo": "212",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-213",
+          "buildingName": "创新创业中心",
+          "roomNo": "213",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-214",
+          "buildingName": "创新创业中心",
+          "roomNo": "214",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-215",
+          "buildingName": "创新创业中心",
+          "roomNo": "215",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-216",
+          "buildingName": "创新创业中心",
+          "roomNo": "216",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-217",
+          "buildingName": "创新创业中心",
+          "roomNo": "217",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-218",
+          "buildingName": "创新创业中心",
+          "roomNo": "218",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-219",
+          "buildingName": "创新创业中心",
+          "roomNo": "219",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-220",
+          "buildingName": "创新创业中心",
+          "roomNo": "220",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-301",
+          "buildingName": "创新创业中心",
+          "roomNo": "301",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-302",
+          "buildingName": "创新创业中心",
+          "roomNo": "302",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-303",
+          "buildingName": "创新创业中心",
+          "roomNo": "303",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-304",
+          "buildingName": "创新创业中心",
+          "roomNo": "304",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-305",
+          "buildingName": "创新创业中心",
+          "roomNo": "305",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-306",
+          "buildingName": "创新创业中心",
+          "roomNo": "306",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-307",
+          "buildingName": "创新创业中心",
+          "roomNo": "307",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-308",
+          "buildingName": "创新创业中心",
+          "roomNo": "308",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-309",
+          "buildingName": "创新创业中心",
+          "roomNo": "309",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-310",
+          "buildingName": "创新创业中心",
+          "roomNo": "310",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-311",
+          "buildingName": "创新创业中心",
+          "roomNo": "311",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-312",
+          "buildingName": "创新创业中心",
+          "roomNo": "312",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-313",
+          "buildingName": "创新创业中心",
+          "roomNo": "313",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-314",
+          "buildingName": "创新创业中心",
+          "roomNo": "314",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-315",
+          "buildingName": "创新创业中心",
+          "roomNo": "315",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-316",
+          "buildingName": "创新创业中心",
+          "roomNo": "316",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-317",
+          "buildingName": "创新创业中心",
+          "roomNo": "317",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-318",
+          "buildingName": "创新创业中心",
+          "roomNo": "318",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-319",
+          "buildingName": "创新创业中心",
+          "roomNo": "319",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-320",
+          "buildingName": "创新创业中心",
+          "roomNo": "320",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-401",
+          "buildingName": "创新创业中心",
+          "roomNo": "401",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-402",
+          "buildingName": "创新创业中心",
+          "roomNo": "402",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-403",
+          "buildingName": "创新创业中心",
+          "roomNo": "403",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-404",
+          "buildingName": "创新创业中心",
+          "roomNo": "404",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-405",
+          "buildingName": "创新创业中心",
+          "roomNo": "405",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-406",
+          "buildingName": "创新创业中心",
+          "roomNo": "406",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-407",
+          "buildingName": "创新创业中心",
+          "roomNo": "407",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-408",
+          "buildingName": "创新创业中心",
+          "roomNo": "408",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-409",
+          "buildingName": "创新创业中心",
+          "roomNo": "409",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-410",
+          "buildingName": "创新创业中心",
+          "roomNo": "410",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-411",
+          "buildingName": "创新创业中心",
+          "roomNo": "411",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-412",
+          "buildingName": "创新创业中心",
+          "roomNo": "412",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-413",
+          "buildingName": "创新创业中心",
+          "roomNo": "413",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-414",
+          "buildingName": "创新创业中心",
+          "roomNo": "414",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-415",
+          "buildingName": "创新创业中心",
+          "roomNo": "415",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-416",
+          "buildingName": "创新创业中心",
+          "roomNo": "416",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-417",
+          "buildingName": "创新创业中心",
+          "roomNo": "417",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-418",
+          "buildingName": "创新创业中心",
+          "roomNo": "418",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-419",
+          "buildingName": "创新创业中心",
+          "roomNo": "419",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-420",
+          "buildingName": "创新创业中心",
+          "roomNo": "420",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-501",
+          "buildingName": "创新创业中心",
+          "roomNo": "501",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-502",
+          "buildingName": "创新创业中心",
+          "roomNo": "502",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-503",
+          "buildingName": "创新创业中心",
+          "roomNo": "503",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-504",
+          "buildingName": "创新创业中心",
+          "roomNo": "504",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-505",
+          "buildingName": "创新创业中心",
+          "roomNo": "505",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-506",
+          "buildingName": "创新创业中心",
+          "roomNo": "506",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-507",
+          "buildingName": "创新创业中心",
+          "roomNo": "507",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-508",
+          "buildingName": "创新创业中心",
+          "roomNo": "508",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-509",
+          "buildingName": "创新创业中心",
+          "roomNo": "509",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-510",
+          "buildingName": "创新创业中心",
+          "roomNo": "510",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-511",
+          "buildingName": "创新创业中心",
+          "roomNo": "511",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-512",
+          "buildingName": "创新创业中心",
+          "roomNo": "512",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-513",
+          "buildingName": "创新创业中心",
+          "roomNo": "513",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-514",
+          "buildingName": "创新创业中心",
+          "roomNo": "514",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-515",
+          "buildingName": "创新创业中心",
+          "roomNo": "515",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-516",
+          "buildingName": "创新创业中心",
+          "roomNo": "516",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-517",
+          "buildingName": "创新创业中心",
+          "roomNo": "517",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-518",
+          "buildingName": "创新创业中心",
+          "roomNo": "518",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-519",
+          "buildingName": "创新创业中心",
+          "roomNo": "519",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-520",
+          "buildingName": "创新创业中心",
+          "roomNo": "520",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-601",
+          "buildingName": "创新创业中心",
+          "roomNo": "601",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-602",
+          "buildingName": "创新创业中心",
+          "roomNo": "602",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-603",
+          "buildingName": "创新创业中心",
+          "roomNo": "603",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-604",
+          "buildingName": "创新创业中心",
+          "roomNo": "604",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-605",
+          "buildingName": "创新创业中心",
+          "roomNo": "605",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-606",
+          "buildingName": "创新创业中心",
+          "roomNo": "606",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-607",
+          "buildingName": "创新创业中心",
+          "roomNo": "607",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-608",
+          "buildingName": "创新创业中心",
+          "roomNo": "608",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-609",
+          "buildingName": "创新创业中心",
+          "roomNo": "609",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-610",
+          "buildingName": "创新创业中心",
+          "roomNo": "610",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-611",
+          "buildingName": "创新创业中心",
+          "roomNo": "611",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-612",
+          "buildingName": "创新创业中心",
+          "roomNo": "612",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-613",
+          "buildingName": "创新创业中心",
+          "roomNo": "613",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-614",
+          "buildingName": "创新创业中心",
+          "roomNo": "614",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-615",
+          "buildingName": "创新创业中心",
+          "roomNo": "615",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-616",
+          "buildingName": "创新创业中心",
+          "roomNo": "616",
+          "area": 45,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-617",
+          "buildingName": "创新创业中心",
+          "roomNo": "617",
+          "area": 50,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-618",
+          "buildingName": "创新创业中心",
+          "roomNo": "618",
+          "area": 55,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-619",
+          "buildingName": "创新创业中心",
+          "roomNo": "619",
+          "area": 60,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        },
+        {
+          "id": "PLAN-RM-BLD-004-620",
+          "buildingName": "创新创业中心",
+          "roomNo": "620",
+          "area": 40,
+          "mainCategory": "Administration",
+          "subCategory": "CollegeOffice"
+        }
+      ],
       "isOverdue": false,
       "isArchived": true,
       "source": "stock"

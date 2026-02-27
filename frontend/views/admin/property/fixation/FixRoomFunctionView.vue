@@ -204,7 +204,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import { AlertCircle, CheckCircle2, Layers, Plus, Save, Search, Trash2, X } from 'lucide-vue-next'
-import { useFixationAudit } from '~/composables/useFixationAudit'
+import { useFixationAudit } from '~/composables/property/useFixationAudit'
 import { fixationService } from '~/services/fixation'
 import type { RoomPlanItem } from '~/server/utils/fixation-audit-db'
 

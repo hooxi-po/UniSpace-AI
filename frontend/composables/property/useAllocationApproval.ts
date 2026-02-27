@@ -14,7 +14,6 @@ export function useAllocationApproval() {
     prependItem,
   } = useListFetcher<AllocationRequest>(async () => {
     const res = await allocationService.fetchRequests()
-    // useListFetcher 会把 list 以 readonly 返回；这里把数据深拷贝成可变结构，避免 vue-tsc 的 readonly 不兼容
     return (structuredClone ? structuredClone(res.list) : JSON.parse(JSON.stringify(res.list))) as AllocationRequest[]
   }, { immediate: false })
 
@@ -145,7 +144,7 @@ export function useAllocationApproval() {
         action: 'Submit' as const,
         comment: '提交申请',
         timestamp: new Date().toISOString(),
-      }]
+      }],
     })
     prependItem(res.request)
     return res.request
@@ -154,7 +153,7 @@ export function useAllocationApproval() {
   async function allocateRooms(req: AllocationRequest, roomIds: string[]) {
     const res = await allocationService.patchRequest(req.id, {
       status: 'Allocated',
-      allocatedRooms: roomIds
+      allocatedRooms: roomIds,
     }, `用房审批：分配房间（${req.department} / ${req.id}），共 ${roomIds.length} 间`)
     updateItem(req.id, res.request)
     return res.request
@@ -191,4 +190,5 @@ export function useAllocationApproval() {
     getStatusColorClass,
   }
 }
+
 

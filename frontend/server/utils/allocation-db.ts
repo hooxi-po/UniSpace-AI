@@ -11,6 +11,7 @@ export type AllocationStatus =
 
 export type AdjustmentRequest = {
   id: string
+  requestType?: 'Exchange' | 'Return'
   department: string
   applicant: string
   fromBuildingName: string

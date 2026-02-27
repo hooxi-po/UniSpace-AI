@@ -190,14 +190,39 @@ function buildDemoDataset(rooms: Array<Record<string, any>>) {
   return { spaces, contracts, rentBills }
 }
 
-function isInitializedDemoData(db: any) {
-  if (!db || !Array.isArray(db.spaces)) return false
-  if (db.spaces.length === 0) return false
-  return db.spaces.every((s: any) => String(s.buildingName || '').includes('创新创业中心'))
+function normalizePersistedOperatingData(db: any) {
+  if (!db || typeof db !== 'object') return null
+
+  const spaces = Array.isArray(db.spaces) ? db.spaces : []
+  const contracts = Array.isArray(db.contracts) ? db.contracts : []
+  const rentBills = Array.isArray(db.rentBills) ? db.rentBills : []
+
+  // Only initialize demo data when storage is effectively empty.
+  const hasPersistedData = spaces.length > 0 || contracts.length > 0 || rentBills.length > 0
+  if (!hasPersistedData) return null
+
+  return { spaces, contracts, rentBills }
 }
 
 export default defineEventHandler(async (event) => {
   try {
+    let db: any = null
+    try {
+      db = await readOperatingDB()
+    } catch {
+      db = null
+    }
+
+    const existingData = normalizePersistedOperatingData(db)
+    if (existingData) {
+      return {
+        source: 'backend-demo',
+        spaces: existingData.spaces,
+        contracts: existingData.contracts,
+        rentBills: existingData.rentBills,
+      }
+    }
+
     const backendBaseUrl = getBackendBaseUrl()
     const roomsResp = await ofetch<{ source: string; rooms: Array<Record<string, any>> }>(
       `${backendBaseUrl}/api/v1/property/rooms`,
@@ -214,22 +239,13 @@ export default defineEventHandler(async (event) => {
       return name.includes('创新创业中心')
     })
 
-    let db: any = null
+    const initialized = buildDemoDataset(innovationRooms)
     try {
-      db = await readOperatingDB()
+      await writeOperatingDB(initialized as any)
     } catch {
-      db = null
+      // ignore persistence failures in dev mode
     }
-
-    if (!isInitializedDemoData(db)) {
-      const initialized = buildDemoDataset(innovationRooms)
-      try {
-        await writeOperatingDB(initialized as any)
-      } catch {
-        // ignore persistence failures in dev mode
-      }
-      db = initialized
-    }
+    db = initialized
 
     return {
       source: 'backend-demo',

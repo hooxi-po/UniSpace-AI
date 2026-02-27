@@ -10,9 +10,13 @@
           <RefreshCw :size="16" :class="adjustmentsLoading ? 'spinning' : ''" />
           刷新
         </button>
-        <button class="btn btn--primary" @click="showAdjustmentModal = true">
-          <Plus :size="16" />
-          新增调整申请
+        <button class="btn" @click="openAdjustmentModal('Exchange')">
+          <ArrowLeftRight :size="16" />
+          新增换房申请
+        </button>
+        <button class="btn btn--primary" @click="openAdjustmentModal('Return')">
+          <RotateCcw :size="16" />
+          新增退房申请
         </button>
       </div>
     </div>
@@ -42,7 +46,8 @@
                 <Eye :size="14" /> 查看
               </button>
               <button v-if="it.status === 'Pending'" class="btn btn--mini" @click="approve(it.id)">审批通过</button>
-              <button v-if="it.status === 'Approved'" class="btn btn--mini" @click="allocate(it.id)">分配房间</button>
+              <button v-if="it.status === 'Approved' && !isReturnAdjustment(it)" class="btn btn--mini" @click="allocate(it.id)">分配房间</button>
+              <button v-if="it.status === 'Approved' && isReturnAdjustment(it)" class="btn btn--mini" @click="complete(it.id)">确认完成</button>
               <button v-if="it.status === 'Allocated'" class="btn btn--mini" @click="complete(it.id)">确认完成</button>
             </td>
           </tr>
@@ -64,7 +69,7 @@
 
     <AdjustmentRequestModal
       v-if="showAdjustmentModal"
-      type="Exchange"
+      :type="adjustmentType"
       :buildings="buildingOptions"
       @close="showAdjustmentModal = false"
       @submit="onCreateAdjustment"
@@ -91,7 +96,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { ArrowLeftRight, RotateCcw, RefreshCw, Eye, Plus } from 'lucide-vue-next'
+import { ArrowLeftRight, RotateCcw, RefreshCw, Eye } from 'lucide-vue-next'
 import { useAllocationAdjustment } from '~/composables/property/useAllocationAdjustment'
 import AdjustmentRequestModal from '~/components/admin/property/allocation/components/AdjustmentRequestModal.vue'
 import AdjustmentDetailModal from '~/components/admin/property/allocation/components/AdjustmentDetailModal.vue'
@@ -114,6 +119,7 @@ const {
 } = useAllocationAdjustment()
 
 const showAdjustmentModal = ref(false)
+const adjustmentType = ref<'Exchange' | 'Return'>('Exchange')
 const showBorrowModal = ref(false)
 const detailItem = ref<any>(null)
 
@@ -135,38 +141,68 @@ function openDetail(item: any) {
   detailItem.value = item
 }
 
+function openAdjustmentModal(type: 'Exchange' | 'Return') {
+  adjustmentType.value = type
+  showAdjustmentModal.value = true
+}
+
+function isReturnAdjustment(item: any) {
+  if (!item) return false
+  if (item.requestType === 'Return') return true
+  const id = String(item.id || '')
+  const reason = String(item.reason || '')
+  return id.startsWith('RET-') || reason.includes('退房')
+}
+
+function syncDetailItem(updated: any) {
+  if (!updated || !detailItem.value) return
+  if (detailItem.value.id !== updated.id) return
+  detailItem.value = updated
+}
+
 async function onCreateAdjustment(payload: any) {
   await createAdjustment(payload)
   showAdjustmentModal.value = false
 }
 
 async function approve(id: string) {
-  await approveAdjustment(id)
+  const updated = await approveAdjustment(id)
+  syncDetailItem(updated)
 }
 
 async function allocate(id: string) {
+  const current = adjustments.value.find((it: any) => it.id === id) || detailItem.value
+  if (isReturnAdjustment(current)) {
+    const updated = await completeAdjustment(id)
+    syncDetailItem(updated)
+    return
+  }
+
   const candidate = (stockRooms.value || []).find((r: any) => r.status === 'Empty')
   if (!candidate) {
     alert('暂无可分配空置房间')
     return
   }
-  await allocateAdjustment(id, {
+  const updated = await allocateAdjustment(id, {
     buildingName: candidate.buildingName,
     roomNo: candidate.roomNo,
     area: Number(candidate.area || 0),
   })
+  syncDetailItem(updated)
 }
 
 async function allocateFromModal(id: string, room: any) {
-  await allocateAdjustment(id, {
+  const updated = await allocateAdjustment(id, {
     buildingName: room.buildingName,
     roomNo: room.roomNo,
     area: Number(room.area || 0),
   })
+  syncDetailItem(updated)
 }
 
 async function complete(id: string) {
-  await completeAdjustment(id)
+  const updated = await completeAdjustment(id)
+  syncDetailItem(updated)
 }
 
 async function onCreateBorrow(payload: any) {

@@ -135,7 +135,9 @@ const emit = defineEmits<{
 const selectedRoom = ref<any>(null)
 
 const isReturnRequest = computed(() => {
-  return props.request?.id?.startsWith('RET-') || props.request?.reason?.includes('退房')
+  if (!props.request) return false
+  if (props.request.requestType === 'Return') return true
+  return props.request.id?.startsWith('RET-') || props.request.reason?.includes('退房')
 })
 
 const availableRooms = computed(() => props.stockRooms.filter(r => r.status === 'Empty'))
@@ -340,4 +342,3 @@ function getStatusClass(s: string) {
 .badgeGreen { background: #ecfdf5; color: #047857; }
 .badgeGray { background: #f3f4f6; color: #374151; }
 </style>
-

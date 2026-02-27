@@ -45,6 +45,14 @@
         </select>
       </label>
 
+      <label class="field">
+        <span class="label">紧急程度</span>
+        <select v-model="applyForm.urgency" class="select">
+          <option value="Normal">普通</option>
+          <option value="Urgent">紧急</option>
+        </select>
+      </label>
+
       <label class="field field--full">
         <span class="label">申请理由</span>
         <textarea v-model.trim="applyForm.reason" class="textarea" rows="4" placeholder="请填写申请背景与用途说明" required />

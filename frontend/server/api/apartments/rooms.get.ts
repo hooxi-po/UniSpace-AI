@@ -1,36 +1,28 @@
-import { getQuery }from 'h3'
-import { ofetch }from 'ofetch'
-import { getBackendBaseUrl, toProxyError }from '~/server/utils/backend-proxy'
+import { getQuery } from 'h3'
+import { fetchApartmentRoomsFromBackend, paginateApartmentRooms } from '~/server/utils/apartment-rooms'
+import { toProxyError } from '~/server/utils/backend-proxy'
 
 export default defineEventHandler(async (event) => {
   try {
     const query = getQuery(event)
-    const backendBaseUrl = getBackendBaseUrl()
-
-    const resp = await ofetch<{
-      source: string
-      rooms: Array<Record<string, any>>
-    }>(`${backendBaseUrl}/api/v1/property/rooms`, {
-      query: {
-        type: query.type,
-        buildingCode: query.buildingCode,
-        status: query.status,
-        limit: query.limit ?? 1000,
-        offset: query.offset ?? 0,
-      },
+    const resp = await fetchApartmentRoomsFromBackend({
+      type: query.type,
+      buildingCode: query.buildingCode,
+      status: query.status,
     })
+    const pagedRooms = paginateApartmentRooms(resp.rooms || [], query.limit, query.offset)
 
     return {
       source: resp.source || 'postgres',
-      rooms: (resp.rooms || []).map((r) => {
-        const roomType = String(r.type || '')
-        const normalizedType = roomType === 'TeacherApartment' || roomType === 'Student'
-          ? roomType
-          : roomType.toLowerCase().includes('student')
+      rooms: pagedRooms.reduce<Array<Record<string, any>>>((list, r) => {
+        const normalizedType = r.type === 'TeacherApartment'
+          ? 'TeacherApartment'
+          : r.type === 'Student'
             ? 'Student'
-            : 'TeacherApartment'
+            : null
+        if (!normalizedType) return list
 
-        return {
+        list.push({
           id: String(r.id || ''),
           buildingCode: String(r.building_code || ''),
           buildingName: String(r.master_building_name || r.building_name || ''),
@@ -44,10 +36,11 @@ export default defineEventHandler(async (event) => {
           deposit: normalizedType === 'TeacherApartment' ? 1600 : 400,
           facilities: ['空调', '热水器', '床', '衣柜'],
           layout: normalizedType === 'TeacherApartment' ? '一室一厅' : '四人间',
-        }
-      }),
+        })
+        return list
+      }, []),
     }
-  }catch (error) {
+  } catch (error) {
     throw toProxyError(event, error)
   }
 })

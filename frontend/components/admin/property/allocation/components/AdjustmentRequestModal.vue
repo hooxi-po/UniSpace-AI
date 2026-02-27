@@ -77,7 +77,7 @@ const isValid = computed(() => {
 
 function submit() {
   if (!isValid.value) return
-  emit('submit', { ...form })
+  emit('submit', { ...form, requestType: props.type })
 }
 </script>
 
@@ -179,4 +179,3 @@ label {
   cursor: not-allowed;
 }
 </style>
-

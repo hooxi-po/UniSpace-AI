@@ -1,26 +1,26 @@
-import { ofetch }from 'ofetch'
-import { getBackendBaseUrl, toProxyError }from '~/server/utils/backend-proxy'
+import { fetchApartmentRoomsFromBackend } from '~/server/utils/apartment-rooms'
+import { toProxyError } from '~/server/utils/backend-proxy'
 
 export default defineEventHandler(async (event) => {
   try {
-    const backendBaseUrl = getBackendBaseUrl()
-    const resp = await ofetch<{
-      source: string
-      stats: {
-        totalRooms: number
-        occupiedRooms: number
-        availableRooms: number
-        pendingApplications: number
-        occupancyRate: string
-        unpaidUtilities: number
-      }
-    }>(`${backendBaseUrl}/api/v1/property/overview`)
+    const resp = await fetchApartmentRoomsFromBackend({})
+    const totalRooms = resp.rooms.length
+    const occupiedRooms = resp.rooms.filter((r) => String(r.status || '').toLowerCase() === 'occupied').length
+    const availableRooms = Math.max(0, totalRooms - occupiedRooms)
+    const occupancyRate = totalRooms > 0 ? ((occupiedRooms / totalRooms) * 100).toFixed(1) : '0.0'
 
     return {
       source: resp.source || 'postgres',
-      stats: resp.stats,
+      stats: {
+        totalRooms,
+        occupiedRooms,
+        availableRooms,
+        pendingApplications: 0,
+        occupancyRate,
+        unpaidUtilities: 0,
+      },
     }
-  }catch (error) {
+  } catch (error) {
     throw toProxyError(event, error)
   }
 })

@@ -71,6 +71,7 @@ const dataSources = {
   pipeNodes: new Cesium.CustomDataSource('pipeNodes'),
   sewage: new Cesium.CustomDataSource('sewage'),
   drain: new Cesium.CustomDataSource('drain'),
+  models: new Cesium.CustomDataSource('models'),
 }
 
 const normalizedBackendBaseUrl = computed(() => normalizeBackendBaseUrl(props.backendBaseUrl))
@@ -88,8 +89,35 @@ const dynamicLayerQueryKey = ref<Record<LayerName, string>>({
   pipeNodes: '',
   buildings: '',
   green: '',
+  models: '',
 })
 let dynamicLayerReloadTimer: ReturnType<typeof setTimeout> | null = null
+
+type BuildingReplacementModel = {
+  name: string
+  url: string
+}
+
+type BuildingReplacementCandidate = {
+  id: string
+  center: Cesium.Cartesian3
+  heading: number
+  footprintTargetSize: number
+  originalProperties: Record<string, unknown>
+}
+
+const BUILDING_REPLACEMENT_MODEL: BuildingReplacementModel = {
+  name: 'Office 建筑模型',
+  url: '/models/officeBuild.glb',
+}
+const BUILDING_REPLACEMENT_TARGET_ID = 'building_test_1'
+const BUILDING_REPLACEMENT_TARGET_NAME = '测试建筑1'
+
+const MODEL_NATIVE_SIZE_FALLBACK = 30
+const MODEL_SCALE_MIN = 0.02
+const MODEL_SCALE_MAX = 2000
+const MODEL_TARGET_FILL_RATIO = 0.9
+const modelNativeSizeCache = new Map<string, Promise<number>>()
 
 function serializeBboxes(bboxes: string[]) {
   return bboxes.join('|')
@@ -105,6 +133,7 @@ watchEffect(() => {
       dataSource.show = layerProp
     }
   }
+  dataSources.models.show = Boolean(props.layers.buildings)
 })
 
 watch(
@@ -250,6 +279,133 @@ onMounted(() => {
   setupViewportSync()
   scheduleDynamicLayerReload(true)
 })
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value))
+}
+
+function getPolygonPositions(entity: Cesium.Entity, currentTime: Cesium.JulianDate) {
+  const hierarchy = entity.polygon?.hierarchy?.getValue(currentTime)
+  if (!hierarchy || hierarchy.positions.length < 3) return null
+  return hierarchy.positions
+}
+
+function computeFootprintMetrics(positions: Cesium.Cartesian3[]) {
+  const center = new Cesium.Cartesian3()
+  for (const p of positions) {
+    Cesium.Cartesian3.add(center, p, center)
+  }
+  Cesium.Cartesian3.multiplyByScalar(center, 1 / positions.length, center)
+
+  const enu = Cesium.Transforms.eastNorthUpToFixedFrame(center)
+  const invEnu = Cesium.Matrix4.inverse(enu, new Cesium.Matrix4())
+  const localPoints = positions.map((p) => Cesium.Matrix4.multiplyByPoint(invEnu, p, new Cesium.Cartesian3()))
+
+  let minX = Number.POSITIVE_INFINITY
+  let maxX = Number.NEGATIVE_INFINITY
+  let minY = Number.POSITIVE_INFINITY
+  let maxY = Number.NEGATIVE_INFINITY
+  for (const p of localPoints) {
+    minX = Math.min(minX, p.x)
+    maxX = Math.max(maxX, p.x)
+    minY = Math.min(minY, p.y)
+    maxY = Math.max(maxY, p.y)
+  }
+
+  const width = Math.max(0.1, maxX - minX)
+  const depth = Math.max(0.1, maxY - minY)
+  const diagonal = Math.sqrt(width * width + depth * depth)
+  let heading = 0
+  let maxEdgeLength = 0
+  for (let i = 0; i < localPoints.length; i++) {
+    const current = localPoints[i]
+    const next = localPoints[(i + 1) % localPoints.length]
+    const dx = next.x - current.x
+    const dy = next.y - current.y
+    const edgeLength = Math.sqrt(dx * dx + dy * dy)
+    if (edgeLength > maxEdgeLength) {
+      maxEdgeLength = edgeLength
+      heading = Math.atan2(dx, dy)
+    }
+  }
+
+  return {
+    center,
+    heading,
+    footprintTargetSize: Math.max(Math.max(width, depth), diagonal * 0.72),
+  }
+}
+
+function pickReplacementBuilding(
+  entities: Cesium.Entity[],
+  currentTime: Cesium.JulianDate,
+): BuildingReplacementCandidate | null {
+  for (const entity of entities) {
+    const entityId = String(entity.id)
+    const rawProps = (entity.properties?.getValue(currentTime) || {}) as Record<string, unknown>
+    const entityName = String(rawProps.name || rawProps.short_name || '')
+    const isTarget =
+      entityId === BUILDING_REPLACEMENT_TARGET_ID
+      || entityName === BUILDING_REPLACEMENT_TARGET_NAME
+    if (!isTarget) continue
+
+    const positions = getPolygonPositions(entity, currentTime)
+    if (!positions) continue
+    const metrics = computeFootprintMetrics(positions)
+    return {
+      id: entityId,
+      center: metrics.center,
+      heading: metrics.heading,
+      footprintTargetSize: metrics.footprintTargetSize,
+      originalProperties: rawProps,
+    }
+  }
+
+  return null
+}
+
+function buildModelScale(footprintTargetSize: number, nativeSizeMeters: number) {
+  const safeNativeSize = nativeSizeMeters > 0 ? nativeSizeMeters : MODEL_NATIVE_SIZE_FALLBACK
+  const rawScale = (footprintTargetSize * MODEL_TARGET_FILL_RATIO) / safeNativeSize
+  return clamp(rawScale, MODEL_SCALE_MIN, MODEL_SCALE_MAX)
+}
+
+async function getModelNativeSizeMeters(url: string) {
+  const cached = modelNativeSizeCache.get(url)
+  if (cached) return cached
+
+  const pending = (async () => {
+    if (!viewer) return MODEL_NATIVE_SIZE_FALLBACK
+    let model: Cesium.Model | null = null
+    try {
+      model = await Cesium.Model.fromGltfAsync({
+        url,
+        show: false,
+        modelMatrix: Cesium.Matrix4.IDENTITY,
+      })
+      viewer.scene.primitives.add(model)
+      const radius = model.boundingSphere?.radius ?? 0
+      if (!Number.isFinite(radius) || radius <= 0) {
+        return MODEL_NATIVE_SIZE_FALLBACK
+      }
+      return radius * 2
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.warn('Failed to read model native size, fallback will be used:', url, error)
+      return MODEL_NATIVE_SIZE_FALLBACK
+    } finally {
+      if (model && viewer && !viewer.isDestroyed()) {
+        viewer.scene.primitives.remove(model)
+        if (!model.isDestroyed()) {
+          model.destroy()
+        }
+      }
+    }
+  })()
+
+  modelNativeSizeCache.set(url, pending)
+  return pending
+}
 
 /**
  * 设置地图点击事件处理器，用于选择地图上的实体
@@ -478,6 +634,7 @@ const dynamicLayerLoadSeq: Record<LayerName, number> = {
   pipeNodes: 0,
   buildings: 0,
   green: 0,
+  models: 0,
 }
 
 function buildDynamicLayerQueryKey(layerName: LayerName) {
@@ -515,11 +672,54 @@ function loadLayer(layerName: LayerName, force = false) {
       .then(layerDataSource => {
         if (!viewer || loadSeq !== dynamicLayerLoadSeq[layerName]) return
         dataSource.entities.removeAll()
+        let replacement: BuildingReplacementCandidate | null = null
+        if (layerName === 'buildings') {
+          dataSources.models.entities.removeAll()
+          replacement = pickReplacementBuilding(layerDataSource.entities.values, viewer.clock.currentTime)
+        }
         for (const entity of layerDataSource.entities.values) {
           entity.label = undefined
           entity.billboard = undefined
           entity.description = undefined
           if (layerName === 'buildings') {
+            if (replacement && String(entity.id) === replacement.id) {
+              const initialScale = buildModelScale(
+                replacement.footprintTargetSize,
+                MODEL_NATIVE_SIZE_FALLBACK,
+              )
+              const modelEntity = dataSources.models.entities.add({
+                id: entity.id,
+                name: BUILDING_REPLACEMENT_MODEL.name,
+                position: replacement.center,
+                orientation: Cesium.Transforms.headingPitchRollQuaternion(
+                  replacement.center,
+                  new Cesium.HeadingPitchRoll(replacement.heading, 0, 0),
+                ),
+                model: new Cesium.ModelGraphics({
+                  uri: BUILDING_REPLACEMENT_MODEL.url,
+                  scale: initialScale,
+                  runAnimations: true,
+                  heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND,
+                }),
+                properties: new Cesium.PropertyBag({
+                  ...replacement.originalProperties,
+                  __assetType: 'building',
+                  __renderMode: 'replacement-model',
+                  __modelUrl: BUILDING_REPLACEMENT_MODEL.url,
+                }),
+              })
+
+              void getModelNativeSizeMeters(BUILDING_REPLACEMENT_MODEL.url).then((nativeSizeMeters) => {
+                if (!viewer || loadSeq !== dynamicLayerLoadSeq.buildings) return
+                const latestModelEntity = dataSources.models.entities.getById(modelEntity.id)
+                if (!latestModelEntity?.model) return
+                latestModelEntity.model.scale = new Cesium.ConstantProperty(
+                  buildModelScale(replacement.footprintTargetSize, nativeSizeMeters),
+                )
+                viewer.scene.requestRender()
+              })
+              continue
+            }
             entity.point = undefined
             styleBuildingEntity(entity)
             if (entity.polygon) {
@@ -567,8 +767,6 @@ function loadLayer(layerName: LayerName, force = false) {
         // Apply appropriate styling based on layer type
         if (layerName === 'green') {
           styleGreenEntity(entity)
-        } else if (layerName === 'buildings') {
-          styleBuildingEntity(entity)
         }
 
         dataSource.entities.add(entity)
@@ -593,6 +791,9 @@ function unloadLayer(layerName: LayerName) {
   if (!dataSource) return
 
   dataSource.entities.removeAll()
+  if (layerName === 'buildings') {
+    dataSources.models.entities.removeAll()
+  }
   loadedLayers.value.delete(layerName)
   dynamicLayerQueryKey.value[layerName] = ''
 }

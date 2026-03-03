@@ -63,6 +63,13 @@ import ReportsMoeView from '~/views/admin/property/reports/ReportsMoeView.vue'
 import ReportsCustomView from '~/views/admin/property/reports/ReportsCustomView.vue'
 import ReportsLogsView from '~/views/admin/property/reports/ReportsLogsView.vue'
 
+// Pipe Ops
+import OpsInspectionView from '~/views/admin/ops/OpsInspectionView.vue'
+import OpsMaintenanceView from '~/views/admin/ops/OpsMaintenanceView.vue'
+import OpsRetrofitView from '~/views/admin/ops/OpsRetrofitView.vue'
+import OpsRetireView from '~/views/admin/ops/OpsRetireView.vue'
+import OpsLinkageView from '~/views/admin/ops/OpsLinkageView.vue'
+
 // Persons
 import PersonsManagementView from '~/views/admin/persons/PersonsManagementView.vue'
 
@@ -130,7 +137,13 @@ export const adminCompMap: Record<ThirdKey, any> = {
   reports_custom: ReportsCustomView,
   reports_logs: ReportsLogsView,
 
+  // Pipe Ops
+  ops_inspection_board: OpsInspectionView,
+  ops_maintenance_board: OpsMaintenanceView,
+  ops_retrofit_board: OpsRetrofitView,
+  ops_retire_board: OpsRetireView,
+  ops_linkage_board: OpsLinkageView,
+
   // Persons
   persons_list: PersonsManagementView,
 }
-

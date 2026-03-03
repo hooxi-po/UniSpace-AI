@@ -3,6 +3,7 @@
     <!-- 1. Background / 3D Map Layer -->
     <MapView 
       :selected-id="selectedItem?.id ? String(selectedItem.id) : null"
+      :selected-targets="selectedTargets"
       :viewport="viewport"
       :layers="layers"
       :backend-base-url="backendBaseUrl"
@@ -60,6 +61,23 @@ import { classifyRoadToPipeLayer } from '~/utils/pipe-classifier'
 const selectedItem = ref<PipeNode | Building | GeoJsonFeature | null>(null)
 const runtimeConfig = useRuntimeConfig()
 const selectionToken = ref(0)
+const route = useRoute()
+const selectedTargets = computed(() => {
+  if (!selectedItem.value || !('type' in selectedItem.value) || selectedItem.value.type !== 'geojson') {
+    return {
+      pipes: [] as string[],
+      buildings: [] as string[],
+      rooms: [] as string[],
+    }
+  }
+  const props = toRecord(selectedItem.value.properties)
+  const focusTargets = toRecord(props.focusTargets)
+  return {
+    pipes: toStringArray(Array.isArray(focusTargets.pipes) ? focusTargets.pipes : []),
+    buildings: toStringArray(Array.isArray(focusTargets.buildings) ? focusTargets.buildings : []),
+    rooms: toStringArray(Array.isArray(focusTargets.rooms) ? focusTargets.rooms : []),
+  }
+})
 
 const DEFAULT_VIEWPORT = {
   x: 119.1895,
@@ -415,4 +433,42 @@ const handleZoomOut = () => {
 const resetView = () => {
   viewport.value = { ...DEFAULT_VIEWPORT }
 }
+
+watch(
+  () => [
+    route.query.focusId,
+    route.query.focusBuilding,
+    route.query.focusNode,
+    route.query.focusSegment,
+    route.query.focusRooms,
+    route.query.fromWorkorder,
+  ],
+  ([focusId, focusBuildingQuery, focusNodeQuery, focusSegmentQuery, focusRoomsQuery, fromWorkorderQuery]) => {
+    const id = typeof focusId === 'string' ? focusId.trim() : ''
+    if (!id) {
+      selectedItem.value = null
+      return
+    }
+    const focusBuilding = typeof focusBuildingQuery === 'string' ? focusBuildingQuery.trim() : ''
+    const focusNode = typeof focusNodeQuery === 'string' ? focusNodeQuery.trim() : ''
+    const focusSegment = typeof focusSegmentQuery === 'string' ? focusSegmentQuery.trim() : ''
+    const focusRooms = typeof focusRoomsQuery === 'string'
+      ? focusRoomsQuery.split(',').map(v => v.trim()).filter(Boolean)
+      : []
+    // Allow admin workorder module to deep-link and highlight an entity on the map.
+    selectedItem.value = {
+      id,
+      type: 'geojson',
+      properties: {
+        fromWorkorder: typeof fromWorkorderQuery === 'string' ? fromWorkorderQuery : '',
+        focusTargets: {
+          pipes: [focusNode, focusSegment].filter(Boolean),
+          buildings: [focusBuilding].filter(Boolean),
+          rooms: focusRooms,
+        },
+      },
+    }
+  },
+  { immediate: true }
+)
 </script>

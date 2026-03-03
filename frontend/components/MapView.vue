@@ -35,6 +35,11 @@ type MapLayers = {
 
 interface Props {
   selectedId: string | null
+  selectedTargets?: {
+    pipes?: string[]
+    buildings?: string[]
+    rooms?: string[]
+  }
   viewport: Viewport
   layers: MapLayers
   backendBaseUrl: string
@@ -51,14 +56,20 @@ const emit = defineEmits<{
 const cesiumContainerRef = ref<HTMLDivElement | null>(null)
 let viewer: Cesium.Viewer | null = null
 let handler: Cesium.ScreenSpaceEventHandler | null = null
-let highlightedEntity: Cesium.Entity | null = null
-let highlightedOriginal: {
+type HighlightSnapshot = {
+  entity: Cesium.Entity
+  color: Cesium.Color
   polygonMaterial?: Cesium.MaterialProperty
   polylineMaterial?: Cesium.MaterialProperty
   polylineWidth?: number
   pointColor?: Cesium.Property
   pointPixelSize?: number
-} | null = null
+  modelColor?: Cesium.Property
+  modelColorBlendMode?: Cesium.Property
+  modelSilhouetteColor?: Cesium.Property
+  modelSilhouetteSize?: Cesium.Property
+}
+const highlightedSnapshots: HighlightSnapshot[] = []
 
 const BUILDING_DISTANCE_CONDITION = new Cesium.DistanceDisplayCondition(0, 8000)
 const PIPE_NODE_DISTANCE_CONDITION = new Cesium.DistanceDisplayCondition(0, 4500)
@@ -72,6 +83,8 @@ const dataSources = {
   sewage: new Cesium.CustomDataSource('sewage'),
   drain: new Cesium.CustomDataSource('drain'),
   models: new Cesium.CustomDataSource('models'),
+  workorderHeat: new Cesium.CustomDataSource('workorderHeat'),
+  focus: new Cesium.CustomDataSource('focus'),
 }
 
 const normalizedBackendBaseUrl = computed(() => normalizeBackendBaseUrl(props.backendBaseUrl))
@@ -90,8 +103,29 @@ const dynamicLayerQueryKey = ref<Record<LayerName, string>>({
   buildings: '',
   green: '',
   models: '',
+  workorderHeat: '',
+  focus: '',
 })
 let dynamicLayerReloadTimer: ReturnType<typeof setTimeout> | null = null
+let workorderHeatTimer: ReturnType<typeof setInterval> | null = null
+const onPumpControlRefreshed = () => {
+  scheduleDynamicLayerReload(true)
+  loadWorkorderHeatmap()
+}
+const onHeatCluster = (clusteredEntities: Cesium.Entity[], cluster: {
+  billboard: Cesium.Billboard
+  label: Cesium.Label
+  point: Cesium.PointPrimitive
+}) => {
+  cluster.billboard.show = false
+  cluster.point.show = true
+  cluster.point.color = Cesium.Color.RED.withAlpha(0.85)
+  cluster.point.pixelSize = 18
+  cluster.label.show = true
+  cluster.label.text = String(clusteredEntities.length)
+  cluster.label.fillColor = Cesium.Color.WHITE
+  cluster.label.outlineWidth = 0
+}
 
 type BuildingReplacementModel = {
   name: string
@@ -136,84 +170,185 @@ watchEffect(() => {
   dataSources.models.show = Boolean(props.layers.buildings)
 })
 
-watch(
-  () => props.selectedId,
-  () => {
-    if (!viewer) return
+function applySelectionHighlight() {
+  if (!viewer) return
 
-    // Restore previous highlight
-    if (highlightedEntity && highlightedOriginal) {
-      if (highlightedEntity.polygon && highlightedOriginal.polygonMaterial) {
-        highlightedEntity.polygon.material = highlightedOriginal.polygonMaterial
+  while (highlightedSnapshots.length) {
+    const snapshot = highlightedSnapshots.pop()
+    if (!snapshot) break
+    if (snapshot.entity.polygon && snapshot.polygonMaterial) {
+      snapshot.entity.polygon.material = snapshot.polygonMaterial
+    }
+    if (snapshot.entity.polyline) {
+      if (snapshot.polylineMaterial) {
+        snapshot.entity.polyline.material = snapshot.polylineMaterial
       }
-      if (highlightedEntity.polyline) {
-        if (highlightedOriginal.polylineMaterial) {
-          highlightedEntity.polyline.material = highlightedOriginal.polylineMaterial
-        }
-        if (typeof highlightedOriginal.polylineWidth === 'number') {
-          highlightedEntity.polyline.width = new Cesium.ConstantProperty(
-            highlightedOriginal.polylineWidth
-          )
-        }
-      }
-      if (highlightedEntity.point) {
-        if (highlightedOriginal.pointColor) {
-          highlightedEntity.point.color = highlightedOriginal.pointColor
-        }
-        if (typeof highlightedOriginal.pointPixelSize === 'number') {
-          highlightedEntity.point.pixelSize = new Cesium.ConstantProperty(
-            highlightedOriginal.pointPixelSize
-          )
-        }
+      if (typeof snapshot.polylineWidth === 'number') {
+        snapshot.entity.polyline.width = new Cesium.ConstantProperty(snapshot.polylineWidth)
       }
     }
-
-    highlightedEntity = null
-    highlightedOriginal = null
-
-    if (!props.selectedId) return
-
-    // Find entity across all datasources
-    let target: Cesium.Entity | null = null
-    for (const ds of Object.values(dataSources)) {
-      const e = ds.entities.getById(props.selectedId)
-      if (e) {
-        target = e
-        break
+    if (snapshot.entity.point) {
+      if (snapshot.pointColor) {
+        snapshot.entity.point.color = snapshot.pointColor
+      }
+      if (typeof snapshot.pointPixelSize === 'number') {
+        snapshot.entity.point.pixelSize = new Cesium.ConstantProperty(snapshot.pointPixelSize)
       }
     }
+    if (snapshot.entity.model) {
+      snapshot.entity.model.color = snapshot.modelColor
+      snapshot.entity.model.colorBlendMode = snapshot.modelColorBlendMode
+      snapshot.entity.model.silhouetteColor = snapshot.modelSilhouetteColor
+      snapshot.entity.model.silhouetteSize = snapshot.modelSilhouetteSize
+    }
+  }
 
-    if (!target) return
+  dataSources.focus.entities.removeAll()
 
-    highlightedEntity = target
-    highlightedOriginal = {
+  if (!props.selectedId && !(props.selectedTargets?.pipes?.length || props.selectedTargets?.buildings?.length || props.selectedTargets?.rooms?.length)) {
+    return
+  }
+
+  const applyEntityHighlight = (target: Cesium.Entity, color: Cesium.Color, lineWidth = 6) => {
+    highlightedSnapshots.push({
+      entity: target,
+      color,
       polygonMaterial: target.polygon?.material,
       polylineMaterial: target.polyline?.material,
-      polylineWidth: target.polyline?.width?.getValue(viewer.clock.currentTime),
+      polylineWidth: target.polyline?.width?.getValue(viewer!.clock.currentTime),
       pointColor: target.point?.color,
-      pointPixelSize: target.point?.pixelSize?.getValue(viewer.clock.currentTime),
-    }
+      pointPixelSize: target.point?.pixelSize?.getValue(viewer!.clock.currentTime),
+      modelColor: target.model?.color,
+      modelColorBlendMode: target.model?.colorBlendMode,
+      modelSilhouetteColor: target.model?.silhouetteColor,
+      modelSilhouetteSize: target.model?.silhouetteSize,
+    })
 
-    const highlightColor = new Cesium.ColorMaterialProperty(
-      Cesium.Color.YELLOW.withAlpha(0.9)
-    )
+    const highlightColor = new Cesium.ColorMaterialProperty(color.withAlpha(0.88))
 
     if (target.polygon) {
       target.polygon.material = highlightColor
       target.polygon.outline = new Cesium.ConstantProperty(true)
-      target.polygon.outlineColor = new Cesium.ConstantProperty(
-        Cesium.Color.YELLOW.withAlpha(0.9)
-      )
+      target.polygon.outlineColor = new Cesium.ConstantProperty(color.withAlpha(0.95))
     }
-
     if (target.polyline) {
       target.polyline.material = highlightColor
-      target.polyline.width = new Cesium.ConstantProperty(6)
+      target.polyline.width = new Cesium.ConstantProperty(lineWidth)
     }
     if (target.point) {
-      target.point.color = new Cesium.ConstantProperty(Cesium.Color.YELLOW.withAlpha(0.95))
+      target.point.color = new Cesium.ConstantProperty(color.withAlpha(0.95))
       target.point.pixelSize = new Cesium.ConstantProperty(10)
     }
+    if (target.model) {
+      target.model.color = new Cesium.ConstantProperty(color.withAlpha(0.35))
+      target.model.colorBlendMode = new Cesium.ConstantProperty(Cesium.ColorBlendMode.MIX)
+      target.model.silhouetteColor = new Cesium.ConstantProperty(color.withAlpha(0.95))
+      target.model.silhouetteSize = new Cesium.ConstantProperty(2.5)
+    }
+  }
+
+  const allEntities: Cesium.Entity[] = []
+  for (const ds of Object.values(dataSources)) {
+    if (ds.name === dataSources.focus.name) continue
+    allEntities.push(...ds.entities.values)
+  }
+
+  const matchEntity = (keyword: string) => {
+    const normalized = keyword.trim().toLowerCase()
+    if (!normalized) return null
+
+    for (const entity of allEntities) {
+      if (String(entity.id) === keyword) return entity
+    }
+
+    let fuzzy: Cesium.Entity | null = null
+    for (const entity of allEntities) {
+      const entityId = String(entity.id || '').toLowerCase()
+      const props = entity.properties?.getValue(viewer!.clock.currentTime) || {}
+      const name = String((props as any).name || (props as any).short_name || '').toLowerCase()
+      const assetId = String((props as any).assetId || (props as any).buildingId || (props as any).roomId || '').toLowerCase()
+      if (entityId.startsWith(normalized) || assetId.startsWith(normalized) || name.includes(normalized)) {
+        fuzzy = entity
+        break
+      }
+    }
+    return fuzzy
+  }
+
+  const highlighted = new Set<string>()
+  const tryHighlight = (keyword: string, color: Cesium.Color, width = 6) => {
+    const target = matchEntity(keyword)
+    if (!target) return null
+    const key = String(target.id)
+    if (highlighted.has(key)) return target
+    highlighted.add(key)
+    applyEntityHighlight(target, color, width)
+    return target
+  }
+
+  const pipeTargets = [
+    ...(props.selectedTargets?.pipes || []),
+  ]
+  const buildingTargets = [
+    ...(props.selectedTargets?.buildings || []),
+  ]
+  const roomTargets = [
+    ...(props.selectedTargets?.rooms || []),
+  ]
+
+  if (props.selectedId) {
+    if (!tryHighlight(props.selectedId, Cesium.Color.YELLOW, 7)) {
+      tryHighlight(props.selectedId, Cesium.Color.YELLOW, 7)
+    }
+  }
+
+  for (const target of pipeTargets) {
+    tryHighlight(target, Cesium.Color.ORANGE, 7)
+  }
+
+  const buildingCenters = new Map<string, Cesium.Cartesian3>()
+  for (const target of buildingTargets) {
+    const entity = tryHighlight(target, Cesium.Color.CYAN, 5)
+    if (!entity) continue
+    const now = viewer.clock.currentTime
+    const center = entity.position?.getValue(now)
+      || entity.polygon?.hierarchy?.getValue(now)?.positions?.[0]
+      || null
+    if (center) {
+      buildingCenters.set(target, center)
+    }
+  }
+
+  for (const roomId of roomTargets) {
+    const roomEntity = tryHighlight(roomId, Cesium.Color.MAGENTA, 5)
+    if (roomEntity) continue
+    const anchor = buildingCenters.values().next().value as Cesium.Cartesian3 | undefined
+    if (!anchor) continue
+    dataSources.focus.entities.add({
+      id: `focus-room-${roomId}`,
+      position: anchor,
+      point: new Cesium.PointGraphics({
+        color: Cesium.Color.MAGENTA.withAlpha(0.9),
+        pixelSize: 8,
+        outlineColor: Cesium.Color.WHITE.withAlpha(0.9),
+        outlineWidth: 1,
+      }),
+      label: new Cesium.LabelGraphics({
+        text: roomId,
+        fillColor: Cesium.Color.MAGENTA.withAlpha(0.95),
+        font: '12px sans-serif',
+        pixelOffset: new Cesium.Cartesian2(0, -14),
+        showBackground: true,
+        backgroundColor: Cesium.Color.BLACK.withAlpha(0.55),
+      }),
+    })
+  }
+}
+
+watch(
+  () => [props.selectedId, props.selectedTargets?.pipes, props.selectedTargets?.buildings, props.selectedTargets?.rooms],
+  () => {
+    applySelectionHighlight()
   },
   { immediate: true }
 )
@@ -267,6 +402,13 @@ onMounted(() => {
 
   // Add all data sources to the viewer
   Object.values(dataSources).forEach(ds => viewer?.dataSources.add(ds))
+  dataSources.workorderHeat.clustering.enabled = true
+  dataSources.workorderHeat.clustering.pixelRange = 45
+  dataSources.workorderHeat.clustering.minimumClusterSize = 2
+  dataSources.workorderHeat.clustering.clusterEvent.addEventListener(onHeatCluster)
+  if (typeof window !== 'undefined') {
+    window.addEventListener('pipeline:pump-control-refreshed', onPumpControlRefreshed)
+  }
   currentViewportBboxes.value = getCurrentViewBboxes()
 
   // Load and process GeoJSON layers based on visibility
@@ -274,6 +416,8 @@ onMounted(() => {
 
   // Setup click handler for selection
   setupClickHandler()
+  loadWorkorderHeatmap()
+  workorderHeatTimer = setInterval(loadWorkorderHeatmap, 30000)
   
   // Setup viewport sync
   setupViewportSync()
@@ -407,6 +551,67 @@ async function getModelNativeSizeMeters(url: string) {
   return pending
 }
 
+async function loadWorkorderHeatmap() {
+  if (!viewer) return
+  try {
+    const res = await fetch('/api/pipeline-ops/dashboard')
+    if (!res.ok) return
+    const payload = await res.json() as {
+      dashboard?: {
+        inProgressHeatmap?: Array<{
+          id: string
+          title: string
+          buildingId?: string
+          buildingName?: string
+          lng: number
+          lat: number
+          count?: number
+        }>
+      }
+    }
+    const list = Array.isArray(payload?.dashboard?.inProgressHeatmap)
+      ? payload.dashboard!.inProgressHeatmap!
+      : []
+
+    const ds = dataSources.workorderHeat
+    ds.entities.removeAll()
+
+    for (const item of list) {
+      if (!Number.isFinite(item.lng) || !Number.isFinite(item.lat)) continue
+      ds.entities.add({
+        id: `wo-heat-${item.id}`,
+        position: Cesium.Cartesian3.fromDegrees(item.lng, item.lat),
+        point: new Cesium.PointGraphics({
+          pixelSize: 12,
+          color: Cesium.Color.RED.withAlpha(0.75),
+          outlineColor: Cesium.Color.WHITE.withAlpha(0.85),
+          outlineWidth: 1.5,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        }),
+        label: new Cesium.LabelGraphics({
+          text: String(item.count || 1),
+          font: '12px sans-serif',
+          fillColor: Cesium.Color.WHITE,
+          showBackground: true,
+          backgroundColor: Cesium.Color.BLACK.withAlpha(0.55),
+          pixelOffset: new Cesium.Cartesian2(0, -18),
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        }),
+        properties: new Cesium.PropertyBag({
+          __workorderHeat: true,
+          __workorderId: item.id,
+          __workorderTitle: item.title || item.id,
+          __buildingId: item.buildingId || '',
+          __buildingName: item.buildingName || '',
+        }),
+      })
+    }
+
+  } catch {
+    // ignore heatmap load failures
+  }
+}
+
 /**
  * 设置地图点击事件处理器，用于选择地图上的实体
  * 当用户点击地图上的实体时，会触发 select 事件
@@ -421,6 +626,20 @@ function setupClickHandler() {
       const properties = viewer
         ? entity.properties?.getValue(viewer.clock.currentTime)
         : undefined
+
+      if (properties && (properties as any).__workorderHeat) {
+        const workorderId = String((properties as any).__workorderId || '').trim()
+        if (workorderId && typeof window !== 'undefined') {
+          const query = new URLSearchParams({
+            tab: 'ops',
+            sub: 'ops_linkage',
+            third: 'ops_linkage_board',
+            workorderId,
+          })
+          window.open(`/admin?${query.toString()}`, '_blank')
+          return
+        }
+      }
       
       emit('select', {
         id: entity.id,
@@ -635,6 +854,8 @@ const dynamicLayerLoadSeq: Record<LayerName, number> = {
   buildings: 0,
   green: 0,
   models: 0,
+  workorderHeat: 0,
+  focus: 0,
 }
 
 function buildDynamicLayerQueryKey(layerName: LayerName) {
@@ -651,7 +872,9 @@ function loadLayer(layerName: LayerName, force = false) {
     const queryKey = buildDynamicLayerQueryKey(layerName)
     if (!force && dynamicLayerQueryKey.value[layerName] === queryKey) return
     dynamicLayerQueryKey.value[layerName] = queryKey
-    loadPipeLayers(force)
+    void loadPipeLayers(force).then(() => {
+      applySelectionHighlight()
+    })
     return
   }
 
@@ -739,6 +962,7 @@ function loadLayer(layerName: LayerName, force = false) {
         }
         loadedLayers.value.add(layerName)
         dynamicLayerQueryKey.value[layerName] = queryKey
+        applySelectionHighlight()
       })
       .catch(err => {
         console.error(`Failed to load ${layerName} layer:`, sourceUrl, err)
@@ -773,6 +997,7 @@ function loadLayer(layerName: LayerName, force = false) {
       }
 
       loadedLayers.value.add(layerName)
+      applySelectionHighlight()
     })
     .catch(err => {
       // eslint-disable-next-line no-console
@@ -910,6 +1135,13 @@ watch(
 )
 
 onBeforeUnmount(() => {
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('pipeline:pump-control-refreshed', onPumpControlRefreshed)
+  }
+  if (workorderHeatTimer) {
+    clearInterval(workorderHeatTimer)
+    workorderHeatTimer = null
+  }
   if (dynamicLayerReloadTimer) {
     clearTimeout(dynamicLayerReloadTimer)
     dynamicLayerReloadTimer = null
@@ -919,6 +1151,7 @@ onBeforeUnmount(() => {
     handler = null
   }
   if (viewer) {
+    dataSources.workorderHeat.clustering.clusterEvent.removeEventListener(onHeatCluster)
     viewer.destroy()
     viewer = null
   }

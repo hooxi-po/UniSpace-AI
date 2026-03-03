@@ -9,7 +9,8 @@
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare && node scripts/ensure-nuxt-internal.mjs",
-    "seed:test-building": "node scripts/upsert-test-building.mjs"
+    "seed:test-building": "node scripts/upsert-test-building.mjs",
+    "migrate:pipeline-ops": "node scripts/migrate-pipeline-ops-json-to-postgres.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.37.0",

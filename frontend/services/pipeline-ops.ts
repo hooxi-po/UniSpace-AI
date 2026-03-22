@@ -1,3 +1,4 @@
+import { fetchWithProxyWriteAuth } from './proxy-write-auth'
 import type {
   ConvertToMaintenancePayload,
   ImpactAdjustPayload,
@@ -26,6 +27,28 @@ export type PipelineOpsStats = {
   rejected: number
 }
 
+async function readError(res: Response) {
+  try {
+    const json = await res.json()
+    if (json && typeof json.error === 'string') return json.error
+    if (json && typeof json.statusMessage === 'string') return json.statusMessage
+    if (json && typeof json.message === 'string') return json.message
+  } catch {
+    // noop
+  }
+  return `HTTP ${res.status}`
+}
+
+async function requestJson<T>(url: string, init?: RequestInit, useWriteAuth = false) {
+  const res = useWriteAuth
+    ? await fetchWithProxyWriteAuth(url, init)
+    : await fetch(url, init)
+  if (!res.ok) {
+    throw new Error(await readError(res))
+  }
+  return (await res.json()) as T
+}
+
 export const pipelineOpsService = {
   async fetchWorkorders(query: PipelineOrderListQuery = {}) {
     return $fetch<{
@@ -49,10 +72,15 @@ export const pipelineOpsService = {
   },
 
   async createWorkorder(payload: PipelineOrderUpsertPayload) {
-    return $fetch<{ workorder: PipelineWorkOrder }>('/api/pipeline-ops/workorders', {
-      method: 'POST',
-      body: payload,
-    })
+    return requestJson<{ workorder: PipelineWorkOrder }>(
+      '/api/pipeline-ops/workorders',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      },
+      true,
+    )
   },
 
   async autoCreate(payload: {
@@ -60,51 +88,86 @@ export const pipelineOpsService = {
     reason: string
     base: Omit<PipelineOrderUpsertPayload, 'source' | 'autoTrigger'>
   }) {
-    return $fetch<{ workorder: PipelineWorkOrder }>('/api/pipeline-ops/auto-create', {
-      method: 'POST',
-      body: payload,
-    })
+    return requestJson<{ workorder: PipelineWorkOrder }>(
+      '/api/pipeline-ops/auto-create',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      },
+      true,
+    )
   },
 
   async transition(payload: PipelineOrderTransitionPayload) {
-    return $fetch<{ workorder: PipelineWorkOrder }>('/api/pipeline-ops/workorders', {
-      method: 'PATCH',
-      body: payload,
-    })
+    return requestJson<{ workorder: PipelineWorkOrder }>(
+      '/api/pipeline-ops/workorders',
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      },
+      true,
+    )
   },
 
   async addExecutionLog(payload: PipelineExecutionLogPayload) {
-    return $fetch<{ workorder: PipelineWorkOrder }>('/api/pipeline-ops/action', {
-      method: 'POST',
-      body: { action: 'add_log', payload },
-    })
+    return requestJson<{ workorder: PipelineWorkOrder }>(
+      '/api/pipeline-ops/action',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'add_log', payload }),
+      },
+      true,
+    )
   },
 
   async adjustImpact(payload: ImpactAdjustPayload) {
-    return $fetch<{ workorder: PipelineWorkOrder }>('/api/pipeline-ops/action', {
-      method: 'POST',
-      body: { action: 'adjust_impact', payload },
-    })
+    return requestJson<{ workorder: PipelineWorkOrder }>(
+      '/api/pipeline-ops/action',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'adjust_impact', payload }),
+      },
+      true,
+    )
   },
 
   async pumpControl(payload: PumpControlPayload) {
-    return $fetch<{ workorder: PipelineWorkOrder }>('/api/pipeline-ops/action', {
-      method: 'POST',
-      body: { action: 'pump_control', payload },
-    })
+    return requestJson<{ workorder: PipelineWorkOrder }>(
+      '/api/pipeline-ops/action',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'pump_control', payload }),
+      },
+      true,
+    )
   },
 
   async addInspectionRecord(payload: InspectionRecordPayload) {
-    return $fetch<{ workorder: PipelineWorkOrder }>('/api/pipeline-ops/action', {
-      method: 'POST',
-      body: { action: 'add_inspection_record', payload },
-    })
+    return requestJson<{ workorder: PipelineWorkOrder }>(
+      '/api/pipeline-ops/action',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'add_inspection_record', payload }),
+      },
+      true,
+    )
   },
 
   async convertToMaintenance(payload: ConvertToMaintenancePayload) {
-    return $fetch<{ maintenanceWorkorder: PipelineWorkOrder }>('/api/pipeline-ops/action', {
-      method: 'POST',
-      body: { action: 'convert_to_maintenance', payload },
-    })
+    return requestJson<{ maintenanceWorkorder: PipelineWorkOrder }>(
+      '/api/pipeline-ops/action',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'convert_to_maintenance', payload }),
+      },
+      true,
+    )
   },
 } as const

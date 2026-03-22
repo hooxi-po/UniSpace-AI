@@ -6,8 +6,12 @@ import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 import java.sql.Date;
 import java.sql.Timestamp;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -37,6 +41,8 @@ public class WorkOrderRepository {
     );
 
     private static final long CACHE_TTL_MS = 5L * 60L * 1000L;
+    private static final int MAX_CACHE_ENTRIES = 1000;
+    private static final int CACHE_CLEANUP_BATCH = 128;
     private static final int DEFAULT_LIMIT = 20;
     private static final int MAX_LIMIT = 200;
 
@@ -69,6 +75,9 @@ public class WorkOrderRepository {
         if (cached != null && cached.isObject()) {
             return (ObjectNode) cached;
         }
+
+        String createdFrom = normalizeCreatedAtFilter(query.createdFrom(), "createdFrom");
+        String createdTo = normalizeCreatedAtFilter(query.createdTo(), "createdTo");
 
         StringBuilder where = new StringBuilder(" WHERE 1=1 ");
         List<Object> params = new ArrayList<>();
@@ -106,13 +115,17 @@ public class WorkOrderRepository {
             params.add(query.buildingId());
             params.add(query.buildingId());
         }
-        if (query.createdFrom() != null) {
+        if (createdFrom != null) {
             where.append(" AND w.created_at >= ?::timestamptz ");
-            params.add(query.createdFrom());
+            params.add(createdFrom);
         }
-        if (query.createdTo() != null) {
-            where.append(" AND w.created_at <= ?::timestamptz ");
-            params.add(query.createdTo());
+        if (createdTo != null) {
+            if (isDateOnly(createdTo)) {
+                where.append(" AND w.created_at < (?::date + INTERVAL '1 day') ");
+            } else {
+                where.append(" AND w.created_at <= ?::timestamptz ");
+            }
+            params.add(createdTo);
         }
         if (query.keyword() != null) {
             where.append(" AND (LOWER(w.id) LIKE ? OR LOWER(w.title) LIKE ? OR LOWER(w.description) LIKE ? OR LOWER(COALESCE(w.assignee, '')) LIKE ? OR LOWER(COALESCE(w.building_id, '')) LIKE ? OR LOWER(COALESCE(w.building_name, '')) LIKE ? OR LOWER(w.node_ids::text) LIKE ? OR LOWER(w.segment_ids::text) LIKE ?) ");
@@ -367,6 +380,8 @@ public class WorkOrderRepository {
             }
             case "reopen" -> {
                 nextStatus = shouldReopenToTodo(currentStatus) ? "todo" : "in_progress";
+                updates.put("reviewedAt", "");
+                updates.put("finishedAt", "");
                 updates.put("closedAt", "");
                 updates.put("rejectedAt", "");
                 updates.put("pausedAt", "");
@@ -499,10 +514,10 @@ public class WorkOrderRepository {
 
         ArrayNode topBuildings = objectMapper.createArrayNode();
         List<Map<String, Object>> topRows = jdbcTemplate.queryForList(
-                "SELECT building_name, COUNT(*) AS cnt, AVG(CASE WHEN w.started_at IS NOT NULL AND COALESCE(w.closed_at, w.finished_at, w.updated_at) > w.started_at " +
+                "SELECT obl.building_name, COUNT(*) AS cnt, AVG(CASE WHEN w.started_at IS NOT NULL AND COALESCE(w.closed_at, w.finished_at, w.updated_at) > w.started_at " +
                         "THEN EXTRACT(EPOCH FROM (COALESCE(w.closed_at, w.finished_at, w.updated_at) - w.started_at))/3600.0 ELSE 0 END) AS avg_hours " +
                         "FROM order_building_link obl JOIN work_order w ON w.id = obl.work_order_id " +
-                        "GROUP BY building_name ORDER BY cnt DESC LIMIT 10"
+                        "GROUP BY obl.building_name ORDER BY cnt DESC LIMIT 10"
         );
         for (Map<String, Object> row : topRows) {
             ObjectNode item = objectMapper.createObjectNode();
@@ -562,9 +577,29 @@ public class WorkOrderRepository {
 
         ArrayNode inProgressHeatmap = objectMapper.createArrayNode();
         List<Map<String, Object>> heatRows = jdbcTemplate.queryForList(
-                "SELECT w.id, w.title, w.building_id, COALESCE(w.building_name, '') AS building_name, " +
+                "SELECT w.id, w.title, w.building_id, COALESCE(w.building_name, b.building_name, '') AS building_name, " +
                         "COALESCE(ST_X(ST_Centroid(g.geom)), 119.1895) AS lon, COALESCE(ST_Y(ST_Centroid(g.geom)), 26.0254) AS lat " +
-                        "FROM work_order w LEFT JOIN geo_features g ON g.id = w.building_id " +
+                        "FROM work_order w " +
+                        "LEFT JOIN buildings b ON b.code = w.building_id " +
+                        "LEFT JOIN LATERAL (" +
+                        "  SELECT gf.geom " +
+                        "  FROM geo_features gf " +
+                        "  WHERE gf.layer = 'buildings' AND (" +
+                        "    gf.id = w.building_id OR " +
+                        "    LOWER(COALESCE(gf.properties->>'code', '')) = LOWER(COALESCE(w.building_id, '')) OR " +
+                        "    LOWER(COALESCE(gf.properties->>'buildingCode', '')) = LOWER(COALESCE(w.building_id, '')) OR " +
+                        "    LOWER(COALESCE(gf.properties->>'name', '')) = LOWER(COALESCE(w.building_name, b.building_name, '')) OR " +
+                        "    LOWER(COALESCE(gf.properties->>'building_name', '')) = LOWER(COALESCE(w.building_name, b.building_name, ''))" +
+                        "  ) " +
+                        "  ORDER BY CASE " +
+                        "    WHEN gf.id = w.building_id THEN 0 " +
+                        "    WHEN LOWER(COALESCE(gf.properties->>'code', '')) = LOWER(COALESCE(w.building_id, '')) THEN 1 " +
+                        "    WHEN LOWER(COALESCE(gf.properties->>'buildingCode', '')) = LOWER(COALESCE(w.building_id, '')) THEN 2 " +
+                        "    WHEN LOWER(COALESCE(gf.properties->>'name', '')) = LOWER(COALESCE(w.building_name, b.building_name, '')) THEN 3 " +
+                        "    ELSE 4 " +
+                        "  END " +
+                        "  LIMIT 1" +
+                        ") g ON true " +
                         "WHERE w.status IN ('in_progress','paused','review') ORDER BY w.updated_at DESC LIMIT 500"
         );
         int idx = 0;
@@ -594,7 +629,10 @@ public class WorkOrderRepository {
         if (content == null || content.isBlank()) throw badRequest("content_required");
         if (getWorkorder(id) == null) throw notFound("workorder_not_found");
 
-        insertExecutionLog(id, normalizeExecutionLog(payload, actor));
+        ObjectNode logPayload = payload.deepCopy();
+        // payload.id is workorder id for /action add_log; avoid reusing it as work_order_log.id.
+        logPayload.remove("id");
+        insertExecutionLog(id, normalizeExecutionLog(logPayload, actor));
         touchWorkorder(id);
         invalidateCache();
         ObjectNode workorder = getWorkorder(id);
@@ -683,12 +721,15 @@ public class WorkOrderRepository {
         if (buildingIds.isEmpty()) throw badRequest("building_ids_required");
 
         int duration = payload.has("durationMinutes") ? payload.path("durationMinutes").asInt(0) : 0;
+        if ("set_duration".equals(action) && duration <= 0) {
+            throw badRequest("duration_minutes_positive_required");
+        }
         int total = buildingIds.size();
 
         for (int i = 0; i < buildingIds.size(); i++) {
             String buildingId = buildingIds.get(i);
             String buildingName = resolveBuildingName(current.path("impactScope").path("impactedBuildings"), buildingId);
-            String beforeStatus = queryLatestPumpStatus(id, buildingId);
+            String beforeStatus = queryLatestPumpStatus(buildingId);
             String afterStatus = switch (action) {
                 case "open" -> "running";
                 case "close" -> "stopped";
@@ -853,6 +894,7 @@ public class WorkOrderRepository {
         if (!isBlank(sourceOrder.path("buildingName").asText(""))) createPayload.put("buildingName", sourceOrder.path("buildingName").asText());
         createPayload.set("roomIds", sourceOrder.path("roomIds").deepCopy());
         createPayload.set("equipmentIds", sourceOrder.path("equipmentIds").deepCopy());
+        createPayload.set("impactScope", sourceOrder.path("impactScope").deepCopy());
         String sourcePriority = sourceOrder.path("priority").asText("medium");
         createPayload.put("priority", "low".equals(sourcePriority) ? "medium" : sourcePriority);
         ArrayNode links = objectMapper.createArrayNode();
@@ -915,8 +957,12 @@ public class WorkOrderRepository {
 
     private void syncBuildingLinks(String workOrderId, JsonNode impactedBuildings, boolean manualAdjusted) {
         jdbcTemplate.update("DELETE FROM order_building_link WHERE work_order_id = ?", workOrderId);
+        Set<String> insertedBuildingIds = new HashSet<>();
         for (JsonNode building : array(impactedBuildings)) {
             String buildingId = defaultText(text(building.get("buildingId")), "UNKNOWN");
+            if (!insertedBuildingIds.add(buildingId)) {
+                continue;
+            }
             String buildingName = defaultText(text(building.get("buildingName")), buildingId);
             ArrayNode floors = array(building.get("floors"));
             ArrayNode rooms = array(building.get("rooms"));
@@ -1042,12 +1088,11 @@ public class WorkOrderRepository {
         jdbcTemplate.update("UPDATE work_order SET updated_at = now() WHERE id = ?", id);
     }
 
-    private String queryLatestPumpStatus(String workOrderId, String buildingId) {
+    private String queryLatestPumpStatus(String buildingId) {
         try {
             String status = jdbcTemplate.queryForObject(
-                    "SELECT after_status FROM pump_control_log WHERE work_order_id = ? AND building_id = ? ORDER BY executed_at DESC LIMIT 1",
+                    "SELECT after_status FROM pump_control_log WHERE building_id = ? ORDER BY executed_at DESC LIMIT 1",
                     String.class,
-                    workOrderId,
                     buildingId
             );
             if (status != null && !status.isBlank()) return status;
@@ -1364,7 +1409,7 @@ public class WorkOrderRepository {
             case "retire" -> "SCR";
             default -> "OPS";
         };
-        return "WO-" + prefix + "-" + System.currentTimeMillis();
+        return "WO-" + prefix + "-" + System.currentTimeMillis() + "-" + UUID.randomUUID().toString().substring(0, 8);
     }
 
     private String newLogId(String prefix) {
@@ -1386,7 +1431,35 @@ public class WorkOrderRepository {
     }
 
     private void saveCache(String key, JsonNode value) {
+        if (!cache.containsKey(key)) {
+            trimCacheIfNeeded();
+        }
         cache.put(key, new CacheEntry(System.currentTimeMillis() + CACHE_TTL_MS, value.deepCopy()));
+    }
+
+    private void trimCacheIfNeeded() {
+        if (cache.size() < MAX_CACHE_ENTRIES) return;
+        long now = System.currentTimeMillis();
+
+        int expiredRemoved = 0;
+        for (Map.Entry<String, CacheEntry> entry : cache.entrySet()) {
+            CacheEntry value = entry.getValue();
+            if (value.expireAt() <= now && cache.remove(entry.getKey(), value)) {
+                expiredRemoved++;
+                if (expiredRemoved >= CACHE_CLEANUP_BATCH) break;
+            }
+        }
+
+        int overflow = cache.size() - MAX_CACHE_ENTRIES + 1;
+        if (overflow <= 0) return;
+
+        List<Map.Entry<String, CacheEntry>> snapshot = new ArrayList<>(cache.entrySet());
+        snapshot.sort(Comparator.comparingLong(e -> e.getValue().expireAt()));
+        int toEvict = Math.min(snapshot.size(), overflow + CACHE_CLEANUP_BATCH);
+        for (int i = 0; i < toEvict; i++) {
+            Map.Entry<String, CacheEntry> entry = snapshot.get(i);
+            cache.remove(entry.getKey(), entry.getValue());
+        }
     }
 
     private RuntimeException badRequest(String message) {
@@ -1511,6 +1584,38 @@ public class WorkOrderRepository {
     private String defaultText(String value, String defaultValue) {
         if (value == null || value.isBlank()) return defaultValue;
         return value.trim();
+    }
+
+    private boolean isDateOnly(String value) {
+        if (value == null || value.isBlank()) return false;
+        String trimmed = value.trim();
+        try {
+            return trimmed.length() == 10 && LocalDate.parse(trimmed).toString().equals(trimmed);
+        } catch (DateTimeParseException ex) {
+            return false;
+        }
+    }
+
+    private String normalizeCreatedAtFilter(String value, String fieldName) {
+        if (value == null || value.isBlank()) return null;
+        String trimmed = value.trim();
+        if (isDateOnly(trimmed)) return trimmed;
+        try {
+            OffsetDateTime.parse(trimmed);
+            return trimmed;
+        } catch (DateTimeParseException ignored) {
+        }
+        try {
+            LocalDateTime.parse(trimmed);
+            return trimmed;
+        } catch (DateTimeParseException ignored) {
+        }
+        try {
+            Timestamp.valueOf(trimmed);
+            return trimmed;
+        } catch (IllegalArgumentException ignored) {
+        }
+        throw badRequest(fieldName + "_invalid_datetime");
     }
 
     private boolean isBlank(String value) {

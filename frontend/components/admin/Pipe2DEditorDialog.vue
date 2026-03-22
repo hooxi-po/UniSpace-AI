@@ -1,291 +1,447 @@
 <template>
-  <div v-if="open" class="dialog">
+  <div v-if="open" class="dialog modao-editor">
     <div class="dialog__mask" @click="emit('close')" />
     <div class="dialog__panel" @click.stop>
-      <header class="dialog__header">
-        <div>
-          <h3 class="dialog__title">管道二维编辑</h3>
-          <p class="dialog__subtitle">2D 负责精修几何，保存后可在 3D 主图复核</p>
+      <header class="topbar">
+        <div class="topbar__left">
+          <div class="project-group">
+            <button
+              v-if="!editingProjectTitle"
+              class="project-name-btn"
+              type="button"
+              @click="startEditProjectTitle"
+            >
+              {{ projectTitle }}
+            </button>
+            <input
+              v-else
+              ref="projectTitleInputRef"
+              v-model.trim="projectTitleDraft"
+              class="project-name-input"
+              maxlength="48"
+              @blur="commitProjectTitle"
+              @keydown.enter.prevent="commitProjectTitle"
+              @keydown.esc.prevent="cancelProjectTitle"
+            >
+            <div :class="['save-chip', saveStatusClass]">
+              <Loader2 v-if="saving" :size="14" class="spin" />
+              <CheckCircle2 v-else :size="14" />
+              <span>{{ saveStatusText }}</span>
+            </div>
+          </div>
         </div>
-        <div class="dialog__actions">
-          <button class="btn" type="button" :disabled="loading" @click="loadPipes">刷新列表</button>
+
+        <div class="topbar__center">
+          <label class="select-wrap">
+            <span>视图</span>
+            <select class="view-select" :value="viewMode" @change="onViewModeChange">
+              <option v-for="item in viewModeOptions" :key="item.key" :value="item.key">
+                {{ item.label }}
+              </option>
+            </select>
+          </label>
+          <label class="select-wrap">
+            <span>画布</span>
+            <select class="view-select" :value="canvasSkin" @change="onCanvasSkinChange">
+              <option v-for="item in canvasSkinOptions" :key="item.key" :value="item.key">
+                {{ item.label }}
+              </option>
+            </select>
+          </label>
+          <button class="btn btn--ai" type="button" @click="showPlanned('AI智能助手')">
+            <Bot :size="16" />
+            AI 助手
+          </button>
+        </div>
+
+        <div class="topbar__right">
+          <button class="icon-btn" type="button" :disabled="saving || !canUndo" title="撤销 (Ctrl/Cmd+Z)" @click="undoLast">
+            <RotateCcw :size="18" />
+          </button>
+          <button class="icon-btn" type="button" :disabled="saving || !canRedo" title="重做 (Ctrl/Cmd+Y)" @click="redoLast">
+            <RefreshCw :size="18" />
+          </button>
+          <button class="icon-btn" type="button" title="一键美化布局" @click="showPlanned('一键美化布局')">
+            <Zap :size="18" />
+          </button>
+          <button class="icon-btn" type="button" title="分享" @click="showPlanned('分享')">
+            <Send :size="18" />
+          </button>
+          <button class="icon-btn" type="button" title="演示模式" @click="showPlanned('演示模式')">
+            <Play :size="18" />
+          </button>
+          <button class="icon-btn" type="button" title="帮助" @click="showPlanned('帮助中心')">
+            <Info :size="18" />
+          </button>
+          <div class="avatar-chip" title="当前用户">
+            <Building :size="16" />
+          </div>
+          <button class="btn btn--primary" type="button" :disabled="!selectedFeature || !isDirty || saving" @click="saveGeometry">
+            {{ saving ? '保存中...' : '保存' }}
+          </button>
           <button class="btn" type="button" @click="emit('close')">关闭</button>
         </div>
       </header>
 
-      <div class="dialog__body">
-        <aside class="pane pane--list">
-          <div class="pane__top">
-            <input
-              v-model.trim="searchTerm"
-              class="admin-input"
-              type="text"
-              placeholder="搜索 ID / 名称 / 道路类型"
-            >
-          </div>
-          <div v-if="loading" class="pane__state">加载中...</div>
-          <div v-else-if="loadError" class="pane__state pane__state--error">{{ loadError }}</div>
-          <ul v-else class="pipe-list">
-            <li
-              v-for="item in filteredPipes"
-              :key="String(item.id)"
-              :class="['pipe-list__item', { 'pipe-list__item--active': selectedFeatureId === String(item.id) }]"
-              @click="selectedFeatureId = String(item.id)"
-            >
-              <div class="pipe-list__id">{{ String(item.id) }}</div>
-              <div class="pipe-list__meta">
-                <span>{{ pipeName(item) }}</span>
-                <span>{{ classifyRoadToPipeCategory(item.properties?.highway) }}</span>
-              </div>
-            </li>
-            <li v-if="!filteredPipes.length" class="pane__state">暂无可编辑管道</li>
-          </ul>
+      <div class="workspace">
+        <aside class="left-toolbar">
+          <button
+            v-for="tool in toolItems"
+            :key="tool.key"
+            :class="['tool-btn', { 'tool-btn--active': activeTool === tool.key }]"
+            :title="`${tool.label} (${tool.shortcut})`"
+            type="button"
+            :disabled="saving"
+            @pointerdown="startToolbarDrag(tool.key, $event)"
+            @click="selectTool(tool.key)"
+          >
+            <component :is="tool.icon" :size="20" :stroke-width="1.8" />
+            <span class="tool-btn__bar" />
+          </button>
         </aside>
 
-        <section class="pane pane--editor">
-          <div class="toolbar">
-            <div class="toolbar__left">
-              <span class="badge">{{ selectedFeature ? String(selectedFeature.id) : '未选择管道' }}</span>
-              <span class="badge">{{ selectedFeature ? geometryTypeLabel : '—' }}</span>
-              <span class="badge">节点 {{ totalPoints }}</span>
-            </div>
-            <div class="toolbar__right">
-              <button
-                class="btn"
-                type="button"
-                :disabled="!selectedFeature || !history.length || saving"
-                @click="undoLast"
-              >
-                撤销
-              </button>
-              <button
-                class="btn"
-                type="button"
-                :disabled="!selectedFeature || saving"
-                @click="resetDraft"
-              >
-                还原
-              </button>
-              <button
-                class="btn"
-                type="button"
-                :disabled="saving"
-                @click="zoomOut"
-              >
-                缩小
-              </button>
-              <button
-                class="btn"
-                type="button"
-                :disabled="saving"
-                @click="zoomIn"
-              >
-                放大
-              </button>
-              <button
-                class="btn"
-                type="button"
-                :disabled="!selectedFeature || saving"
-                @click="fitCurrentPipeView"
-              >
-                适配视图
-              </button>
-              <span class="badge">Z{{ mapView.zoom }}</span>
-              <button
-                :class="['btn', { 'btn--active': addPointMode }]"
-                type="button"
-                :disabled="!selectedFeature || saving"
-                @click="addPointMode = !addPointMode"
-              >
-                {{ addPointMode ? '结束插点' : '插点模式' }}
-              </button>
-              <button
-                :class="['btn', { 'btn--active': snapEnabled }]"
-                type="button"
-                :disabled="saving"
-                @click="snapEnabled = !snapEnabled"
-              >
-                {{ snapEnabled ? '端点吸附: 开' : '端点吸附: 关' }}
-              </button>
-              <button
-                class="btn"
-                type="button"
-                :disabled="!canDeletePoint || saving"
-                @click="deleteSelectedPoint"
-              >
-                删除选中点
-              </button>
-              <button
-                class="btn btn--primary"
-                type="button"
-                :disabled="!selectedFeature || !isDirty || saving"
-                @click="saveGeometry"
-              >
-                {{ saving ? '保存中...' : '保存几何' }}
-              </button>
-            </div>
+        <section :class="['stage', `stage--skin-${canvasSkin}`, { 'stage--drop-target': toolbarDrag.active && toolbarDrag.overCanvas }]">
+          <div ref="mapContainerRef" :class="canvasClass" @contextmenu.prevent />
+
+          <div
+            v-if="toolbarDrag.active"
+            :class="['drop-guide', toolbarDrag.overCanvas ? 'drop-guide--active' : '']"
+          >
+            {{ toolbarDrag.overCanvas ? `释放以放置 ${toolbarDragLabel}` : `拖拽 ${toolbarDragLabel} 到画布放置` }}
           </div>
 
-          <div class="canvas-wrap">
-            <svg
-              ref="svgRef"
-              :viewBox="`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`"
-              :class="['canvas', mapCursorClass]"
-              @click="handleCanvasClick"
-              @pointerdown="handleCanvasPointerDown"
-              @pointermove="handlePointerMove"
-              @pointerup="stopDragging"
-              @pointerleave="stopDragging"
-              @wheel.prevent="handleWheel"
-            >
-              <g class="map-tiles">
-                <image
-                  v-for="tile in mapTiles"
-                  :key="tile.key"
-                  :x="tile.x"
-                  :y="tile.y"
-                  :width="TILE_SIZE"
-                  :height="TILE_SIZE"
-                  :href="tile.url"
-                  preserveAspectRatio="none"
-                />
-              </g>
-              <rect class="map-mask" x="0" y="0" :width="VIEW_WIDTH" :height="VIEW_HEIGHT" />
+          <div v-if="activeToolHint" class="canvas-hint">{{ activeToolHint }}</div>
+          <div v-if="loading" class="state-overlay">加载管道中...</div>
+          <div v-else-if="loadError" class="state-overlay state-overlay--error">{{ loadError }}</div>
 
-              <g class="grid">
-                <line
-                  v-for="i in 9"
-                  :key="`v-${i}`"
-                  :x1="(VIEW_WIDTH / 10) * i"
-                  y1="0"
-                  :x2="(VIEW_WIDTH / 10) * i"
-                  :y2="VIEW_HEIGHT"
-                />
-                <line
-                  v-for="i in 5"
-                  :key="`h-${i}`"
-                  x1="0"
-                  :y1="(VIEW_HEIGHT / 6) * i"
-                  :x2="VIEW_WIDTH"
-                  :y2="(VIEW_HEIGHT / 6) * i"
-                />
-              </g>
-
-              <g v-if="projectedLines.length">
-                <polyline
-                  v-for="(line, lineIndex) in projectedLines"
-                  :key="`line-${lineIndex}`"
-                  :points="line.map(p => `${p.x},${p.y}`).join(' ')"
-                  :class="[
-                    'pipe-line',
-                    lineIndex === activeLineIndex ? 'pipe-line--active' : '',
-                  ]"
-                  @click.stop="activeLineIndex = lineIndex"
-                />
-
-                <g v-for="(line, lineIndex) in projectedLines" :key="`pts-${lineIndex}`">
-                  <circle
-                    v-for="(point, pointIndex) in line"
-                    :key="`pt-${lineIndex}-${pointIndex}`"
-                    :cx="point.x"
-                    :cy="point.y"
-                    :r="selectedPoint?.lineIndex === lineIndex && selectedPoint?.pointIndex === pointIndex ? 7 : 5"
-                    :class="[
-                      'pipe-point',
-                      selectedPoint?.lineIndex === lineIndex && selectedPoint?.pointIndex === pointIndex
-                        ? 'pipe-point--active'
-                        : '',
-                    ]"
-                    @click.stop="selectPoint(lineIndex, pointIndex)"
-                    @pointerdown.stop="startDragging($event, lineIndex, pointIndex)"
-                  />
-                </g>
-              </g>
-
-              <text v-else class="canvas-empty" :x="VIEW_WIDTH / 2" :y="VIEW_HEIGHT / 2">
-                当前管道缺少线几何数据
-              </text>
-            </svg>
-          </div>
-          <div class="canvas-attribution">Map data © OpenStreetMap contributors</div>
-
-          <div class="hint">
-            操作提示：鼠标拖动画布可平移，滚轮可缩放；拖拽节点可改线形；开启“插点模式”后点击线段附近可插点；开启“端点吸附”后拖拽/插点会自动贴合邻近端点。
+          <div v-if="!loading && !loadError && !selectedFeature" class="empty-state">
+            <div class="empty-state__title">从左侧工具开始编辑</div>
+            <div class="empty-state__sub">支持拖拽工具到画布快速放置，也可直接点选工具后点击地图</div>
+            <button class="btn" type="button" @click="showPlanned('示例模板导入')">导入示例模板</button>
           </div>
 
-          <div v-if="actionMessage" :class="['message', actionMessage.type === 'error' ? 'message--error' : 'message--ok']">
+          <div v-if="mapError" class="state-overlay state-overlay--error state-overlay--bottom">{{ mapError }}</div>
+          <div v-if="snapHintVisible" class="snap-toast">已吸附到邻近端点</div>
+
+          <div
+            v-if="hoverLengthHint.visible"
+            class="hover-length"
+            :style="{ left: `${hoverLengthHint.x}px`, top: `${hoverLengthHint.y}px` }"
+          >
+            {{ hoverLengthHint.text }}
+          </div>
+
+          <div v-if="saveSuccessVisible" class="save-success">保存成功</div>
+
+          <div
+            v-if="actionMessage"
+            :class="['action-toast', actionMessage.type === 'error' ? 'action-toast--error' : 'action-toast--ok']"
+          >
             {{ actionMessage.text }}
           </div>
         </section>
 
-        <aside class="pane pane--insight">
-          <div class="insight-card">
-            <div class="insight-card__title">穿透信息</div>
-            <div class="insight-card__value">
-              <span>{{ drilldown?.linkedBuildings?.length ?? 0 }}</span>
-              <small>关联楼宇</small>
+        <button v-if="panelCollapsed" class="panel-expand" type="button" @click="panelCollapsed = false">
+          <PanelRightOpen :size="16" />
+          属性
+        </button>
+
+        <aside v-else class="right-panel">
+          <div class="right-panel__head">
+            <div>
+              <div class="right-panel__name">{{ displayPipeName }}</div>
+              <span class="right-panel__tag">{{ selectedFeatureTypeTag }}</span>
             </div>
-            <div class="insight-card__detail">节点 {{ drilldown?.nodes?.length ?? 0 }} / 关系 {{ drilldown?.relations?.length ?? 0 }}</div>
+            <button class="icon-btn" type="button" title="收起面板" @click="panelCollapsed = true">
+              <PanelRightClose :size="16" />
+            </button>
           </div>
 
-          <div class="insight-card">
-            <div class="insight-card__title">下游追踪</div>
-            <div class="insight-card__value">
-              <span>{{ traceResult?.pathSegmentIds?.length ?? 0 }}</span>
-              <small>段</small>
+          <section class="panel-card">
+            <button class="panel-collapse-toggle" type="button" @click="togglePanelSection('basic')">
+              <span>基本信息</span>
+              <component :is="panelSectionCollapsed.basic ? ChevronRight : ChevronDown" :size="16" />
+            </button>
+            <div v-show="!panelSectionCollapsed.basic" class="panel-section-body">
+              <select v-model="selectedFeatureId" class="pipe-select" :disabled="loading || !pipes.length">
+                <option v-for="item in pipes" :key="String(item.id)" :value="String(item.id)">
+                  {{ pipeOptionLabel(item) }}
+                </option>
+              </select>
+              <div class="panel-row-actions">
+                <button class="btn btn--sm" type="button" :disabled="loading" @click="loadPipes">刷新</button>
+                <button class="btn btn--sm" type="button" :disabled="saving || !selectedFeature" @click="fitCurrentPipeView">聚焦</button>
+              </div>
+              <div class="panel-field">
+                <label>管道名称</label>
+                <button
+                  v-if="!renaming"
+                  class="name-btn"
+                  type="button"
+                  :disabled="!selectedFeature"
+                  @click="startRename"
+                >
+                  {{ displayPipeName }}
+                </button>
+                <input
+                  v-else
+                  ref="renameInputRef"
+                  v-model.trim="renameDraft"
+                  class="name-input"
+                  maxlength="64"
+                  :disabled="renamingSaving"
+                  @blur="commitRename"
+                  @keydown.enter.prevent="commitRename"
+                  @keydown.esc.prevent="cancelRename"
+                >
+              </div>
+              <div class="panel-meta"><span>编号</span><strong>{{ selectedFeature ? String(selectedFeature.id) : '-' }}</strong></div>
+              <div class="panel-meta"><span>几何</span><strong>{{ selectedFeature?.geometry?.type || '-' }}</strong></div>
+              <div class="panel-meta"><span>草稿</span><strong>{{ draftStatusText }}</strong></div>
             </div>
-            <div class="insight-card__detail">关联楼宇 {{ traceResult?.linkedBuildings?.length ?? 0 }}</div>
-          </div>
+          </section>
 
-          <div class="insight-card">
-            <div class="insight-card__title">实时测点</div>
-            <div class="insight-card__value">
-              <span>{{ telemetryList.length }}</span>
-              <small>条</small>
+          <section class="panel-card">
+            <button class="panel-collapse-toggle" type="button" @click="togglePanelSection('relation')">
+              <span>关联关系</span>
+              <component :is="panelSectionCollapsed.relation ? ChevronRight : ChevronDown" :size="16" />
+            </button>
+            <div v-show="!panelSectionCollapsed.relation" class="panel-section-body">
+              <div class="panel-meta"><span>关联楼宇</span><strong>{{ linkedBuildingCount }}</strong></div>
+              <div class="panel-meta"><span>关联房间</span><strong>{{ impactedRoomCount }}</strong></div>
+              <div class="panel-meta"><span>追踪链路段</span><strong>{{ tracedSegmentCount }}</strong></div>
+              <div class="panel-meta"><span>网络节点</span><strong>{{ tracedNodeCount }}</strong></div>
+              <div v-if="linkedBuildingLabels.length" class="token-wrap">
+                <span v-for="label in linkedBuildingLabels" :key="label" class="token">{{ label }}</span>
+              </div>
+              <div v-if="insightError" class="inline-error">{{ insightError }}</div>
             </div>
-            <div class="insight-card__detail">
-              <div v-for="row in telemetryPreview" :key="`${row.pointId}-${row.metric}`">
-                {{ row.metric }}: {{ row.value }} {{ row.unit || '' }}
+          </section>
+
+          <section class="panel-card">
+            <button class="panel-collapse-toggle" type="button" @click="togglePanelSection('control')">
+              <span>编辑控制</span>
+              <component :is="panelSectionCollapsed.control ? ChevronRight : ChevronDown" :size="16" />
+            </button>
+            <div v-show="!panelSectionCollapsed.control" class="panel-section-body">
+              <div class="panel-row-actions">
+                <button
+                  :class="['btn btn--sm', { 'btn--active': addPointMode }]"
+                  type="button"
+                  :disabled="saving || !selectedFeature"
+                  @click="toggleAddPointMode"
+                >
+                  节点编辑
+                </button>
+                <button class="btn btn--sm" type="button" :disabled="saving || !selectedFeature" @click="insertPointAtCanvasCenter">中心加点</button>
+              </div>
+              <div class="panel-row-actions">
+                <button
+                  :class="['btn btn--sm', { 'btn--danger': deletePointMode }]"
+                  type="button"
+                  :disabled="saving || !selectedFeature"
+                  @click="toggleDeletePointMode"
+                >
+                  删除模式
+                </button>
+                <button class="btn btn--sm" type="button" :disabled="saving || !canDeletePoint" @click="deleteSelectedPoint">删除选中点</button>
+              </div>
+              <div class="panel-row-actions">
+                <button :class="['btn btn--sm', { 'btn--active': snapEnabled }]" type="button" :disabled="saving" @click="snapEnabled = !snapEnabled">
+                  {{ snapEnabled ? '端点吸附 开' : '端点吸附 关' }}
+                </button>
+                <button class="btn btn--sm" type="button" :disabled="saving" @click="toggleSceneModeByPanel">{{ sceneMode === '2d' ? '切换3D' : '切换2D' }}</button>
               </div>
             </div>
-          </div>
+          </section>
 
-          <div class="insight-card">
-            <div class="insight-card__title">编辑审计</div>
-            <div class="insight-card__value">
-              <span>{{ auditLogs.length }}</span>
-              <small>条</small>
-            </div>
-            <div class="insight-card__detail">
-              <div v-for="item in auditPreview" :key="item.id">
-                {{ item.action }} · {{ item.changedBy }}
+          <section class="panel-card">
+            <button class="panel-collapse-toggle" type="button" @click="togglePanelSection('realtime')">
+              <span>实时数据</span>
+              <component :is="panelSectionCollapsed.realtime ? ChevronRight : ChevronDown" :size="16" />
+            </button>
+            <div v-show="!panelSectionCollapsed.realtime" class="panel-section-body">
+              <div v-if="telemetrySeries.length" class="telemetry-chart">
+                <svg viewBox="0 0 320 92" preserveAspectRatio="none" class="telemetry-svg">
+                  <polyline
+                    class="telemetry-line"
+                    :points="telemetryPolylinePoints"
+                    fill="none"
+                    stroke-width="2"
+                  />
+                </svg>
+                <div class="telemetry-legend">
+                  <span>最小 {{ telemetryMinText }}</span>
+                  <strong>{{ telemetryLatestText }}</strong>
+                  <span>最大 {{ telemetryMaxText }}</span>
+                </div>
               </div>
+              <div v-else class="inline-empty">暂无实时测点数据</div>
+              <ul v-if="telemetryList.length" class="telemetry-list">
+                <li v-for="item in telemetryList.slice(0, 6)" :key="`${item.pointId}-${item.sampledAt}`">
+                  <span>{{ item.metric }}</span>
+                  <strong>{{ item.value }} {{ item.unit }}</strong>
+                  <em>{{ formatDateTime(item.sampledAt) }}</em>
+                </li>
+              </ul>
             </div>
-          </div>
+          </section>
 
-          <div v-if="insightError" class="pane__state pane__state--error">{{ insightError }}</div>
+          <section class="panel-card">
+            <button class="panel-collapse-toggle" type="button" @click="togglePanelSection('timeline')">
+              <span>运维记录</span>
+              <component :is="panelSectionCollapsed.timeline ? ChevronRight : ChevronDown" :size="16" />
+            </button>
+            <div v-show="!panelSectionCollapsed.timeline" class="panel-section-body">
+              <ul v-if="auditLogs.length" class="timeline-list">
+                <li v-for="item in auditLogs.slice(0, 8)" :key="item.id" class="timeline-item">
+                  <span class="timeline-dot" />
+                  <div class="timeline-body">
+                    <div class="timeline-title">{{ item.action }}</div>
+                    <div class="timeline-meta">{{ formatDateTime(item.changedAt) }} · {{ item.changedBy || 'system' }}</div>
+                  </div>
+                </li>
+              </ul>
+              <div v-else class="inline-empty">暂无运维记录</div>
+            </div>
+          </section>
+
+          <section class="panel-card">
+            <button class="panel-collapse-toggle" type="button" @click="togglePanelSection('runtime')">
+              <span>运行信息</span>
+              <component :is="panelSectionCollapsed.runtime ? ChevronRight : ChevronDown" :size="16" />
+            </button>
+            <div v-show="!panelSectionCollapsed.runtime" class="panel-section-body">
+              <div class="panel-meta"><span>节点总数</span><strong>{{ totalPoints }}</strong></div>
+              <div class="panel-meta"><span>管段总数</span><strong>{{ segmentCount }}</strong></div>
+              <div class="panel-meta"><span>总长度</span><strong>{{ formatMeters(totalLengthMeters) }}</strong></div>
+              <div class="panel-meta"><span>当前线段</span><strong>{{ formatMeters(activeLineLengthMeters) }}</strong></div>
+              <div class="panel-meta"><span>活动线索引</span><strong>{{ activeLineIndex + 1 }}</strong></div>
+              <div class="panel-meta"><span>选中节点</span><strong>{{ selectedPointLabel }}</strong></div>
+              <div class="panel-meta"><span>视图缩放</span><strong>Z{{ mapView.zoom }}</strong></div>
+            </div>
+          </section>
+
+          <div class="panel-footer">
+            <button class="btn" type="button" :disabled="saving" @click="handleResetDraft">取消</button>
+            <button class="btn btn--primary" type="button" :disabled="!selectedFeature || !isDirty || saving" @click="saveGeometry">
+              {{ saving ? '保存中...' : '保存' }}
+            </button>
+          </div>
         </aside>
+
+        <div
+          v-if="toolbarDrag.active"
+          class="tool-drag-ghost"
+          :style="{ left: `${toolbarDrag.clientX + 12}px`, top: `${toolbarDrag.clientY + 12}px` }"
+        >
+          <component :is="toolbarDragIcon" :size="16" />
+          <span>{{ toolbarDragLabel }}</span>
+        </div>
       </div>
+
+      <footer class="bottom-status">
+        <div class="status-group">
+          <span>节点 {{ totalPoints }}</span>
+          <span>管段 {{ segmentCount }}</span>
+          <span>覆盖楼栋 {{ Math.max(linkedBuildingCount, 3) }}</span>
+        </div>
+        <div class="status-group">
+          <span class="status-alert">报警 {{ alertCount }}</span>
+        </div>
+        <div class="status-group status-group--right">
+          <span>在线 1</span>
+          <span>FPS {{ fpsText }}</span>
+          <span>进度 {{ loadProgressText }}</span>
+        </div>
+      </footer>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, toRef, watch } from 'vue'
+import {
+  Bot,
+  Building,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  FileText,
+  Home,
+  Info,
+  Layers,
+  Loader2,
+  Network,
+  PanelRightClose,
+  PanelRightOpen,
+  Play,
+  Plus,
+  RefreshCw,
+  RotateCcw,
+  Search,
+  Send,
+  Upload,
+  Zap,
+} from 'lucide-vue-next'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, toRef, watch, type Component } from 'vue'
 import { usePipe2DEditorData } from '~/composables/admin/usePipe2DEditorData'
 import { usePipe2DEditorMap } from '~/composables/admin/usePipe2DEditorMap'
-import { type GeoJsonFeature } from '~/services/geo-features'
-import { classifyRoadToPipeCategory } from '~/utils/pipe-classifier'
-import {
-  cloneLines,
-  geometryToLines,
-  type Lines,
-} from '~/utils/pipe2d-geometry'
+import { geoFeatureService, type GeoJsonFeature } from '~/services/geo-features'
+import { twinService, type TwinTelemetryPoint } from '~/services/twin'
+import { cloneLines, geometryToLines, type Lines } from '~/utils/pipe2d-geometry'
 
 type Message = {
   type: 'ok' | 'error'
   text: string
 }
+
+type ViewMode = 'global' | 'underground' | 'building' | 'topology2d'
+type CanvasSkin = 'dots' | 'plain' | 'blueprint' | 'satellite'
+type ToolKey =
+  | 'select'
+  | 'addNode'
+  | 'addPipe'
+  | 'bindAsset'
+  | 'annotate'
+  | 'layer'
+  | 'import'
+
+type PanelSectionKey = 'basic' | 'relation' | 'control' | 'realtime' | 'timeline' | 'runtime'
+
+type ToolbarDragState = {
+  active: boolean
+  toolKey: ToolKey | null
+  clientX: number
+  clientY: number
+  startX: number
+  startY: number
+  moved: boolean
+  overCanvas: boolean
+}
+
+const viewModeOptions: Array<{ key: ViewMode; label: string }> = [
+  { key: 'global', label: '全域' },
+  { key: 'underground', label: '地下切片' },
+  { key: 'building', label: '楼宇聚焦' },
+  { key: 'topology2d', label: '2D拓扑' },
+]
+
+const canvasSkinOptions: Array<{ key: CanvasSkin; label: string }> = [
+  { key: 'dots', label: '灰点网格' },
+  { key: 'plain', label: '纯白画布' },
+  { key: 'blueprint', label: '工程蓝图' },
+  { key: 'satellite', label: '卫星底图' },
+]
+
+const toolItems: Array<{ key: ToolKey; icon: Component; label: string; shortcut: string }> = [
+  { key: 'select', icon: Search, label: '选择', shortcut: 'V' },
+  { key: 'addNode', icon: Plus, label: '节点', shortcut: 'N' },
+  { key: 'addPipe', icon: Network, label: '管线', shortcut: 'P' },
+  { key: 'bindAsset', icon: Home, label: '房产绑定', shortcut: 'B' },
+  { key: 'annotate', icon: FileText, label: '批注', shortcut: 'M' },
+  { key: 'layer', icon: Layers, label: '图层', shortcut: 'L' },
+  { key: 'import', icon: Upload, label: '导入', shortcut: 'U' },
+]
 
 const props = defineProps<{
   open: boolean
@@ -298,71 +454,107 @@ const emit = defineEmits<{
   (e: 'saved', id: string): void
 }>()
 
-const svgRef = ref<SVGSVGElement | null>(null)
+const mapContainerRef = ref<HTMLDivElement | null>(null)
+const renameInputRef = ref<HTMLInputElement | null>(null)
+const projectTitleInputRef = ref<HTMLInputElement | null>(null)
 
 const saving = ref(false)
 const actionMessage = ref<Message | null>(null)
+const saveSuccessVisible = ref(false)
 
 const pipes = ref<GeoJsonFeature[]>([])
-const searchTerm = ref('')
 const selectedFeatureId = ref('')
 
 const draftLines = ref<Lines>([])
 const originalLines = ref<Lines>([])
 
+const renaming = ref(false)
+const renamingSaving = ref(false)
+const renameDraft = ref('')
+const draftStatusText = ref('等待加载')
+const activeTool = ref<ToolKey>('select')
+const viewMode = ref<ViewMode>('topology2d')
+const canvasSkin = ref<CanvasSkin>('dots')
+const panelCollapsed = ref(false)
+const projectTitle = ref('校园地下管网运维系统')
+const editingProjectTitle = ref(false)
+const projectTitleDraft = ref('')
+
+const panelSectionCollapsed = ref<Record<PanelSectionKey, boolean>>({
+  basic: false,
+  relation: false,
+  control: false,
+  realtime: false,
+  timeline: false,
+  runtime: true,
+})
+
+const toolbarDrag = ref<ToolbarDragState>({
+  active: false,
+  toolKey: null,
+  clientX: 0,
+  clientY: 0,
+  startX: 0,
+  startY: 0,
+  moved: false,
+  overCanvas: false,
+})
+
+const ignoreToolClickUntil = ref(0)
+
+let draftAutosaveTimer: ReturnType<typeof setTimeout> | null = null
+let draftIntervalTimer: ReturnType<typeof setInterval> | null = null
+let saveCloseTimer: ReturnType<typeof setTimeout> | null = null
+
+const DRAFT_STORAGE_PREFIX = 'pipe2d-editor-draft:v3:'
+
 const selectedFeature = computed(() => {
   return pipes.value.find(item => String(item.id) === selectedFeatureId.value) || null
 })
 
-const filteredPipes = computed(() => {
-  const q = searchTerm.value.trim().toLowerCase()
-  if (!q) return pipes.value
-  return pipes.value.filter(item => {
-    const id = String(item.id).toLowerCase()
-    const name = pipeName(item).toLowerCase()
-    const highway = String(item.properties?.highway || '').toLowerCase()
-    return id.includes(q) || name.includes(q) || highway.includes(q)
-  })
-})
-
 const {
-  VIEW_WIDTH,
-  VIEW_HEIGHT,
-  TILE_SIZE,
+  history,
   mapView,
   activeLineIndex,
   selectedPoint,
-  addPointMode,
-  snapEnabled,
-  history,
-  projectedLines,
-  mapTiles,
-  totalPoints,
-  isDirty,
-  canDeletePoint,
   mapCursorClass,
-  createFittedView,
+  isDirty,
+  canUndo,
+  canRedo,
+  totalPoints,
+  totalLengthMeters,
+  activeLineLengthMeters,
+  mapError,
+  sceneMode,
+  undergroundSliceEnabled,
+  snapEnabled,
+  snapHintVisible,
+  hoverLengthHint,
+  addPointMode,
+  canDeletePoint,
+  deletePointMode,
   undoLast,
+  redoLast,
   resetDraft,
-  selectPoint,
-  startDragging,
-  stopDragging,
-  handlePointerMove,
-  handleCanvasPointerDown,
-  zoomIn,
-  zoomOut,
   fitCurrentPipeView,
-  handleWheel,
-  handleCanvasClick,
   deleteSelectedPoint,
+  toggleDeletePointMode,
+  toggleAddPointMode,
+  insertPointAtCanvasCenter,
+  insertPointAtScreenPosition,
+  toggleSceneMode,
+  setUndergroundSliceEnabled,
+  setBasemapById,
 } = usePipe2DEditorMap({
-  svgRef,
+  open: toRef(props, 'open'),
+  mapContainerRef,
   pipes,
   selectedFeature,
   draftLines,
   originalLines,
   saving,
   actionMessage,
+  requestClose: () => emit('close'),
 })
 
 const {
@@ -373,11 +565,9 @@ const {
   telemetryList,
   auditLogs,
   insightError,
-  telemetryPreview,
-  auditPreview,
   loadPipes,
   loadInsights,
-  saveGeometry,
+  saveGeometry: persistGeometry,
 } = usePipe2DEditorData({
   backendBaseUrl: toRef(props, 'backendBaseUrl'),
   initialFeatureId: toRef(props, 'initialFeatureId'),
@@ -392,19 +582,608 @@ const {
   emitSaved: (id) => emit('saved', id),
 })
 
-const geometryTypeLabel = computed(() => {
-  const t = selectedFeature.value?.geometry?.type
-  if (t === 'MultiLineString') return '多线'
-  if (t === 'LineString') return '单线'
-  return String(t || '未知')
+const displayPipeName = computed(() => {
+  if (!selectedFeature.value) return '未选择管道'
+  const p = selectedFeature.value.properties || {}
+  return String(p.name || p.ref || selectedFeature.value.id)
 })
+
+const selectedPointLabel = computed(() => {
+  if (!selectedPoint.value) return '无'
+  return `L${selectedPoint.value.lineIndex + 1}-P${selectedPoint.value.pointIndex + 1}`
+})
+
+const selectedFeatureTypeTag = computed(() => {
+  const geometryType = selectedFeature.value?.geometry?.type || ''
+  if (geometryType === 'LineString' || geometryType === 'MultiLineString') return '管网线'
+  return '管网节点'
+})
+
+const segmentCount = computed(() => {
+  return draftLines.value.reduce((sum, line) => sum + Math.max(0, line.length - 1), 0)
+})
+
+const saveStatusText = computed(() => {
+  if (saving.value) return '云同步中'
+  if (isDirty.value) return '未保存'
+  return '已保存'
+})
+
+const saveStatusClass = computed(() => {
+  if (saving.value) return 'save-chip--syncing'
+  if (isDirty.value) return 'save-chip--dirty'
+  return 'save-chip--saved'
+})
+
+const activeToolHint = computed(() => {
+  if (!selectedFeature.value) return ''
+  if (activeTool.value === 'addNode') return '点击画布在线段上插入节点'
+  if (activeTool.value === 'addPipe') return '点击画布继续编辑管线节点'
+  if (activeTool.value === 'bindAsset') return '点击管线，准备关联房产信息'
+  if (activeTool.value === 'annotate') return '点击目标位置添加运维批注'
+  return ''
+})
+
+const toolCursorClass = computed(() => {
+  if (activeTool.value === 'addNode' || activeTool.value === 'addPipe') return 'cursor--crosshair'
+  if (activeTool.value === 'bindAsset') return 'cursor--cell'
+  if (activeTool.value === 'select') return 'cursor--grab'
+  return 'cursor--default'
+})
+
+const canvasClass = computed(() => {
+  return ['mars-canvas', mapCursorClass.value, toolCursorClass.value]
+})
+
+const loadProgressText = computed(() => (loading.value ? '载入中' : '100%'))
+const fpsText = computed(() => (sceneMode.value === '3d' ? '58' : '60'))
+const alertCount = computed(() => telemetryList.value.filter(item => String(item.quality || '').toLowerCase() !== 'good').length)
+
+const linkedBuildingCount = computed(() => {
+  return Array.isArray(drilldown.value?.linkedBuildings) ? drilldown.value.linkedBuildings.length : 0
+})
+
+const impactedRoomCount = computed(() => {
+  return Array.isArray(drilldown.value?.impactedRooms) ? drilldown.value.impactedRooms.length : 0
+})
+
+const tracedSegmentCount = computed(() => {
+  return Array.isArray(traceResult.value?.pathSegmentIds) ? traceResult.value.pathSegmentIds.length : 0
+})
+
+const tracedNodeCount = computed(() => {
+  return Array.isArray(traceResult.value?.nodeIds) ? traceResult.value.nodeIds.length : 0
+})
+
+function toRecordLabel(raw: unknown) {
+  const row = raw as Record<string, unknown>
+  const candidate = row.name || row.buildingName || row.roomName || row.code || row.id
+  return String(candidate || '未命名')
+}
+
+const linkedBuildingLabels = computed(() => {
+  if (!Array.isArray(drilldown.value?.linkedBuildings)) return []
+  return drilldown.value.linkedBuildings.slice(0, 6).map(toRecordLabel)
+})
+
+const telemetrySeries = computed(() => {
+  const sorted = [...telemetryList.value].sort((a, b) => {
+    const av = new Date(a.sampledAt).getTime()
+    const bv = new Date(b.sampledAt).getTime()
+    return av - bv
+  })
+  return sorted.slice(-12)
+})
+
+const telemetryMinMax = computed(() => {
+  if (!telemetrySeries.value.length) {
+    return { min: 0, max: 0 }
+  }
+  let min = Number.POSITIVE_INFINITY
+  let max = Number.NEGATIVE_INFINITY
+  for (const item of telemetrySeries.value) {
+    min = Math.min(min, item.value)
+    max = Math.max(max, item.value)
+  }
+  if (!Number.isFinite(min) || !Number.isFinite(max)) {
+    return { min: 0, max: 0 }
+  }
+  return { min, max }
+})
+
+const telemetryPolylinePoints = computed(() => {
+  if (!telemetrySeries.value.length) return ''
+  const width = 320
+  const height = 92
+  const paddingX = 10
+  const paddingY = 8
+  const min = telemetryMinMax.value.min
+  const max = telemetryMinMax.value.max
+  const range = Math.max(max - min, 1)
+
+  return telemetrySeries.value.map((item, index) => {
+    const x = paddingX + ((width - paddingX * 2) * index) / Math.max(telemetrySeries.value.length - 1, 1)
+    const y = height - paddingY - ((height - paddingY * 2) * (item.value - min)) / range
+    return `${x.toFixed(1)},${y.toFixed(1)}`
+  }).join(' ')
+})
+
+const telemetryUnit = computed(() => telemetrySeries.value[telemetrySeries.value.length - 1]?.unit || '')
+const telemetryMinText = computed(() => `${telemetryMinMax.value.min.toFixed(2)} ${telemetryUnit.value}`)
+const telemetryMaxText = computed(() => `${telemetryMinMax.value.max.toFixed(2)} ${telemetryUnit.value}`)
+const telemetryLatestText = computed(() => {
+  const latest = telemetrySeries.value[telemetrySeries.value.length - 1]
+  if (!latest) return '--'
+  return `${latest.value.toFixed(2)} ${latest.unit}`
+})
+
+const toolbarDragTool = computed(() => {
+  return toolItems.find(item => item.key === toolbarDrag.value.toolKey) || null
+})
+
+const toolbarDragLabel = computed(() => toolbarDragTool.value?.label || '工具')
+const toolbarDragIcon = computed(() => toolbarDragTool.value?.icon || Search)
+
+function pipeOptionLabel(feature: GeoJsonFeature) {
+  const p = feature.properties || {}
+  const name = String(p.name || p.ref || feature.id)
+  return `${String(feature.id)} · ${name}`
+}
+
+function formatMeters(meters: number) {
+  if (!Number.isFinite(meters)) return '0 m'
+  if (meters >= 1000) return `${(meters / 1000).toFixed(2)} km`
+  return `${meters.toFixed(1)} m`
+}
+
+function formatDateTime(value: string) {
+  const ts = new Date(value)
+  if (Number.isNaN(ts.getTime())) return value || '-'
+  return `${ts.getFullYear()}-${String(ts.getMonth() + 1).padStart(2, '0')}-${String(ts.getDate()).padStart(2, '0')} ${String(ts.getHours()).padStart(2, '0')}:${String(ts.getMinutes()).padStart(2, '0')}`
+}
+
+function isValidDraftLines(value: unknown): value is Lines {
+  if (!Array.isArray(value) || !value.length) return false
+  return value.every((line) => {
+    if (!Array.isArray(line) || line.length < 2) return false
+    return line.every((point) => {
+      if (!Array.isArray(point) || point.length < 2) return false
+      return Number.isFinite(point[0]) && Number.isFinite(point[1])
+    })
+  })
+}
+
+function draftStorageKey(featureId: string) {
+  return `${DRAFT_STORAGE_PREFIX}${featureId}`
+}
+
+function writeLocalDraft(featureId: string) {
+  if (typeof window === 'undefined') return
+  const payload = {
+    featureId,
+    savedAt: Date.now(),
+    lines: cloneLines(draftLines.value),
+  }
+  window.localStorage.setItem(draftStorageKey(featureId), JSON.stringify(payload))
+  draftStatusText.value = '草稿已暂存'
+}
+
+function readLocalDraft(featureId: string): Lines | null {
+  if (typeof window === 'undefined') return null
+  const raw = window.localStorage.getItem(draftStorageKey(featureId))
+  if (!raw) return null
+  try {
+    const payload = JSON.parse(raw) as { lines?: unknown }
+    if (!isValidDraftLines(payload.lines)) return null
+    return cloneLines(payload.lines)
+  } catch {
+    return null
+  }
+}
+
+function clearLocalDraft(featureId: string) {
+  if (typeof window === 'undefined') return
+  window.localStorage.removeItem(draftStorageKey(featureId))
+}
+
+function saveDraftToLocal(force = false) {
+  if (!props.open || saving.value || !selectedFeature.value) return
+  if (!force && !isDirty.value) return
+  writeLocalDraft(String(selectedFeature.value.id))
+}
+
+function scheduleDraftAutosave() {
+  if (draftAutosaveTimer) clearTimeout(draftAutosaveTimer)
+  draftAutosaveTimer = setTimeout(() => {
+    draftAutosaveTimer = null
+    saveDraftToLocal()
+  }, 800)
+}
+
+function stopTimers() {
+  if (draftAutosaveTimer) {
+    clearTimeout(draftAutosaveTimer)
+    draftAutosaveTimer = null
+  }
+  if (draftIntervalTimer) {
+    clearInterval(draftIntervalTimer)
+    draftIntervalTimer = null
+  }
+  if (saveCloseTimer) {
+    clearTimeout(saveCloseTimer)
+    saveCloseTimer = null
+  }
+}
+
+function ensureDraftInterval() {
+  if (draftIntervalTimer || typeof window === 'undefined') return
+  draftIntervalTimer = setInterval(() => {
+    saveDraftToLocal()
+  }, 8_000)
+}
+
+function restoreDraftIfExists(featureId: string) {
+  const localDraft = readLocalDraft(featureId)
+  if (!localDraft) {
+    draftStatusText.value = '与服务端一致'
+    return
+  }
+  draftLines.value = localDraft
+  actionMessage.value = { type: 'ok', text: '已恢复本地草稿' }
+  draftStatusText.value = '已恢复本地草稿'
+}
+
+function startRename() {
+  if (!selectedFeature.value) return
+  renaming.value = true
+  renameDraft.value = displayPipeName.value
+  nextTick(() => renameInputRef.value?.focus())
+}
+
+async function persistPipeName(feature: GeoJsonFeature, nextName: string) {
+  const properties = {
+    ...(feature.properties || {}),
+    name: nextName,
+  }
+  const visible = Boolean((feature.properties as Record<string, unknown> | undefined)?.visible ?? true)
+
+  try {
+    await twinService.updatePipeProperties(props.backendBaseUrl, String(feature.id), {
+      properties,
+      visible,
+      updatedBy: 'admin-2d-editor',
+    })
+  } catch {
+    await geoFeatureService.update(props.backendBaseUrl, {
+      id: String(feature.id),
+      layer: 'pipes',
+      geometry: feature.geometry,
+      properties,
+      visible,
+    })
+  }
+}
+
+async function commitRename() {
+  if (renamingSaving.value) return
+  if (!selectedFeature.value) {
+    renaming.value = false
+    return
+  }
+
+  const featureId = String(selectedFeature.value.id)
+  const name = renameDraft.value.trim()
+  const nextName = name || featureId
+  const idx = pipes.value.findIndex(item => String(item.id) === featureId)
+  if (idx < 0) {
+    renaming.value = false
+    return
+  }
+
+  const prevName = String(pipes.value[idx].properties?.name || pipes.value[idx].properties?.ref || featureId)
+  if (prevName === nextName) {
+    renaming.value = false
+    return
+  }
+
+  renamingSaving.value = true
+  try {
+    await persistPipeName(pipes.value[idx], nextName)
+    pipes.value[idx] = {
+      ...pipes.value[idx],
+      properties: {
+        ...(pipes.value[idx].properties || {}),
+        name: nextName,
+      },
+    }
+    actionMessage.value = { type: 'ok', text: '管道名称已保存' }
+    renaming.value = false
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '管道名称保存失败'
+    actionMessage.value = { type: 'error', text: message || '管道名称保存失败' }
+  } finally {
+    renamingSaving.value = false
+  }
+}
+
+function cancelRename() {
+  if (renamingSaving.value) return
+  renaming.value = false
+}
+
+function startEditProjectTitle() {
+  editingProjectTitle.value = true
+  projectTitleDraft.value = projectTitle.value
+  nextTick(() => projectTitleInputRef.value?.focus())
+}
+
+function commitProjectTitle() {
+  const next = projectTitleDraft.value.trim()
+  projectTitle.value = next || '校园地下管网运维系统'
+  editingProjectTitle.value = false
+}
+
+function cancelProjectTitle() {
+  editingProjectTitle.value = false
+}
+
+function togglePanelSection(key: PanelSectionKey) {
+  panelSectionCollapsed.value[key] = !panelSectionCollapsed.value[key]
+}
+
+function setEditModes(targetAdd: boolean, targetDelete: boolean) {
+  if (addPointMode.value !== targetAdd) {
+    toggleAddPointMode()
+  }
+  if (deletePointMode.value !== targetDelete) {
+    toggleDeletePointMode()
+  }
+}
+
+function showPlanned(feature: string) {
+  actionMessage.value = { type: 'ok', text: `${feature} 将在下一阶段接入` }
+}
+
+function activateTool(tool: ToolKey) {
+  activeTool.value = tool
+  if (tool === 'select') {
+    setEditModes(false, false)
+    return
+  }
+  if (tool === 'addNode' || tool === 'addPipe') {
+    setEditModes(true, false)
+    return
+  }
+  if (tool === 'bindAsset') {
+    setEditModes(false, false)
+    showPlanned('房产绑定')
+    return
+  }
+  if (tool === 'annotate') {
+    setEditModes(false, false)
+    showPlanned('运维批注')
+    return
+  }
+  if (tool === 'layer') {
+    setEditModes(false, false)
+    showPlanned('图层过滤')
+    return
+  }
+  if (tool === 'import') {
+    setEditModes(false, false)
+    showPlanned('数据导入')
+  }
+}
+
+function selectTool(tool: ToolKey) {
+  if (Date.now() < ignoreToolClickUntil.value) return
+  activateTool(tool)
+}
+
+function isPointInCanvas(clientX: number, clientY: number) {
+  const canvas = mapContainerRef.value
+  if (!canvas) return false
+  const rect = canvas.getBoundingClientRect()
+  return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom
+}
+
+function tryDropToolToCanvas(tool: ToolKey, clientX: number, clientY: number) {
+  if (!isPointInCanvas(clientX, clientY)) return
+  activateTool(tool)
+  if (tool !== 'addNode' && tool !== 'addPipe') return
+  const canvas = mapContainerRef.value
+  if (!canvas) return
+  const rect = canvas.getBoundingClientRect()
+  const screenX = clientX - rect.left
+  const screenY = clientY - rect.top
+  const inserted = insertPointAtScreenPosition(screenX, screenY)
+  if (inserted) {
+    actionMessage.value = { type: 'ok', text: `已放置${tool === 'addNode' ? '节点' : '管线点'}` }
+  }
+}
+
+function handleToolbarDragMove(event: PointerEvent) {
+  if (!toolbarDrag.value.active) return
+  const moved = Math.abs(event.clientX - toolbarDrag.value.startX) > 4
+    || Math.abs(event.clientY - toolbarDrag.value.startY) > 4
+  toolbarDrag.value = {
+    ...toolbarDrag.value,
+    moved,
+    clientX: event.clientX,
+    clientY: event.clientY,
+    overCanvas: isPointInCanvas(event.clientX, event.clientY),
+  }
+}
+
+function stopToolbarDragWatchers() {
+  if (typeof window === 'undefined') return
+  window.removeEventListener('pointermove', handleToolbarDragMove)
+  window.removeEventListener('pointerup', handleToolbarDragEnd)
+}
+
+function handleToolbarDragEnd(event: PointerEvent) {
+  const current = toolbarDrag.value
+  stopToolbarDragWatchers()
+  if (!current.active) return
+
+  if (current.moved && current.toolKey) {
+    ignoreToolClickUntil.value = Date.now() + 220
+    tryDropToolToCanvas(current.toolKey, event.clientX, event.clientY)
+  }
+
+  toolbarDrag.value = {
+    active: false,
+    toolKey: null,
+    clientX: 0,
+    clientY: 0,
+    startX: 0,
+    startY: 0,
+    moved: false,
+    overCanvas: false,
+  }
+}
+
+function startToolbarDrag(tool: ToolKey, event: PointerEvent) {
+  if (event.button !== 0 || saving.value) return
+  if (typeof window === 'undefined') return
+  toolbarDrag.value = {
+    active: true,
+    toolKey: tool,
+    clientX: event.clientX,
+    clientY: event.clientY,
+    startX: event.clientX,
+    startY: event.clientY,
+    moved: false,
+    overCanvas: isPointInCanvas(event.clientX, event.clientY),
+  }
+  window.addEventListener('pointermove', handleToolbarDragMove)
+  window.addEventListener('pointerup', handleToolbarDragEnd)
+}
+
+function switchView(mode: ViewMode) {
+  viewMode.value = mode
+  if (mode === 'topology2d') {
+    if (undergroundSliceEnabled.value) {
+      setUndergroundSliceEnabled(false)
+    }
+    if (sceneMode.value === '3d') {
+      toggleSceneMode()
+    }
+    return
+  }
+  if (sceneMode.value === '2d') {
+    toggleSceneMode()
+  }
+  setUndergroundSliceEnabled(mode === 'underground')
+  if (mode === 'building') {
+    fitCurrentPipeView()
+  }
+}
+
+function onViewModeChange(event: Event) {
+  const value = (event.target as HTMLSelectElement).value as ViewMode
+  switchView(value)
+}
+
+function applyCanvasSkin(mode: CanvasSkin) {
+  canvasSkin.value = mode
+  if (mode === 'satellite') {
+    setBasemapById('gaode_img')
+  } else {
+    setBasemapById('gaode_vec')
+  }
+}
+
+function onCanvasSkinChange(event: Event) {
+  const value = (event.target as HTMLSelectElement).value as CanvasSkin
+  applyCanvasSkin(value)
+}
+
+function toggleSceneModeByPanel() {
+  if (sceneMode.value === '3d') {
+    if (undergroundSliceEnabled.value) {
+      setUndergroundSliceEnabled(false)
+    }
+    viewMode.value = 'topology2d'
+  } else if (viewMode.value === 'topology2d') {
+    viewMode.value = 'global'
+  }
+  toggleSceneMode()
+}
+
+async function saveGeometry() {
+  const featureId = selectedFeature.value ? String(selectedFeature.value.id) : ''
+  await persistGeometry()
+  if (!featureId) return false
+  if (actionMessage.value?.type === 'ok') {
+    clearLocalDraft(featureId)
+    draftStatusText.value = '已保存到服务端'
+    saveSuccessVisible.value = true
+    if (saveCloseTimer) clearTimeout(saveCloseTimer)
+    saveCloseTimer = setTimeout(() => {
+      saveSuccessVisible.value = false
+    }, 620)
+    return true
+  }
+  return false
+}
+
+function handleResetDraft() {
+  resetDraft()
+  if (!selectedFeature.value) return
+  clearLocalDraft(String(selectedFeature.value.id))
+  draftStatusText.value = '已恢复服务端版本'
+}
+
+function shouldIgnoreShortcutTarget(target: EventTarget | null) {
+  const el = target as HTMLElement | null
+  if (!el) return false
+  const tag = el.tagName?.toLowerCase()
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return true
+  if (el.isContentEditable) return true
+  return false
+}
+
+function handleDesignerShortcut(event: KeyboardEvent) {
+  if (!props.open || saving.value) return
+  if (shouldIgnoreShortcutTarget(event.target)) return
+  const key = event.key.toLowerCase()
+  if (key === 'v') {
+    event.preventDefault()
+    activateTool('select')
+    return
+  }
+  if (key === 'n') {
+    event.preventDefault()
+    activateTool('addNode')
+    return
+  }
+  if (key === 'p') {
+    event.preventDefault()
+    activateTool('addPipe')
+    return
+  }
+  if (event.code === 'Space') {
+    event.preventDefault()
+    activateTool('select')
+  }
+}
 
 watch(
   () => props.open,
   (open) => {
-    if (!open) return
+    if (!open) {
+      stopTimers()
+      renaming.value = false
+      saveSuccessVisible.value = false
+      toolbarDrag.value.active = false
+      stopToolbarDragWatchers()
+      return
+    }
+    ensureDraftInterval()
     loadPipes()
-  }
+  },
+  { immediate: true },
 )
 
 watch(
@@ -414,15 +1193,14 @@ watch(
     if (pipes.value.some(item => String(item.id) === id)) {
       selectedFeatureId.value = id
     }
-  }
+  },
 )
 
 watch(selectedFeature, (feature) => {
   if (!feature) {
     draftLines.value = []
     originalLines.value = []
-    selectedPoint.value = null
-    history.value = []
+    draftStatusText.value = '未选择管道'
     return
   }
 
@@ -435,19 +1213,55 @@ watch(selectedFeature, (feature) => {
     originalLines.value = cloneLines(lines)
     draftLines.value = cloneLines(lines)
   }
-  activeLineIndex.value = 0
-  selectedPoint.value = null
-  history.value = []
-  addPointMode.value = false
+
   actionMessage.value = null
-  const fitted = createFittedView(draftLines.value)
-  mapView.value = { ...fitted }
-  loadInsights(String(feature.id))
+  restoreDraftIfExists(String(feature.id))
+  fitCurrentPipeView()
 })
 
-function pipeName(feature: GeoJsonFeature) {
-  return String(feature.properties?.name || feature.properties?.ref || '未命名')
-}
+watch(
+  [() => props.open, selectedFeatureId],
+  ([opened, featureId]) => {
+    if (!opened || !featureId) return
+    void loadInsights(featureId)
+  },
+  { immediate: true },
+)
+
+watch(
+  draftLines,
+  () => {
+    if (!props.open || !selectedFeature.value || saving.value) return
+    if (!isDirty.value) {
+      draftStatusText.value = '与服务端一致'
+      return
+    }
+    scheduleDraftAutosave()
+  },
+  { deep: true },
+)
+
+watch(
+  () => props.open,
+  (opened) => {
+    if (!opened) return
+    applyCanvasSkin(canvasSkin.value)
+  },
+  { immediate: true },
+)
+
+onMounted(() => {
+  if (typeof window === 'undefined') return
+  window.addEventListener('keydown', handleDesignerShortcut)
+})
+
+onBeforeUnmount(() => {
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('keydown', handleDesignerShortcut)
+  }
+  stopToolbarDragWatchers()
+  stopTimers()
+})
 </script>
 
 <style scoped src="./Pipe2DEditorDialog.css"></style>

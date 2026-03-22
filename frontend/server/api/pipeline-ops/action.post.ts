@@ -12,6 +12,7 @@ import {
   controlHotWaterPumps,
   convertInspectionToMaintenance,
 } from '~/server/utils/pipeline-ops-db'
+import { assertProxyWriteCallerAuthorized } from '~/server/utils/backend-proxy'
 
 type ActionPayload =
   | { action: 'add_log'; payload: PipelineExecutionLogPayload }
@@ -21,6 +22,8 @@ type ActionPayload =
   | { action: 'convert_to_maintenance'; payload: ConvertToMaintenancePayload }
 
 export default defineEventHandler(async (event) => {
+  assertProxyWriteCallerAuthorized(event)
+
   const body = await readBody<ActionPayload>(event)
   if (!body?.action) {
     throw createError({ statusCode: 400, statusMessage: 'action required' })

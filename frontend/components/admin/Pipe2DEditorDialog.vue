@@ -25,82 +25,70 @@
             >
             <div :class="['save-chip', saveStatusClass]">
               <Loader2 v-if="saving" :size="14" class="spin" />
-              <CheckCircle2 v-else :size="14" />
+              <span v-else class="save-dot" />
               <span>{{ saveStatusText }}</span>
             </div>
           </div>
         </div>
 
-        <div class="topbar__center">
-          <label class="select-wrap">
-            <span>视图</span>
-            <select class="view-select" :value="viewMode" @change="onViewModeChange">
-              <option v-for="item in viewModeOptions" :key="item.key" :value="item.key">
-                {{ item.label }}
-              </option>
-            </select>
-          </label>
-          <label class="select-wrap">
-            <span>画布</span>
-            <select class="view-select" :value="canvasSkin" @change="onCanvasSkinChange">
-              <option v-for="item in canvasSkinOptions" :key="item.key" :value="item.key">
-                {{ item.label }}
-              </option>
-            </select>
-          </label>
-          <button class="btn btn--ai" type="button" @click="showPlanned('AI智能助手')">
-            <Bot :size="16" />
-            AI 助手
-          </button>
-        </div>
-
-        <div class="topbar__right">
-          <button class="icon-btn" type="button" :disabled="saving || !canUndo" title="撤销 (Ctrl/Cmd+Z)" @click="undoLast">
-            <RotateCcw :size="18" />
-          </button>
-          <button class="icon-btn" type="button" :disabled="saving || !canRedo" title="重做 (Ctrl/Cmd+Y)" @click="redoLast">
-            <RefreshCw :size="18" />
-          </button>
-          <button class="icon-btn" type="button" title="一键美化布局" @click="showPlanned('一键美化布局')">
-            <Zap :size="18" />
-          </button>
-          <button class="icon-btn" type="button" title="分享" @click="showPlanned('分享')">
-            <Send :size="18" />
-          </button>
-          <button class="icon-btn" type="button" title="演示模式" @click="showPlanned('演示模式')">
-            <Play :size="18" />
-          </button>
-          <button class="icon-btn" type="button" title="帮助" @click="showPlanned('帮助中心')">
-            <Info :size="18" />
-          </button>
-          <div class="avatar-chip" title="当前用户">
-            <Building :size="16" />
+        <div class="topbar__main">
+          <div class="topbar__center">
+            <label class="select-wrap">
+              <span>视图</span>
+              <select class="view-select" :value="viewMode" @change="onViewModeChange">
+                <option v-for="item in viewModeOptions" :key="item.key" :value="item.key">
+                  {{ item.label }}
+                </option>
+              </select>
+            </label>
+            <button class="btn btn--ai" type="button" @click="showPlanned('AI智能助手')">
+              <span class="btn--ai__spark">✦</span>
+              <span class="btn--ai__text">AI 助手</span>
+            </button>
           </div>
-          <button class="btn btn--primary" type="button" :disabled="!selectedFeature || !isDirty || saving" @click="saveGeometry">
-            {{ saving ? '保存中...' : '保存' }}
-          </button>
-          <button class="btn" type="button" @click="emit('close')">关闭</button>
+
+          <div class="topbar__right">
+            <button class="icon-btn" type="button" :disabled="saving || !canUndo" title="撤销 (Ctrl/Cmd+Z)" @click="undoLast">
+              <RotateCcw :size="18" />
+            </button>
+            <button class="icon-btn" type="button" :disabled="saving || !canRedo" title="重做 (Ctrl/Cmd+Y)" @click="redoLast">
+              <RefreshCw :size="18" />
+            </button>
+            <button class="icon-btn" type="button" title="一键美化布局" @click="showPlanned('一键美化布局')">
+              <Zap :size="18" />
+            </button>
+            <button class="icon-btn" type="button" title="分享" @click="showPlanned('分享')">
+              <Send :size="18" />
+            </button>
+            <button class="icon-btn icon-btn--close" type="button" title="关闭" @click="emit('close')">
+              <X :size="18" />
+            </button>
+          </div>
         </div>
       </header>
 
       <div class="workspace">
         <aside class="left-toolbar">
+          <div class="tool-mode-hint">当前：{{ activeToolLabel }}</div>
           <button
             v-for="tool in toolItems"
             :key="tool.key"
             :class="['tool-btn', { 'tool-btn--active': activeTool === tool.key }]"
-            :title="`${tool.label} (${tool.shortcut})`"
+            :data-tip="`${tool.label} (${tool.shortcut})`"
             type="button"
             :disabled="saving"
             @pointerdown="startToolbarDrag(tool.key, $event)"
             @click="selectTool(tool.key)"
           >
-            <component :is="tool.icon" :size="20" :stroke-width="1.8" />
+            <component :is="tool.icon" :size="20" :stroke-width="2" />
             <span class="tool-btn__bar" />
           </button>
         </aside>
 
-        <section :class="['stage', `stage--skin-${canvasSkin}`, { 'stage--drop-target': toolbarDrag.active && toolbarDrag.overCanvas }]">
+        <section
+          :class="['stage', `stage--skin-${canvasSkin}`, { 'stage--drop-target': toolbarDrag.active && toolbarDrag.overCanvas }]"
+          @pointerdown="hideContextMenu"
+        >
           <div ref="mapContainerRef" :class="canvasClass" @contextmenu.prevent />
 
           <div
@@ -139,6 +127,36 @@
           >
             {{ actionMessage.text }}
           </div>
+
+          <div class="zoom-control">
+            <button class="zoom-control__btn" type="button" :disabled="saving" @click="zoomOut">-</button>
+            <input
+              class="zoom-control__slider"
+              type="range"
+              min="14"
+              max="20"
+              step="1"
+              :value="mapView.zoom"
+              @input="onZoomSliderInput"
+            >
+            <button class="zoom-control__btn" type="button" :disabled="saving" @click="zoomIn">+</button>
+            <button class="zoom-control__reset" type="button" :disabled="saving" @click="resetZoomToHundred">100%</button>
+            <span class="zoom-control__value">{{ zoomPercentText }}</span>
+          </div>
+
+          <div v-if="draftRestoredToastVisible" class="draft-toast">已恢复本地草稿</div>
+
+          <ul
+            v-if="contextMenu.visible"
+            class="stage-menu"
+            :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
+            @pointerdown.stop
+          >
+            <li><button class="stage-menu__item" type="button" :disabled="!contextMenu.canDelete" @click="handleMenuDelete">删除</button></li>
+            <li><button class="stage-menu__item" type="button" @click="handleMenuCopy">复制</button></li>
+            <li><button class="stage-menu__item" type="button" @click="handleMenuBindAsset">绑定房产</button></li>
+            <li><button class="stage-menu__item" type="button" @click="handleMenuTrace">查看链路</button></li>
+          </ul>
         </section>
 
         <button v-if="panelCollapsed" class="panel-expand" type="button" @click="panelCollapsed = false">
@@ -149,7 +167,8 @@
         <aside v-else class="right-panel">
           <div class="right-panel__head">
             <div>
-              <div class="right-panel__name">{{ displayPipeName }}</div>
+              <div class="right-panel__name">{{ panelTitle }}</div>
+              <div v-if="selectedFeature" class="right-panel__sub">{{ displayPipeName }}</div>
               <span class="right-panel__tag">{{ selectedFeatureTypeTag }}</span>
             </div>
             <button class="icon-btn" type="button" title="收起面板" @click="panelCollapsed = true">
@@ -209,12 +228,32 @@
             <div v-show="!panelSectionCollapsed.relation" class="panel-section-body">
               <div class="panel-meta"><span>关联楼宇</span><strong>{{ linkedBuildingCount }}</strong></div>
               <div class="panel-meta"><span>关联房间</span><strong>{{ impactedRoomCount }}</strong></div>
-              <div class="panel-meta"><span>追踪链路段</span><strong>{{ tracedSegmentCount }}</strong></div>
-              <div class="panel-meta"><span>网络节点</span><strong>{{ tracedNodeCount }}</strong></div>
+              <div class="sub-collapse">
+                <button class="sub-collapse__toggle" type="button" @click="toggleRelationDetail('traceSegments')">
+                  <span>追踪链路段</span>
+                  <component :is="relationDetailCollapsed.traceSegments ? ChevronRight : ChevronDown" :size="14" />
+                </button>
+                <div v-show="!relationDetailCollapsed.traceSegments" class="sub-collapse__body">
+                  <div class="panel-meta"><span>链路段数量</span><strong>{{ tracedSegmentCount }}</strong></div>
+                </div>
+              </div>
+              <div class="sub-collapse">
+                <button class="sub-collapse__toggle" type="button" @click="toggleRelationDetail('networkNodes')">
+                  <span>网络节点</span>
+                  <component :is="relationDetailCollapsed.networkNodes ? ChevronRight : ChevronDown" :size="14" />
+                </button>
+                <div v-show="!relationDetailCollapsed.networkNodes" class="sub-collapse__body">
+                  <div class="panel-meta"><span>节点数量</span><strong>{{ tracedNodeCount }}</strong></div>
+                </div>
+              </div>
               <div v-if="linkedBuildingLabels.length" class="token-wrap">
                 <span v-for="label in linkedBuildingLabels" :key="label" class="token">{{ label }}</span>
               </div>
-              <div v-if="insightError" class="inline-error">{{ insightError }}</div>
+              <div v-if="insightError" class="inline-empty">
+                <div class="inline-empty__art" aria-hidden="true"><span /><span /></div>
+                <div>暂无数据</div>
+                <div class="inline-empty__sub">点击左侧工具栏开始绑定房产</div>
+              </div>
             </div>
           </section>
 
@@ -325,7 +364,7 @@
           <div class="panel-footer">
             <button class="btn" type="button" :disabled="saving" @click="handleResetDraft">取消</button>
             <button class="btn btn--primary" type="button" :disabled="!selectedFeature || !isDirty || saving" @click="saveGeometry">
-              {{ saving ? '保存中...' : '保存' }}
+              {{ saving ? '保存中...' : '保存修改' }}
             </button>
           </div>
         </aside>
@@ -342,17 +381,21 @@
 
       <footer class="bottom-status">
         <div class="status-group">
-          <span>节点 {{ totalPoints }}</span>
-          <span>管段 {{ segmentCount }}</span>
-          <span>覆盖楼栋 {{ Math.max(linkedBuildingCount, 3) }}</span>
+          <span class="status-mono">节点 {{ totalPoints }}</span>
+          <span class="status-sep">|</span>
+          <span class="status-mono">管段 {{ segmentCount }}</span>
+          <span class="status-sep">|</span>
+          <span class="status-mono">楼栋 {{ Math.max(linkedBuildingCount, 3) }}</span>
         </div>
         <div class="status-group">
-          <span class="status-alert">报警 {{ alertCount }}</span>
+          <span class="status-alert"><i /><span class="status-mono">{{ alertCount }}</span></span>
         </div>
         <div class="status-group status-group--right">
-          <span>在线 1</span>
-          <span>FPS {{ fpsText }}</span>
-          <span>进度 {{ loadProgressText }}</span>
+          <span class="status-online"><i />在线 1人</span>
+          <span class="status-sep">•</span>
+          <span class="status-mono">FPS {{ fpsText }}</span>
+          <span class="status-sep">•</span>
+          <span class="status-mono">进度 {{ loadProgressText }}</span>
         </div>
       </footer>
     </div>
@@ -361,33 +404,30 @@
 
 <script setup lang="ts">
 import {
-  Bot,
-  Building,
-  CheckCircle2,
   ChevronDown,
   ChevronRight,
   FileText,
+  Hand,
   Home,
-  Info,
   Layers,
   Loader2,
   Network,
   PanelRightClose,
   PanelRightOpen,
-  Play,
   Plus,
   RefreshCw,
   RotateCcw,
   Search,
   Send,
   Upload,
+  X,
   Zap,
 } from 'lucide-vue-next'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, toRef, watch, type Component } from 'vue'
 import { usePipe2DEditorData } from '~/composables/admin/usePipe2DEditorData'
 import { usePipe2DEditorMap } from '~/composables/admin/usePipe2DEditorMap'
 import { geoFeatureService, type GeoJsonFeature } from '~/services/geo-features'
-import { twinService, type TwinTelemetryPoint } from '~/services/twin'
+import { twinService } from '~/services/twin'
 import { cloneLines, geometryToLines, type Lines } from '~/utils/pipe2d-geometry'
 
 type Message = {
@@ -395,7 +435,7 @@ type Message = {
   text: string
 }
 
-type ViewMode = 'global' | 'underground' | 'building' | 'topology2d'
+type ViewMode = 'global' | 'underground' | 'topology2d' | 'sketch'
 type CanvasSkin = 'dots' | 'plain' | 'blueprint' | 'satellite'
 type ToolKey =
   | 'select'
@@ -407,6 +447,7 @@ type ToolKey =
   | 'import'
 
 type PanelSectionKey = 'basic' | 'relation' | 'control' | 'realtime' | 'timeline' | 'runtime'
+type RelationDetailKey = 'traceSegments' | 'networkNodes'
 
 type ToolbarDragState = {
   active: boolean
@@ -420,23 +461,16 @@ type ToolbarDragState = {
 }
 
 const viewModeOptions: Array<{ key: ViewMode; label: string }> = [
-  { key: 'global', label: '全域' },
+  { key: 'global', label: '全域3D' },
   { key: 'underground', label: '地下切片' },
-  { key: 'building', label: '楼宇聚焦' },
+  { key: 'sketch', label: '平面草图' },
   { key: 'topology2d', label: '2D拓扑' },
 ]
 
-const canvasSkinOptions: Array<{ key: CanvasSkin; label: string }> = [
-  { key: 'dots', label: '灰点网格' },
-  { key: 'plain', label: '纯白画布' },
-  { key: 'blueprint', label: '工程蓝图' },
-  { key: 'satellite', label: '卫星底图' },
-]
-
 const toolItems: Array<{ key: ToolKey; icon: Component; label: string; shortcut: string }> = [
-  { key: 'select', icon: Search, label: '选择', shortcut: 'V' },
-  { key: 'addNode', icon: Plus, label: '节点', shortcut: 'N' },
-  { key: 'addPipe', icon: Network, label: '管线', shortcut: 'P' },
+  { key: 'select', icon: Hand, label: '选择工具', shortcut: 'V' },
+  { key: 'addNode', icon: Plus, label: '添加节点', shortcut: 'N' },
+  { key: 'addPipe', icon: Network, label: '添加管线', shortcut: 'P' },
   { key: 'bindAsset', icon: Home, label: '房产绑定', shortcut: 'B' },
   { key: 'annotate', icon: FileText, label: '批注', shortcut: 'M' },
   { key: 'layer', icon: Layers, label: '图层', shortcut: 'L' },
@@ -479,6 +513,7 @@ const panelCollapsed = ref(false)
 const projectTitle = ref('校园地下管网运维系统')
 const editingProjectTitle = ref(false)
 const projectTitleDraft = ref('')
+const draftRestoredToastVisible = ref(false)
 
 const panelSectionCollapsed = ref<Record<PanelSectionKey, boolean>>({
   basic: false,
@@ -487,6 +522,11 @@ const panelSectionCollapsed = ref<Record<PanelSectionKey, boolean>>({
   realtime: false,
   timeline: false,
   runtime: true,
+})
+
+const relationDetailCollapsed = ref<Record<RelationDetailKey, boolean>>({
+  traceSegments: true,
+  networkNodes: true,
 })
 
 const toolbarDrag = ref<ToolbarDragState>({
@@ -505,6 +545,7 @@ const ignoreToolClickUntil = ref(0)
 let draftAutosaveTimer: ReturnType<typeof setTimeout> | null = null
 let draftIntervalTimer: ReturnType<typeof setInterval> | null = null
 let saveCloseTimer: ReturnType<typeof setTimeout> | null = null
+let draftToastTimer: ReturnType<typeof setTimeout> | null = null
 
 const DRAFT_STORAGE_PREFIX = 'pipe2d-editor-draft:v3:'
 
@@ -528,6 +569,7 @@ const {
   sceneMode,
   undergroundSliceEnabled,
   snapEnabled,
+  contextMenu,
   snapHintVisible,
   hoverLengthHint,
   addPointMode,
@@ -542,9 +584,14 @@ const {
   toggleAddPointMode,
   insertPointAtCanvasCenter,
   insertPointAtScreenPosition,
+  zoomIn,
+  zoomOut,
+  setZoomLevel,
   toggleSceneMode,
   setUndergroundSliceEnabled,
   setBasemapById,
+  hideContextMenu,
+  deletePointFromContextMenu,
 } = usePipe2DEditorMap({
   open: toRef(props, 'open'),
   mapContainerRef,
@@ -605,8 +652,8 @@ const segmentCount = computed(() => {
 
 const saveStatusText = computed(() => {
   if (saving.value) return '云同步中'
-  if (isDirty.value) return '未保存'
-  return '已保存'
+  if (isDirty.value) return '草稿未保存'
+  return '已同步云端'
 })
 
 const saveStatusClass = computed(() => {
@@ -614,6 +661,9 @@ const saveStatusClass = computed(() => {
   if (isDirty.value) return 'save-chip--dirty'
   return 'save-chip--saved'
 })
+
+const zoomPercentText = computed(() => `${Math.round((mapView.value.zoom / 20) * 100)}%`)
+const activeToolLabel = computed(() => toolItems.find(item => item.key === activeTool.value)?.label || '选择工具')
 
 const activeToolHint = computed(() => {
   if (!selectedFeature.value) return ''
@@ -723,6 +773,7 @@ const toolbarDragTool = computed(() => {
 
 const toolbarDragLabel = computed(() => toolbarDragTool.value?.label || '工具')
 const toolbarDragIcon = computed(() => toolbarDragTool.value?.icon || Search)
+const panelTitle = computed(() => (selectedFeature.value ? `管道 ${String(selectedFeature.value.id)}` : '未选择管道'))
 
 function pipeOptionLabel(feature: GeoJsonFeature) {
   const p = feature.properties || {}
@@ -813,6 +864,11 @@ function stopTimers() {
     clearTimeout(saveCloseTimer)
     saveCloseTimer = null
   }
+  if (draftToastTimer) {
+    clearTimeout(draftToastTimer)
+    draftToastTimer = null
+  }
+  draftRestoredToastVisible.value = false
 }
 
 function ensureDraftInterval() {
@@ -829,7 +885,11 @@ function restoreDraftIfExists(featureId: string) {
     return
   }
   draftLines.value = localDraft
-  actionMessage.value = { type: 'ok', text: '已恢复本地草稿' }
+  draftRestoredToastVisible.value = true
+  if (draftToastTimer) clearTimeout(draftToastTimer)
+  draftToastTimer = setTimeout(() => {
+    draftRestoredToastVisible.value = false
+  }, 3000)
   draftStatusText.value = '已恢复本地草稿'
 }
 
@@ -931,6 +991,10 @@ function togglePanelSection(key: PanelSectionKey) {
   panelSectionCollapsed.value[key] = !panelSectionCollapsed.value[key]
 }
 
+function toggleRelationDetail(key: RelationDetailKey) {
+  relationDetailCollapsed.value[key] = !relationDetailCollapsed.value[key]
+}
+
 function setEditModes(targetAdd: boolean, targetDelete: boolean) {
   if (addPointMode.value !== targetAdd) {
     toggleAddPointMode()
@@ -942,6 +1006,26 @@ function setEditModes(targetAdd: boolean, targetDelete: boolean) {
 
 function showPlanned(feature: string) {
   actionMessage.value = { type: 'ok', text: `${feature} 将在下一阶段接入` }
+}
+
+function handleMenuDelete() {
+  deletePointFromContextMenu()
+  hideContextMenu()
+}
+
+function handleMenuCopy() {
+  hideContextMenu()
+  showPlanned('复制')
+}
+
+function handleMenuBindAsset() {
+  hideContextMenu()
+  showPlanned('绑定房产')
+}
+
+function handleMenuTrace() {
+  hideContextMenu()
+  showPlanned('查看链路')
 }
 
 function activateTool(tool: ToolKey) {
@@ -1062,22 +1146,21 @@ function startToolbarDrag(tool: ToolKey, event: PointerEvent) {
 
 function switchView(mode: ViewMode) {
   viewMode.value = mode
-  if (mode === 'topology2d') {
+  if (mode === 'topology2d' || mode === 'sketch') {
     if (undergroundSliceEnabled.value) {
       setUndergroundSliceEnabled(false)
     }
     if (sceneMode.value === '3d') {
       toggleSceneMode()
     }
+    applyCanvasSkin(mode === 'sketch' ? 'plain' : 'dots')
     return
   }
+  applyCanvasSkin(mode === 'global' ? 'satellite' : 'blueprint')
   if (sceneMode.value === '2d') {
     toggleSceneMode()
   }
   setUndergroundSliceEnabled(mode === 'underground')
-  if (mode === 'building') {
-    fitCurrentPipeView()
-  }
 }
 
 function onViewModeChange(event: Event) {
@@ -1094,11 +1177,6 @@ function applyCanvasSkin(mode: CanvasSkin) {
   }
 }
 
-function onCanvasSkinChange(event: Event) {
-  const value = (event.target as HTMLSelectElement).value as CanvasSkin
-  applyCanvasSkin(value)
-}
-
 function toggleSceneModeByPanel() {
   if (sceneMode.value === '3d') {
     if (undergroundSliceEnabled.value) {
@@ -1109,6 +1187,16 @@ function toggleSceneModeByPanel() {
     viewMode.value = 'global'
   }
   toggleSceneMode()
+}
+
+function onZoomSliderInput(event: Event) {
+  const value = Number((event.target as HTMLInputElement).value)
+  if (!Number.isFinite(value)) return
+  setZoomLevel(value)
+}
+
+function resetZoomToHundred() {
+  setZoomLevel(20)
 }
 
 async function saveGeometry() {

@@ -112,6 +112,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     y: 0,
     text: '',
   })
+  const hoveredLineIndex = ref<number | null>(null)
   const undergroundSliceEnabled = ref(false)
 
   let marsMap: any | null = null
@@ -384,21 +385,45 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     }
   }
 
+  function resolvePipeBaseColor() {
+    const properties = (options.selectedFeature.value?.properties || {}) as Record<string, unknown>
+    const medium = String(
+      properties.medium
+      || properties.media
+      || properties.type
+      || properties.category
+      || properties.pipelineType
+      || '',
+    ).toLowerCase()
+
+    if (/(supply|water|给水|供水)/.test(medium)) return '#60a5fa'
+    if (/(drain|排水|rain|storm)/.test(medium)) return '#34d399'
+    if (/(sewage|污水|waste)/.test(medium)) return '#34d399'
+    if (/(fire|消防)/.test(medium)) return '#f87171'
+    return '#64748b'
+  }
+
   function renderDraftGraphics() {
     if (!viewer) return
     const currentViewer = viewer
     clearGraphics()
+    const baseColor = resolvePipeBaseColor()
 
     options.draftLines.value.forEach((line, lineIndex) => {
       if (line.length < 2) return
+      const activeLine = lineIndex === activeLineIndex.value
+      const hoveredLine = hoveredLineIndex.value === lineIndex
       const lineEntity = currentViewer.entities.add({
         polyline: {
           positions: line.map(toCartesian),
-          width: lineIndex === activeLineIndex.value ? 8 : 7,
+          width: activeLine || hoveredLine ? 4 : 3,
           clampToGround: true,
-          material: lineIndex === activeLineIndex.value
-            ? Cesium.Color.fromCssColorString('#00d4ff')
-            : Cesium.Color.fromCssColorString('#4f7cff'),
+          material: activeLine || hoveredLine
+            ? new Cesium.PolylineGlowMaterialProperty({
+              glowPower: activeLine ? 0.2 : 0.14,
+              color: Cesium.Color.fromCssColorString('#6366f1').withAlpha(0.95),
+            })
+            : Cesium.Color.fromCssColorString(baseColor).withAlpha(0.95),
         },
       })
       ;(lineEntity as any).__pipeLineMeta = { lineIndex }
@@ -407,15 +432,37 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
       line.forEach((point, pointIndex) => {
         const active = selectedPoint.value?.lineIndex === lineIndex
           && selectedPoint.value?.pointIndex === pointIndex
+        if (active) {
+          const haloEntity = currentViewer.entities.add({
+            position: toCartesian(point),
+            point: {
+              pixelSize: 19,
+              color: Cesium.Color.fromCssColorString('#6366f1').withAlpha(0.3),
+              disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            },
+          })
+          ;(haloEntity as any).__pipePointMeta = { lineIndex, pointIndex }
+          currentPointEntities.push(haloEntity)
+        }
+        const shadowEntity = currentViewer.entities.add({
+          position: toCartesian(point),
+          point: {
+            pixelSize: active ? 13 : 12,
+            color: Cesium.Color.fromCssColorString('#1e293b').withAlpha(0.14),
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          },
+        })
+        ;(shadowEntity as any).__pipePointMeta = { lineIndex, pointIndex }
+        currentPointEntities.push(shadowEntity)
         const pointEntity = currentViewer.entities.add({
           position: toCartesian(point),
           point: {
-            pixelSize: active ? 22 : 18,
+            pixelSize: active ? 11 : 10,
             color: active
-              ? Cesium.Color.fromCssColorString('#38b6ff')
-              : Cesium.Color.fromCssColorString('#2d8cff'),
-            outlineColor: Cesium.Color.fromCssColorString('#ffffff'),
-            outlineWidth: active ? 3 : 2,
+              ? Cesium.Color.fromCssColorString('#6366f1')
+              : Cesium.Color.fromCssColorString('#60a5fa'),
+            outlineColor: Cesium.Color.fromCssColorString('#e2e8f0'),
+            outlineWidth: active ? 2 : 1.5,
             disableDepthTestDistance: Number.POSITIVE_INFINITY,
           },
         })
@@ -539,11 +586,28 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     if (!viewer) return
     const pickedEntity = pickEntity(movement.endPosition)
     const pointMeta = pointMetaOf(pickedEntity)
-    if (!pointMeta) {
-      hideHoverLengthHint()
+    if (pointMeta) {
+      if (hoveredLineIndex.value !== pointMeta.lineIndex) {
+        hoveredLineIndex.value = pointMeta.lineIndex
+        renderDraftGraphics()
+      }
+      showHoverLengthHint(movement.endPosition, pointMeta.lineIndex)
       return
     }
-    showHoverLengthHint(movement.endPosition, pointMeta.lineIndex)
+    const lineMeta = lineMetaOf(pickedEntity)
+    if (lineMeta) {
+      if (hoveredLineIndex.value !== lineMeta.lineIndex) {
+        hoveredLineIndex.value = lineMeta.lineIndex
+        renderDraftGraphics()
+      }
+      showHoverLengthHint(movement.endPosition, lineMeta.lineIndex)
+      return
+    }
+    if (hoveredLineIndex.value !== null) {
+      hoveredLineIndex.value = null
+      renderDraftGraphics()
+    }
+    hideHoverLengthHint()
   }
 
   function undoLast() {
@@ -622,7 +686,13 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
 
   function zoomByStep(delta: number) {
     if (!viewer) return
-    const nextZoom = clamp(mapView.value.zoom + delta, MIN_ZOOM, MAX_ZOOM)
+    const nextZoom = clamp(Math.round(mapView.value.zoom + delta), MIN_ZOOM, MAX_ZOOM)
+    setZoomLevel(nextZoom)
+  }
+
+  function setZoomLevel(zoom: number) {
+    if (!viewer) return
+    const nextZoom = clamp(Math.round(zoom), MIN_ZOOM, MAX_ZOOM)
     if (nextZoom === mapView.value.zoom) return
     const targetHeight = zoomToHeight(nextZoom, mapView.value.centerLat)
     viewer.camera.flyTo({
@@ -883,6 +953,11 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
       const snappedPoint = applyEndpointSnap(point, movement.position)
       insertPointAtBestSegment(snappedPoint)
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
+
+    handler.setInputAction((movement: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
+      if (options.saving.value) return
+      openContextMenu(movement.position)
+    }, Cesium.ScreenSpaceEventType.RIGHT_CLICK)
   }
 
   function destroyMap() {
@@ -891,6 +966,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     snapHintVisible.value = false
     contextMenuPoint.value = null
     contextMenuPointMeta.value = null
+    hoveredLineIndex.value = null
     if (handler) {
       handler.destroy()
       handler = null
@@ -1012,6 +1088,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     () => options.selectedFeature.value?.id,
     () => {
       selectedPoint.value = null
+      hoveredLineIndex.value = null
       activeLineIndex.value = 0
       history.value = []
       redoHistory.value = []
@@ -1094,6 +1171,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     insertPointAtScreenPosition,
     zoomIn,
     zoomOut,
+    setZoomLevel,
     fitCurrentPipeView,
     toggleSceneMode,
     setUndergroundSliceEnabled,

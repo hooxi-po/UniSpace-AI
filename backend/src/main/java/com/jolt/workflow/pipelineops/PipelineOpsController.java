@@ -42,19 +42,19 @@ public class PipelineOpsController {
             @RequestParam(name = "page", defaultValue = "1") Integer page,
             @RequestParam(name = "limit", required = false) Integer limit
     ) {
-        return repository.listWorkorders(new WorkOrderRepository.PipelineOrderListQuery(
-                text(type),
-                text(status),
-                text(area),
-                text(pipelineMedium),
-                text(nodeId),
-                text(segmentId),
-                text(buildingId),
-                text(assignee),
-                text(createdFrom),
-                text(createdTo),
-                text(keyword),
-                page == null ? 1 : page,
+        return repository.listWorkorders(buildListQuery(
+                type,
+                status,
+                area,
+                pipelineMedium,
+                nodeId,
+                segmentId,
+                buildingId,
+                assignee,
+                createdFrom,
+                createdTo,
+                keyword,
+                page,
                 limit
         ));
     }
@@ -116,16 +116,68 @@ public class PipelineOpsController {
     }
 
     @GetMapping(value = "/stats", produces = MediaType.APPLICATION_JSON_VALUE)
-    public JsonNode stats() {
+    public JsonNode stats(
+            @RequestParam(name = "type", required = false) String type,
+            @RequestParam(name = "status", required = false) String status,
+            @RequestParam(name = "area", required = false) String area,
+            @RequestParam(name = "pipelineMedium", required = false) String pipelineMedium,
+            @RequestParam(name = "nodeId", required = false) String nodeId,
+            @RequestParam(name = "segmentId", required = false) String segmentId,
+            @RequestParam(name = "buildingId", required = false) String buildingId,
+            @RequestParam(name = "assignee", required = false) String assignee,
+            @RequestParam(name = "createdFrom", required = false) String createdFrom,
+            @RequestParam(name = "createdTo", required = false) String createdTo,
+            @RequestParam(name = "q", required = false) String keyword
+    ) {
         ObjectNode root = objectMapper.createObjectNode();
-        root.set("stats", repository.getStats());
+        root.set("stats", repository.getStats(buildListQuery(
+                type,
+                status,
+                area,
+                pipelineMedium,
+                nodeId,
+                segmentId,
+                buildingId,
+                assignee,
+                createdFrom,
+                createdTo,
+                keyword,
+                1,
+                null
+        )));
         return root;
     }
 
     @GetMapping(value = "/dashboard", produces = MediaType.APPLICATION_JSON_VALUE)
-    public JsonNode dashboard() {
+    public JsonNode dashboard(
+            @RequestParam(name = "type", required = false) String type,
+            @RequestParam(name = "status", required = false) String status,
+            @RequestParam(name = "area", required = false) String area,
+            @RequestParam(name = "pipelineMedium", required = false) String pipelineMedium,
+            @RequestParam(name = "nodeId", required = false) String nodeId,
+            @RequestParam(name = "segmentId", required = false) String segmentId,
+            @RequestParam(name = "buildingId", required = false) String buildingId,
+            @RequestParam(name = "assignee", required = false) String assignee,
+            @RequestParam(name = "createdFrom", required = false) String createdFrom,
+            @RequestParam(name = "createdTo", required = false) String createdTo,
+            @RequestParam(name = "q", required = false) String keyword
+    ) {
         ObjectNode root = objectMapper.createObjectNode();
-        root.set("dashboard", repository.getDashboard());
+        root.set("dashboard", repository.getDashboard(buildListQuery(
+                type,
+                status,
+                area,
+                pipelineMedium,
+                nodeId,
+                segmentId,
+                buildingId,
+                assignee,
+                createdFrom,
+                createdTo,
+                keyword,
+                1,
+                null
+        )));
         return root;
     }
 
@@ -167,5 +219,37 @@ public class PipelineOpsController {
         if (value == null) return null;
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private WorkOrderRepository.PipelineOrderListQuery buildListQuery(
+            String type,
+            String status,
+            String area,
+            String pipelineMedium,
+            String nodeId,
+            String segmentId,
+            String buildingId,
+            String assignee,
+            String createdFrom,
+            String createdTo,
+            String keyword,
+            Integer page,
+            Integer limit
+    ) {
+        return new WorkOrderRepository.PipelineOrderListQuery(
+                text(type),
+                text(status),
+                text(area),
+                text(pipelineMedium),
+                text(nodeId),
+                text(segmentId),
+                text(buildingId),
+                text(assignee),
+                text(createdFrom),
+                text(createdTo),
+                text(keyword),
+                page == null ? 1 : page,
+                limit
+        );
     }
 }

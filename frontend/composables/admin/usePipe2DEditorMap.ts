@@ -69,6 +69,8 @@ const VIEW_PADDING = 30
 const MIN_ZOOM = 14
 const MAX_ZOOM = 20
 const SNAP_PIXEL_THRESHOLD = 8
+const SELECT_POINT_THRESHOLD = 12
+const SELECT_LINE_THRESHOLD = 16
 const DEFAULT_VIEW: PipeEditorMapView = {
   centerLon: 119.1895,
   centerLat: 26.0254,
@@ -116,10 +118,20 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
   const undergroundSliceEnabled = ref(false)
 
   let marsMap: any | null = null
+  let mars3dLib: any | null = null
   let viewer: Cesium.Viewer | null = null
+  let graphicLayer: any | null = null
   let handler: Cesium.ScreenSpaceEventHandler | null = null
   let snapHintTimer: ReturnType<typeof setTimeout> | null = null
   let hoverHintTimer: ReturnType<typeof setTimeout> | null = null
+  let hoverRafId: number | null = null
+  let pendingHoverPosition: Cesium.Cartesian2 | null = null
+  let dragReleaseFallback: ((event: PointerEvent) => void) | null = null
+  let skipDraftLinesWatch = false
+  let layerEventsBound = false
+  let dragEditHistoryPushed = false
+  let dragEditStartLines: Lines | null = null
+  const lineGraphicMap = new Map<number, any>()
   const currentLineEntities: Cesium.Entity[] = []
   const currentPointEntities: Cesium.Entity[] = []
   const contextMenuPoint = ref<Point | null>(null)
@@ -325,6 +337,24 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     contextMenu.value.visible = false
   }
 
+  function clearDragReleaseFallback() {
+    if (typeof window === 'undefined') return
+    if (!dragReleaseFallback) return
+    window.removeEventListener('pointerup', dragReleaseFallback, true)
+    dragReleaseFallback = null
+  }
+
+  function installDragReleaseFallback() {
+    if (typeof window === 'undefined') return
+    clearDragReleaseFallback()
+    dragReleaseFallback = () => {
+      dragging.value = null
+      setCameraControlsEnabled(true)
+      clearDragReleaseFallback()
+    }
+    window.addEventListener('pointerup', dragReleaseFallback, true)
+  }
+
   function hideHoverLengthHint() {
     hoverLengthHint.value.visible = false
     if (hoverHintTimer) {
@@ -354,7 +384,20 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     }, 2000)
   }
 
+  function syncHoveredLine(nextLineIndex: number | null) {
+    if (hoveredLineIndex.value === nextLineIndex) return
+    hoveredLineIndex.value = nextLineIndex
+    // In Mars3D edit mode, full redraw on hover is expensive and can freeze interaction.
+    if (!graphicLayer) {
+      renderDraftGraphics()
+    }
+  }
+
   function clearGraphics() {
+    if (graphicLayer && typeof graphicLayer.clear === 'function') {
+      graphicLayer.clear(true)
+      lineGraphicMap.clear()
+    }
     if (!viewer) return
     for (const entity of currentLineEntities) {
       viewer.entities.remove(entity)
@@ -385,6 +428,172 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     }
   }
 
+  function lineIndexOfGraphic(graphic: any): number {
+    if (!graphic) return -1
+    const attrLineIndex = Number(graphic?.attr?.lineIndex)
+    if (Number.isInteger(attrLineIndex) && attrLineIndex >= 0) return attrLineIndex
+    const metaLineIndex = Number(graphic?.__pipeLineMeta?.lineIndex)
+    if (Number.isInteger(metaLineIndex) && metaLineIndex >= 0) return metaLineIndex
+    return -1
+  }
+
+  function toLineFromGraphic(graphic: any): Line {
+    const positions = (graphic?.positions || graphic?.positionsShow || []) as Array<Cesium.Cartesian3 | number[]>
+    const line: Line = []
+    for (const item of positions) {
+      if (Array.isArray(item)) {
+        if (item.length >= 2 && Number.isFinite(item[0]) && Number.isFinite(item[1])) {
+          line.push([Number(item[0]), Number(item[1])])
+        }
+        continue
+      }
+      if (item && typeof item === 'object') {
+        line.push(toLonLat(item as Cesium.Cartesian3))
+      }
+    }
+    return line
+  }
+
+  function syncDraftLinesFromLayer() {
+    if (!graphicLayer) return
+    const nextLines: Lines = []
+    for (const [lineIndex, graphic] of lineGraphicMap.entries()) {
+      if (!graphic) continue
+      const line = toLineFromGraphic(graphic)
+      if (line.length >= 2) {
+        nextLines[lineIndex] = line
+      }
+    }
+    const normalized = nextLines.filter((line): line is Line => Array.isArray(line) && line.length >= 2)
+    if (!normalized.length) return
+    skipDraftLinesWatch = true
+    options.draftLines.value = cloneLines(normalized)
+  }
+
+  function getNearestPointIndex(line: Line, target: Point) {
+    if (!line.length) return -1
+    let bestIndex = 0
+    let bestDistance = Number.POSITIVE_INFINITY
+    for (let i = 0; i < line.length; i += 1) {
+      const dx = line[i][0] - target[0]
+      const dy = line[i][1] - target[1]
+      const distance = dx * dx + dy * dy
+      if (distance < bestDistance) {
+        bestDistance = distance
+        bestIndex = i
+      }
+    }
+    return bestIndex
+  }
+
+  function getChangedPointIndex(beforeLine: Line | undefined, afterLine: Line | undefined) {
+    if (!beforeLine?.length || !afterLine?.length) return -1
+    const limit = Math.min(beforeLine.length, afterLine.length)
+    if (!limit) return -1
+    let bestIndex = 0
+    let bestDistance = -1
+    for (let i = 0; i < limit; i += 1) {
+      const dx = afterLine[i][0] - beforeLine[i][0]
+      const dy = afterLine[i][1] - beforeLine[i][1]
+      const distance = dx * dx + dy * dy
+      if (distance > bestDistance) {
+        bestDistance = distance
+        bestIndex = i
+      }
+    }
+    if (afterLine.length > beforeLine.length) {
+      return Math.min(afterLine.length - 1, bestIndex + 1)
+    }
+    return bestIndex
+  }
+
+  function startEditingActiveLine() {
+    const activeGraphic = lineGraphicMap.get(activeLineIndex.value)
+    if (graphicLayer && activeGraphic && typeof graphicLayer.startEditing === 'function') {
+      graphicLayer.startEditing(activeGraphic)
+    }
+  }
+
+  function bindLayerEvents() {
+    if (!graphicLayer || !mars3dLib || layerEventsBound) return
+    layerEventsBound = true
+    const eventType = mars3dLib.EventType as Record<string, string>
+
+    graphicLayer.on(eventType.click, (event: any) => {
+      const lineIndex = lineIndexOfGraphic(event?.graphic)
+      if (lineIndex < 0) return
+      activeLineIndex.value = lineIndex
+      const clickedPoint = event?.cartesian ? toLonLat(event.cartesian as Cesium.Cartesian3) : null
+      if (clickedPoint) {
+        const line = options.draftLines.value[lineIndex]
+        if (line?.length) {
+          const pointIndex = getNearestPointIndex(line, clickedPoint)
+          if (pointIndex >= 0) {
+            selectedPoint.value = { lineIndex, pointIndex }
+          }
+        }
+      }
+      if (typeof graphicLayer.startEditing === 'function' && event?.graphic) {
+        graphicLayer.startEditing(event.graphic)
+      }
+      renderDraftGraphics()
+    })
+
+    const syncHandler = (event: any) => {
+      const lineIndex = lineIndexOfGraphic(event?.graphic)
+      if (lineIndex >= 0) {
+        activeLineIndex.value = lineIndex
+      }
+      syncDraftLinesFromLayer()
+      const currentLine = options.draftLines.value[activeLineIndex.value]
+      if (currentLine?.length) {
+        let pointIndex = currentLine.length - 1
+        if (event?.cartesian) {
+          pointIndex = getNearestPointIndex(currentLine, toLonLat(event.cartesian as Cesium.Cartesian3))
+        } else if (dragEditStartLines) {
+          const changedIndex = getChangedPointIndex(
+            dragEditStartLines[activeLineIndex.value],
+            currentLine,
+          )
+          if (changedIndex >= 0) pointIndex = changedIndex
+        }
+        selectedPoint.value = { lineIndex: activeLineIndex.value, pointIndex }
+      }
+    }
+
+    if (eventType.editMovePoint) graphicLayer.on(eventType.editMovePoint, (event: any) => {
+      syncHandler(event)
+      dragging.value = null
+      setCameraControlsEnabled(true)
+      clearDragReleaseFallback()
+    })
+    if (eventType.editAddPoint) graphicLayer.on(eventType.editAddPoint, syncHandler)
+    if (eventType.editRemovePoint) graphicLayer.on(eventType.editRemovePoint, syncHandler)
+    if (eventType.editStop) graphicLayer.on(eventType.editStop, () => {
+      syncDraftLinesFromLayer()
+      dragging.value = null
+      dragEditHistoryPushed = false
+      dragEditStartLines = null
+      setCameraControlsEnabled(true)
+      clearDragReleaseFallback()
+    })
+    if (eventType.editMouseUp) graphicLayer.on(eventType.editMouseUp, () => {
+      dragging.value = null
+      setCameraControlsEnabled(true)
+      clearDragReleaseFallback()
+    })
+    if (eventType.editMouseDown) graphicLayer.on(eventType.editMouseDown, () => {
+      if (!dragEditHistoryPushed) {
+        pushHistory()
+        dragEditHistoryPushed = true
+        dragEditStartLines = cloneLines(options.draftLines.value)
+      }
+      dragging.value = selectedPoint.value || { lineIndex: activeLineIndex.value, pointIndex: 0 }
+      setCameraControlsEnabled(false)
+      installDragReleaseFallback()
+    })
+  }
+
   function resolvePipeBaseColor() {
     const properties = (options.selectedFeature.value?.properties || {}) as Record<string, unknown>
     const medium = String(
@@ -404,10 +613,69 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
   }
 
   function renderDraftGraphics() {
-    if (!viewer) return
-    const currentViewer = viewer
+    dragEditHistoryPushed = false
+    dragEditStartLines = null
     clearGraphics()
     const baseColor = resolvePipeBaseColor()
+
+    if (graphicLayer && mars3dLib) {
+      options.draftLines.value.forEach((line, lineIndex) => {
+        if (line.length < 2) return
+        const activeLine = lineIndex === activeLineIndex.value
+        const hoveredLine = hoveredLineIndex.value === lineIndex
+        const graphic = new mars3dLib.graphic.PolylineEntity({
+          positions: line.map((point) => [point[0], point[1], 0]),
+          style: {
+            width: activeLine || hoveredLine ? 4 : 3,
+            color: activeLine || hoveredLine ? '#6366f1' : baseColor,
+            opacity: 0.95,
+            clampToGround: true,
+          },
+          attr: { lineIndex },
+          hasEdit: true,
+          hasMoveEdit: true,
+          hasMidPoint: true,
+        })
+        ;(graphic as any).__pipeLineMeta = { lineIndex }
+        if (graphic.entity) {
+          ;(graphic.entity as any).__pipeLineMeta = { lineIndex }
+        }
+        graphicLayer.addGraphic(graphic)
+        lineGraphicMap.set(lineIndex, graphic)
+      })
+
+      if (viewer && selectedPoint.value) {
+        const line = options.draftLines.value[selectedPoint.value.lineIndex]
+        const point = line?.[selectedPoint.value.pointIndex]
+        if (point) {
+          const halo = viewer.entities.add({
+            position: toCartesian(point),
+            point: {
+              pixelSize: 18,
+              color: Cesium.Color.fromCssColorString('#6366f1').withAlpha(0.3),
+              disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            },
+          })
+          const core = viewer.entities.add({
+            position: toCartesian(point),
+            point: {
+              pixelSize: 10,
+              color: Cesium.Color.fromCssColorString('#6366f1'),
+              outlineColor: Cesium.Color.fromCssColorString('#e2e8f0'),
+              outlineWidth: 2,
+              disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            },
+          })
+          currentPointEntities.push(halo, core)
+        }
+      }
+
+      startEditingActiveLine()
+      return
+    }
+
+    if (!viewer) return
+    const currentViewer = viewer
 
     options.draftLines.value.forEach((line, lineIndex) => {
       if (line.length < 2) return
@@ -428,6 +696,17 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
       })
       ;(lineEntity as any).__pipeLineMeta = { lineIndex }
       currentLineEntities.push(lineEntity)
+      // Add an invisible-but-pickable wider line to improve click hit area.
+      const lineHitEntity = currentViewer.entities.add({
+        polyline: {
+          positions: line.map(toCartesian),
+          width: activeLine || hoveredLine ? 14 : 12,
+          clampToGround: true,
+          material: Cesium.Color.fromCssColorString('#ffffff').withAlpha(0.01),
+        },
+      })
+      ;(lineHitEntity as any).__pipeLineMeta = { lineIndex }
+      currentLineEntities.push(lineHitEntity)
 
       line.forEach((point, pointIndex) => {
         const active = selectedPoint.value?.lineIndex === lineIndex
@@ -454,6 +733,17 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
         })
         ;(shadowEntity as any).__pipePointMeta = { lineIndex, pointIndex }
         currentPointEntities.push(shadowEntity)
+        // Add a larger transparent point so selecting nodes is easier.
+        const pointHitEntity = currentViewer.entities.add({
+          position: toCartesian(point),
+          point: {
+            pixelSize: active ? 20 : 18,
+            color: Cesium.Color.fromCssColorString('#ffffff').withAlpha(0.01),
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          },
+        })
+        ;(pointHitEntity as any).__pipePointMeta = { lineIndex, pointIndex }
+        currentPointEntities.push(pointHitEntity)
         const pointEntity = currentViewer.entities.add({
           position: toCartesian(point),
           point: {
@@ -491,10 +781,75 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     return null
   }
 
+  function toWindowPosition(point: Point) {
+    if (!viewer) return null
+    const screen = Cesium.SceneTransforms.worldToWindowCoordinates(viewer.scene, toCartesian(point))
+    if (!screen) return null
+    if (!Number.isFinite(screen.x) || !Number.isFinite(screen.y)) return null
+    return screen
+  }
+
+  function findNearestPointMeta(screenPosition: Cesium.Cartesian2, thresholdPx = 16): PipePointMeta | null {
+    let bestMeta: PipePointMeta | null = null
+    let bestDistSq = thresholdPx * thresholdPx
+    for (let lineIndex = 0; lineIndex < options.draftLines.value.length; lineIndex += 1) {
+      const line = options.draftLines.value[lineIndex]
+      for (let pointIndex = 0; pointIndex < line.length; pointIndex += 1) {
+        const win = toWindowPosition(line[pointIndex])
+        if (!win) continue
+        const dx = win.x - screenPosition.x
+        const dy = win.y - screenPosition.y
+        const distSq = dx * dx + dy * dy
+        if (distSq < bestDistSq) {
+          bestDistSq = distSq
+          bestMeta = { lineIndex, pointIndex }
+        }
+      }
+    }
+    return bestMeta
+  }
+
+  function pointToSegmentDistanceSquared(p: Cesium.Cartesian2, a: Cesium.Cartesian2, b: Cesium.Cartesian2) {
+    const abx = b.x - a.x
+    const aby = b.y - a.y
+    const apx = p.x - a.x
+    const apy = p.y - a.y
+    const abLenSq = abx * abx + aby * aby
+    if (abLenSq <= 1e-6) {
+      return apx * apx + apy * apy
+    }
+    const t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / abLenSq))
+    const cx = a.x + abx * t
+    const cy = a.y + aby * t
+    const dx = p.x - cx
+    const dy = p.y - cy
+    return dx * dx + dy * dy
+  }
+
+  function findNearestLineMeta(screenPosition: Cesium.Cartesian2, thresholdPx = 12): PipeLineMeta | null {
+    let bestMeta: PipeLineMeta | null = null
+    let bestDistSq = thresholdPx * thresholdPx
+    for (let lineIndex = 0; lineIndex < options.draftLines.value.length; lineIndex += 1) {
+      const line = options.draftLines.value[lineIndex]
+      for (let segmentIndex = 0; segmentIndex < line.length - 1; segmentIndex += 1) {
+        const a = toWindowPosition(line[segmentIndex])
+        const b = toWindowPosition(line[segmentIndex + 1])
+        if (!a || !b) continue
+        const distSq = pointToSegmentDistanceSquared(screenPosition, a, b)
+        if (distSq < bestDistSq) {
+          bestDistSq = distSq
+          bestMeta = { lineIndex }
+        }
+      }
+    }
+    return bestMeta
+  }
+
   function selectPoint(lineIndex: number, pointIndex: number) {
     activeLineIndex.value = lineIndex
     selectedPoint.value = { lineIndex, pointIndex }
     renderDraftGraphics()
+    startEditingActiveLine()
   }
 
   function startDraggingByMeta(meta: PipePointMeta) {
@@ -511,6 +866,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     }
     dragging.value = null
     setCameraControlsEnabled(true)
+    clearDragReleaseFallback()
   }
 
   function insertPointAtBestSegment(point: Point) {
@@ -573,6 +929,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
       addPointMode.value = false
     }
     deletePointMode.value = !deletePointMode.value
+    startEditingActiveLine()
   }
 
   function toggleAddPointMode() {
@@ -580,34 +937,43 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
       deletePointMode.value = false
     }
     addPointMode.value = !addPointMode.value
+    startEditingActiveLine()
   }
 
-  function handleHoverHint(movement: Cesium.ScreenSpaceEventHandler.MotionEvent) {
+  function handleHoverHint(screenPosition: Cesium.Cartesian2) {
     if (!viewer) return
-    const pickedEntity = pickEntity(movement.endPosition)
-    const pointMeta = pointMetaOf(pickedEntity)
+    if (dragging.value) {
+      hideHoverLengthHint()
+      return
+    }
+    const pickedEntity = pickEntity(screenPosition)
+    const pointMeta = findNearestPointMeta(screenPosition, SELECT_POINT_THRESHOLD)
     if (pointMeta) {
-      if (hoveredLineIndex.value !== pointMeta.lineIndex) {
-        hoveredLineIndex.value = pointMeta.lineIndex
-        renderDraftGraphics()
-      }
-      showHoverLengthHint(movement.endPosition, pointMeta.lineIndex)
+      syncHoveredLine(pointMeta.lineIndex)
+      showHoverLengthHint(screenPosition, pointMeta.lineIndex)
       return
     }
-    const lineMeta = lineMetaOf(pickedEntity)
+    const lineMeta = lineMetaOf(pickedEntity) || findNearestLineMeta(screenPosition, SELECT_LINE_THRESHOLD)
     if (lineMeta) {
-      if (hoveredLineIndex.value !== lineMeta.lineIndex) {
-        hoveredLineIndex.value = lineMeta.lineIndex
-        renderDraftGraphics()
-      }
-      showHoverLengthHint(movement.endPosition, lineMeta.lineIndex)
+      syncHoveredLine(lineMeta.lineIndex)
+      showHoverLengthHint(screenPosition, lineMeta.lineIndex)
       return
     }
-    if (hoveredLineIndex.value !== null) {
-      hoveredLineIndex.value = null
-      renderDraftGraphics()
-    }
+    syncHoveredLine(null)
     hideHoverLengthHint()
+  }
+
+  function queueHoverHint(screenPosition: Cesium.Cartesian2) {
+    if (typeof window === 'undefined') return
+    pendingHoverPosition = new Cesium.Cartesian2(screenPosition.x, screenPosition.y)
+    if (hoverRafId !== null) return
+    hoverRafId = window.requestAnimationFrame(() => {
+      hoverRafId = null
+      const next = pendingHoverPosition
+      pendingHoverPosition = null
+      if (!next) return
+      handleHoverHint(next)
+    })
   }
 
   function undoLast() {
@@ -778,8 +1144,8 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     if (!currentViewer) return
 
     const pickedEntity = pickEntity(screenPosition)
-    const pointMeta = pointMetaOf(pickedEntity)
-    const lineMeta = lineMetaOf(pickedEntity)
+    const pointMeta = findNearestPointMeta(screenPosition, SELECT_POINT_THRESHOLD)
+    const lineMeta = lineMetaOf(pickedEntity) || findNearestLineMeta(screenPosition, SELECT_LINE_THRESHOLD)
     const point = screenToLonLat(screenPosition)
     contextMenuPoint.value = point
     contextMenuPointMeta.value = pointMeta
@@ -893,32 +1259,14 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     if (!viewer || handler) return
     handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
 
-    handler.setInputAction((movement: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
-      if (options.saving.value) return
-      const pickedEntity = pickEntity(movement.position)
-      const pointMeta = pointMetaOf(pickedEntity)
-      if (!pointMeta) return
-      if (deletePointMode.value) return
-      startDraggingByMeta(pointMeta)
-    }, Cesium.ScreenSpaceEventType.LEFT_DOWN)
-
     handler.setInputAction((movement: Cesium.ScreenSpaceEventHandler.MotionEvent) => {
-      if (!dragging.value) {
-        handleHoverHint(movement)
-        return
-      }
-      const point = screenToLonLat(movement.endPosition)
-      if (!point) return
-      const currentLine = options.draftLines.value[dragging.value.lineIndex]
-      if (!currentLine) return
-      const pointIndex = dragging.value.pointIndex
-      const beforePoint = currentLine[pointIndex]
-      currentLine[pointIndex] = applyEndpointSnap(point, movement.endPosition, beforePoint)
-      renderDraftGraphics()
+      queueHoverHint(movement.endPosition)
     }, Cesium.ScreenSpaceEventType.MOUSE_MOVE)
 
     handler.setInputAction(() => {
-      stopDragging()
+      if (dragging.value) {
+        stopDragging()
+      }
     }, Cesium.ScreenSpaceEventType.LEFT_UP)
 
     handler.setInputAction((movement: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
@@ -930,28 +1278,39 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
       }
 
       const pickedEntity = pickEntity(movement.position)
-      const pointMeta = pointMetaOf(pickedEntity)
-      if (pointMeta) {
-        if (deletePointMode.value) {
+      const pointMeta = findNearestPointMeta(movement.position, SELECT_POINT_THRESHOLD)
+
+      if (deletePointMode.value) {
+        if (pointMeta) {
           deletePointByMeta(pointMeta)
-          return
         }
+        return
+      }
+
+      if (addPointMode.value && !options.saving.value && options.selectedFeature.value) {
+        const point = screenToLonLat(movement.position)
+        if (!point) return
+        const snappedPoint = applyEndpointSnap(point, movement.position)
+        insertPointAtBestSegment(snappedPoint)
+        return
+      }
+
+      if (pointMeta) {
         selectPoint(pointMeta.lineIndex, pointMeta.pointIndex)
         return
       }
 
-      const lineMeta = lineMetaOf(pickedEntity)
+      const lineMeta = lineMetaOf(pickedEntity) || findNearestLineMeta(movement.position, SELECT_LINE_THRESHOLD)
       if (lineMeta) {
         activeLineIndex.value = lineMeta.lineIndex
+        startEditingActiveLine()
         renderDraftGraphics()
         return
       }
 
-      if (!addPointMode.value || options.saving.value || !options.selectedFeature.value) return
-      const point = screenToLonLat(movement.position)
-      if (!point) return
-      const snappedPoint = applyEndpointSnap(point, movement.position)
-      insertPointAtBestSegment(snappedPoint)
+      selectedPoint.value = null
+      renderDraftGraphics()
+      return
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
 
     handler.setInputAction((movement: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
@@ -967,10 +1326,22 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     contextMenuPoint.value = null
     contextMenuPointMeta.value = null
     hoveredLineIndex.value = null
+    clearDragReleaseFallback()
+    if (hoverRafId !== null && typeof window !== 'undefined') {
+      window.cancelAnimationFrame(hoverRafId)
+      hoverRafId = null
+    }
+    pendingHoverPosition = null
+    layerEventsBound = false
     if (handler) {
       handler.destroy()
       handler = null
     }
+    if (graphicLayer && typeof graphicLayer.remove === 'function') {
+      graphicLayer.remove(true)
+    }
+    graphicLayer = null
+    lineGraphicMap.clear()
     if (viewer) {
       viewer.camera.changed.removeEventListener(syncMapViewFromCamera)
       clearGraphics()
@@ -980,6 +1351,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
       marsMap.destroy()
     }
     marsMap = null
+    mars3dLib = null
   }
 
   async function ensureMapReady() {
@@ -991,6 +1363,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
       const mars3d = await loadMars3D() as {
         Map: new (container: HTMLElement, options?: Record<string, unknown>) => any
       }
+      mars3dLib = mars3d as any
       if (!options.mapContainerRef.value) return
       marsMap = new mars3d.Map(options.mapContainerRef.value, {
         scene: {
@@ -1052,6 +1425,19 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
       applyUndergroundSlice(undergroundSliceEnabled.value)
       viewer.camera.percentageChanged = 0.01
       viewer.camera.changed.addEventListener(syncMapViewFromCamera)
+      if (mars3dLib?.layer?.GraphicLayer) {
+        graphicLayer = new mars3dLib.layer.GraphicLayer({
+          isAutoEditing: true,
+          isContinued: false,
+          drawAddEventType: mars3dLib.EventType?.click || 'click',
+          drawEndEventType: mars3dLib.EventType?.dblClick || 'dblClick',
+          drawDelEventType: mars3dLib.EventType?.rightClick || 'rightClick',
+        })
+        if (typeof marsMap.addLayer === 'function') {
+          marsMap.addLayer(graphicLayer)
+        }
+        bindLayerEvents()
+      }
       bindMapEvents()
       renderDraftGraphics()
       fitCurrentPipeView()
@@ -1103,6 +1489,10 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
   watch(
     () => options.draftLines.value,
     () => {
+      if (skipDraftLinesWatch) {
+        skipDraftLinesWatch = false
+        return
+      }
       renderDraftGraphics()
     },
     { deep: true },
@@ -1130,6 +1520,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
       clearTimeout(hoverHintTimer)
       hoverHintTimer = null
     }
+    clearDragReleaseFallback()
     destroyMap()
   })
 

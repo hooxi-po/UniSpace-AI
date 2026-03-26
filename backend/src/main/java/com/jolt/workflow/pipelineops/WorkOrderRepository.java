@@ -76,66 +76,11 @@ public class WorkOrderRepository {
             return (ObjectNode) cached;
         }
 
-        String createdFrom = normalizeCreatedAtFilter(query.createdFrom(), "createdFrom");
-        String createdTo = normalizeCreatedAtFilter(query.createdTo(), "createdTo");
-
-        StringBuilder where = new StringBuilder(" WHERE 1=1 ");
-        List<Object> params = new ArrayList<>();
-
-        if (query.type() != null) {
-            where.append(" AND w.order_type = ? ");
-            params.add(query.type());
-        }
-        if (query.status() != null) {
-            where.append(" AND w.status = ? ");
-            params.add(query.status());
-        }
-        if (query.area() != null) {
-            where.append(" AND w.area = ? ");
-            params.add(query.area());
-        }
-        if (query.pipelineMedium() != null) {
-            where.append(" AND w.pipeline_medium = ? ");
-            params.add(query.pipelineMedium());
-        }
-        if (query.assignee() != null) {
-            where.append(" AND w.assignee = ? ");
-            params.add(query.assignee());
-        }
-        if (query.nodeId() != null) {
-            where.append(" AND EXISTS (SELECT 1 FROM jsonb_array_elements_text(w.node_ids) t(v) WHERE t.v = ?) ");
-            params.add(query.nodeId());
-        }
-        if (query.segmentId() != null) {
-            where.append(" AND EXISTS (SELECT 1 FROM jsonb_array_elements_text(w.segment_ids) t(v) WHERE t.v = ?) ");
-            params.add(query.segmentId());
-        }
-        if (query.buildingId() != null) {
-            where.append(" AND (w.building_id = ? OR EXISTS (SELECT 1 FROM order_building_link obl WHERE obl.work_order_id = w.id AND obl.building_id = ?)) ");
-            params.add(query.buildingId());
-            params.add(query.buildingId());
-        }
-        if (createdFrom != null) {
-            where.append(" AND w.created_at >= ?::timestamptz ");
-            params.add(createdFrom);
-        }
-        if (createdTo != null) {
-            if (isDateOnly(createdTo)) {
-                where.append(" AND w.created_at < (?::date + INTERVAL '1 day') ");
-            } else {
-                where.append(" AND w.created_at <= ?::timestamptz ");
-            }
-            params.add(createdTo);
-        }
-        if (query.keyword() != null) {
-            where.append(" AND (LOWER(w.id) LIKE ? OR LOWER(w.title) LIKE ? OR LOWER(w.description) LIKE ? OR LOWER(COALESCE(w.assignee, '')) LIKE ? OR LOWER(COALESCE(w.building_id, '')) LIKE ? OR LOWER(COALESCE(w.building_name, '')) LIKE ? OR LOWER(w.node_ids::text) LIKE ? OR LOWER(w.segment_ids::text) LIKE ?) ");
-            String kw = "%" + query.keyword().toLowerCase(Locale.ROOT) + "%";
-            for (int i = 0; i < 8; i++) params.add(kw);
-        }
+        QueryFilter filter = buildQueryFilter(query, "w");
 
         Integer total = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM work_order w" + where,
-                params.toArray(),
+                "SELECT COUNT(*) FROM work_order w" + filter.whereSql(),
+                filter.params().toArray(),
                 Integer.class
         );
 
@@ -143,7 +88,7 @@ public class WorkOrderRepository {
         int safePage = Math.max(1, query.page());
         int safeOffset = (safePage - 1) * safeLimit;
 
-        List<Object> listParams = new ArrayList<>(params);
+        List<Object> listParams = new ArrayList<>(filter.params());
         listParams.add(safeLimit);
         listParams.add(safeOffset);
 
@@ -161,7 +106,7 @@ public class WorkOrderRepository {
                 "'progressPercent', p.progress_percent, 'executedAt', p.executed_at, 'executedBy', p.executed_by, " +
                 "'message', COALESCE(p.message, '')" +
                 ") ORDER BY p.executed_at ASC) FROM pump_control_log p WHERE p.work_order_id = w.id), '[]'::jsonb) AS pump_controls " +
-                "FROM work_order w" + where +
+                "FROM work_order w" + filter.whereSql() +
                 " ORDER BY w.updated_at DESC LIMIT ? OFFSET ?";
 
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(listSql, listParams.toArray());
@@ -268,14 +213,14 @@ public class WorkOrderRepository {
                 jsonText(normalized.get("equipmentIds")),
                 nullableText(normalized.get("assignee")),
                 nullableText(normalized.get("reviewer")),
-                nullableDate(normalized.get("plannedDate")),
-                nullableTimestamp(normalized.get("deadlineAt")),
-                nullableTimestamp(normalized.get("startedAt")),
-                nullableTimestamp(normalized.get("reviewedAt")),
-                nullableTimestamp(normalized.get("finishedAt")),
-                nullableTimestamp(normalized.get("closedAt")),
-                nullableTimestamp(normalized.get("pausedAt")),
-                nullableTimestamp(normalized.get("rejectedAt")),
+                nullableDate(normalized.get("plannedDate"), "plannedDate"),
+                nullableTimestamp(normalized.get("deadlineAt"), "deadlineAt"),
+                nullableTimestamp(normalized.get("startedAt"), "startedAt"),
+                nullableTimestamp(normalized.get("reviewedAt"), "reviewedAt"),
+                nullableTimestamp(normalized.get("finishedAt"), "finishedAt"),
+                nullableTimestamp(normalized.get("closedAt"), "closedAt"),
+                nullableTimestamp(normalized.get("pausedAt"), "pausedAt"),
+                nullableTimestamp(normalized.get("rejectedAt"), "rejectedAt"),
                 normalized.path("resultSummary").asText(""),
                 jsonText(normalized.get("linkedWorkorderIds")),
                 jsonText(normalized.get("impactScope")),
@@ -285,8 +230,8 @@ public class WorkOrderRepository {
                 jsonText(normalized.get("retire")),
                 jsonText(normalized.get("notifications")),
                 normalized.get("createdBy").asText(),
-                normalized.get("createdAt").asText(),
-                normalized.get("updatedAt").asText()
+                nullableTimestamp(normalized.get("createdAt"), "createdAt"),
+                nullableTimestamp(normalized.get("updatedAt"), "updatedAt")
         );
 
         syncBuildingLinks(
@@ -345,7 +290,9 @@ public class WorkOrderRepository {
             case "submit" -> nextStatus = "todo";
             case "assign" -> {
                 nextStatus = "assigned";
-                if (text(body.get("assignee")) != null) updates.put("assignee", text(body.get("assignee")));
+                String nextAssignee = defaultText(text(body.get("assignee")), updates.path("assignee").asText(""));
+                if (nextAssignee.isBlank()) throw badRequest("assignee_required");
+                updates.put("assignee", nextAssignee);
                 if (text(body.get("reviewer")) != null) updates.put("reviewer", text(body.get("reviewer")));
             }
             case "start" -> {
@@ -397,12 +344,12 @@ public class WorkOrderRepository {
                 nullableText(updates.get("assignee")),
                 nullableText(updates.get("reviewer")),
                 updates.path("resultSummary").asText(""),
-                nullableTimestamp(updates.get("startedAt")),
-                nullableTimestamp(updates.get("reviewedAt")),
-                nullableTimestamp(updates.get("finishedAt")),
-                nullableTimestamp(updates.get("closedAt")),
-                nullableTimestamp(updates.get("pausedAt")),
-                nullableTimestamp(updates.get("rejectedAt")),
+                nullableTimestamp(updates.get("startedAt"), "startedAt"),
+                nullableTimestamp(updates.get("reviewedAt"), "reviewedAt"),
+                nullableTimestamp(updates.get("finishedAt"), "finishedAt"),
+                nullableTimestamp(updates.get("closedAt"), "closedAt"),
+                nullableTimestamp(updates.get("pausedAt"), "pausedAt"),
+                nullableTimestamp(updates.get("rejectedAt"), "rejectedAt"),
                 now,
                 id
         );
@@ -464,22 +411,29 @@ public class WorkOrderRepository {
         };
     }
 
-    public ObjectNode getStats() {
-        String cacheKey = "stats";
+    public ObjectNode getStats(PipelineOrderListQuery query) {
+        String cacheKey = buildSummaryCacheKey("stats", query);
         JsonNode cached = readCache(cacheKey);
         if (cached != null && cached.isObject()) {
             return (ObjectNode) cached;
         }
 
+        QueryFilter filter = buildQueryFilter(query, "w");
         ObjectNode stats = objectMapper.createObjectNode();
-        Integer total = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM work_order", Integer.class);
+        Integer total = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM work_order w" + filter.whereSql(),
+                filter.params().toArray(),
+                Integer.class
+        );
         stats.put("total", total == null ? 0 : total);
 
         for (String status : ORDER_STATUS) {
+            List<Object> params = new ArrayList<>(filter.params());
+            params.add(status);
             Integer count = jdbcTemplate.queryForObject(
-                    "SELECT COUNT(*) FROM work_order WHERE status = ?",
-                    Integer.class,
-                    status
+                    "SELECT COUNT(*) FROM work_order w" + filter.whereSql() + " AND w.status = ?",
+                    params.toArray(),
+                    Integer.class
             );
             stats.put(status, count == null ? 0 : count);
         }
@@ -489,36 +443,57 @@ public class WorkOrderRepository {
         return stats;
     }
 
-    public ObjectNode getDashboard() {
-        String cacheKey = "dashboard";
+    public ObjectNode getDashboard(PipelineOrderListQuery query) {
+        String cacheKey = buildSummaryCacheKey("dashboard", query);
         JsonNode cached = readCache(cacheKey);
         if (cached != null && cached.isObject()) {
             return (ObjectNode) cached;
         }
 
+        QueryFilter filter = buildQueryFilter(query, "w");
         ObjectNode dashboard = objectMapper.createObjectNode();
 
         ObjectNode totalsByType = objectMapper.createObjectNode();
-        for (String type : ORDER_TYPES) {
-            Integer count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM work_order WHERE order_type = ?", Integer.class, type);
-            totalsByType.put(type, count == null ? 0 : count);
+        for (String orderTypeName : ORDER_TYPES) {
+            List<Object> params = new ArrayList<>(filter.params());
+            params.add(orderTypeName);
+            Integer count = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM work_order w" + filter.whereSql() + " AND w.order_type = ?",
+                    params.toArray(),
+                    Integer.class
+            );
+            totalsByType.put(orderTypeName, count == null ? 0 : count);
         }
         dashboard.set("totalsByType", totalsByType);
 
         ObjectNode totalsByStatus = objectMapper.createObjectNode();
         for (String status : ORDER_STATUS) {
-            Integer count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM work_order WHERE status = ?", Integer.class, status);
+            List<Object> params = new ArrayList<>(filter.params());
+            params.add(status);
+            Integer count = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM work_order w" + filter.whereSql() + " AND w.status = ?",
+                    params.toArray(),
+                    Integer.class
+            );
             totalsByStatus.put(status, count == null ? 0 : count);
         }
         dashboard.set("totalsByStatus", totalsByStatus);
 
         ArrayNode topBuildings = objectMapper.createArrayNode();
-        List<Map<String, Object>> topRows = jdbcTemplate.queryForList(
-                "SELECT obl.building_name, COUNT(*) AS cnt, AVG(CASE WHEN w.started_at IS NOT NULL AND COALESCE(w.closed_at, w.finished_at, w.updated_at) > w.started_at " +
+        List<Object> topBuildingParams = new ArrayList<>(filter.params());
+        StringBuilder topBuildingsSql = new StringBuilder(
+                "SELECT COALESCE(obl.building_name, w.building_name, w.building_id, '') AS building_name, COUNT(*) AS cnt, " +
+                        "AVG(CASE WHEN w.started_at IS NOT NULL AND COALESCE(w.closed_at, w.finished_at, w.updated_at) > w.started_at " +
                         "THEN EXTRACT(EPOCH FROM (COALESCE(w.closed_at, w.finished_at, w.updated_at) - w.started_at))/3600.0 ELSE 0 END) AS avg_hours " +
-                        "FROM order_building_link obl JOIN work_order w ON w.id = obl.work_order_id " +
-                        "GROUP BY obl.building_name ORDER BY cnt DESC LIMIT 10"
+                        "FROM work_order w LEFT JOIN order_building_link obl ON w.id = obl.work_order_id " +
+                        filter.whereSql()
         );
+        if (query.buildingId() != null) {
+            topBuildingsSql.append(" AND COALESCE(obl.building_id, w.building_id) = ? ");
+            topBuildingParams.add(query.buildingId());
+        }
+        topBuildingsSql.append("GROUP BY COALESCE(obl.building_name, w.building_name, w.building_id, '') ORDER BY cnt DESC LIMIT 10");
+        List<Map<String, Object>> topRows = jdbcTemplate.queryForList(topBuildingsSql.toString(), topBuildingParams.toArray());
         for (Map<String, Object> row : topRows) {
             ObjectNode item = objectMapper.createObjectNode();
             item.put("buildingName", textValue(row.get("building_name")));
@@ -528,21 +503,36 @@ public class WorkOrderRepository {
         }
         dashboard.set("affectedBuildingsTop10", topBuildings);
 
+        List<Object> completedParams = new ArrayList<>(filter.params());
+        completedParams.add("completed");
+        completedParams.add("closed");
         Double averageHandleHours = jdbcTemplate.queryForObject(
-                "SELECT COALESCE(AVG(CASE WHEN started_at IS NOT NULL AND COALESCE(finished_at, closed_at, updated_at) > started_at " +
-                        "THEN EXTRACT(EPOCH FROM (COALESCE(finished_at, closed_at, updated_at) - started_at))/3600.0 ELSE 0 END), 0) " +
-                        "FROM work_order WHERE status IN ('completed','closed')",
+                "SELECT COALESCE(AVG(CASE WHEN w.started_at IS NOT NULL AND COALESCE(w.finished_at, w.closed_at, w.updated_at) > w.started_at " +
+                        "THEN EXTRACT(EPOCH FROM (COALESCE(w.finished_at, w.closed_at, w.updated_at) - w.started_at))/3600.0 ELSE 0 END), 0) " +
+                        "FROM work_order w" + filter.whereSql() + " AND w.status IN (?, ?)",
+                completedParams.toArray(),
                 Double.class
         );
 
-        Integer totalOrders = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM work_order", Integer.class);
+        Integer totalOrders = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM work_order w" + filter.whereSql(),
+                filter.params().toArray(),
+                Integer.class
+        );
+
         Integer repeatedOrders = jdbcTemplate.queryForObject(
-                "SELECT COALESCE(SUM(cnt),0) FROM (SELECT COUNT(*) AS cnt FROM work_order WHERE jsonb_array_length(segment_ids) > 0 GROUP BY segment_ids HAVING COUNT(*) > 1) t",
+                "SELECT COALESCE(SUM(cnt),0) FROM (" +
+                        "SELECT COUNT(*) AS cnt FROM work_order w" + filter.whereSql() +
+                        " AND jsonb_array_length(w.segment_ids) > 0 GROUP BY w.segment_ids HAVING COUNT(*) > 1" +
+                        ") t",
+                filter.params().toArray(),
                 Integer.class
         );
 
         Double totalCost = jdbcTemplate.queryForObject(
-                "SELECT COALESCE(SUM(CASE WHEN maintenance_payload ? 'cost' THEN COALESCE((maintenance_payload->'cost'->>'totalCost')::numeric,0) ELSE 0 END), 0) FROM work_order",
+                "SELECT COALESCE(SUM(CASE WHEN w.maintenance_payload ? 'cost' THEN COALESCE((w.maintenance_payload->'cost'->>'totalCost')::numeric,0) ELSE 0 END), 0) " +
+                        "FROM work_order w" + filter.whereSql(),
+                filter.params().toArray(),
                 Double.class
         );
 
@@ -555,16 +545,20 @@ public class WorkOrderRepository {
         dashboard.set("efficiency", efficiency);
 
         ArrayNode trend = objectMapper.createArrayNode();
+        List<Object> trendParams = new ArrayList<>(filter.params());
+        trendParams.addAll(filter.params());
         List<Map<String, Object>> trendRows = jdbcTemplate.queryForList(
                 "WITH all_days AS (" +
                         " SELECT day::date AS d FROM generate_series(current_date - interval '29 days', current_date, interval '1 day') day" +
                         "), created_counts AS (" +
-                        " SELECT created_at::date AS d, COUNT(*) AS c FROM work_order GROUP BY created_at::date" +
+                        " SELECT w.created_at::date AS d, COUNT(*) AS c FROM work_order w" + filter.whereSql() + " GROUP BY w.created_at::date" +
                         "), completed_counts AS (" +
-                        " SELECT COALESCE(finished_at, closed_at)::date AS d, COUNT(*) AS c FROM work_order WHERE COALESCE(finished_at, closed_at) IS NOT NULL GROUP BY COALESCE(finished_at, closed_at)::date" +
+                        " SELECT COALESCE(w.finished_at, w.closed_at)::date AS d, COUNT(*) AS c FROM work_order w" + filter.whereSql() +
+                        " AND COALESCE(w.finished_at, w.closed_at) IS NOT NULL GROUP BY COALESCE(w.finished_at, w.closed_at)::date" +
                         ") " +
                         "SELECT to_char(a.d, 'YYYY-MM-DD') AS day, COALESCE(cc.c,0) AS created, COALESCE(dc.c,0) AS completed " +
-                        "FROM all_days a LEFT JOIN created_counts cc ON cc.d = a.d LEFT JOIN completed_counts dc ON dc.d = a.d ORDER BY a.d"
+                        "FROM all_days a LEFT JOIN created_counts cc ON cc.d = a.d LEFT JOIN completed_counts dc ON dc.d = a.d ORDER BY a.d",
+                trendParams.toArray()
         );
         for (Map<String, Object> row : trendRows) {
             ObjectNode item = objectMapper.createObjectNode();
@@ -576,6 +570,10 @@ public class WorkOrderRepository {
         dashboard.set("trendByDay", trend);
 
         ArrayNode inProgressHeatmap = objectMapper.createArrayNode();
+        List<Object> heatmapParams = new ArrayList<>(filter.params());
+        heatmapParams.add("in_progress");
+        heatmapParams.add("paused");
+        heatmapParams.add("review");
         List<Map<String, Object>> heatRows = jdbcTemplate.queryForList(
                 "SELECT w.id, w.title, w.building_id, COALESCE(w.building_name, b.building_name, '') AS building_name, " +
                         "COALESCE(ST_X(ST_Centroid(g.geom)), 119.1895) AS lon, COALESCE(ST_Y(ST_Centroid(g.geom)), 26.0254) AS lat " +
@@ -600,7 +598,8 @@ public class WorkOrderRepository {
                         "  END " +
                         "  LIMIT 1" +
                         ") g ON true " +
-                        "WHERE w.status IN ('in_progress','paused','review') ORDER BY w.updated_at DESC LIMIT 500"
+                        filter.whereSql() + " AND w.status IN (?, ?, ?) ORDER BY w.updated_at DESC LIMIT 500",
+                heatmapParams.toArray()
         );
         int idx = 0;
         for (Map<String, Object> row : heatRows) {
@@ -877,6 +876,9 @@ public class WorkOrderRepository {
         if (sourceOrder == null) throw notFound("workorder_not_found");
         if (!"inspection".equals(sourceOrder.path("type").asText())) {
             throw badRequest("only_inspection_supported");
+        }
+        if (!hasAbnormalInspectionRecord(sourceOrder.path("inspection").path("records"))) {
+            throw badRequest("inspection_abnormal_required");
         }
 
         ObjectNode createPayload = objectMapper.createObjectNode();
@@ -1242,15 +1244,6 @@ public class WorkOrderRepository {
             for (BuildingSeed seed : seeds) candidates.put(seed.id(), seed);
         }
 
-        if (candidates.isEmpty()) {
-            List<Map<String, Object>> rows = jdbcTemplate.queryForList("SELECT code, COALESCE(building_name, project_name) AS name FROM buildings ORDER BY code LIMIT 1");
-            if (!rows.isEmpty()) {
-                String id = textValue(rows.get(0).get("code"));
-                String name = textValue(rows.get(0).get("name"));
-                candidates.put(id, new BuildingSeed(id, name));
-            }
-        }
-
         ArrayNode impactedBuildings = objectMapper.createArrayNode();
 
         for (BuildingSeed candidate : candidates.values()) {
@@ -1335,6 +1328,16 @@ public class WorkOrderRepository {
                 "rejected", Set.of("reopen")
         );
         return map.getOrDefault(current, Set.of()).contains(action);
+    }
+
+    private boolean hasAbnormalInspectionRecord(JsonNode recordsNode) {
+        if (recordsNode == null || !recordsNode.isArray()) return false;
+        for (JsonNode record : recordsNode) {
+            if ("abnormal".equalsIgnoreCase(defaultText(text(record.get("judgement")), ""))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean shouldReopenToTodo(String current) {
@@ -1618,6 +1621,83 @@ public class WorkOrderRepository {
         throw badRequest(fieldName + "_invalid_datetime");
     }
 
+    private String buildSummaryCacheKey(String prefix, PipelineOrderListQuery query) {
+        return prefix + ":" + query.type() + "|" + query.status() + "|" + query.area() + "|" + query.pipelineMedium()
+                + "|" + query.nodeId() + "|" + query.segmentId() + "|" + query.buildingId() + "|" + query.assignee()
+                + "|" + query.createdFrom() + "|" + query.createdTo() + "|" + query.keyword();
+    }
+
+    private QueryFilter buildQueryFilter(PipelineOrderListQuery query, String alias) {
+        String createdFrom = normalizeCreatedAtFilter(query.createdFrom(), "createdFrom");
+        String createdTo = normalizeCreatedAtFilter(query.createdTo(), "createdTo");
+        String aliasPrefix = (alias == null || alias.isBlank()) ? "" : alias + ".";
+
+        StringBuilder where = new StringBuilder(" WHERE 1=1 ");
+        List<Object> params = new ArrayList<>();
+
+        if (query.type() != null) {
+            where.append(" AND ").append(aliasPrefix).append("order_type = ? ");
+            params.add(query.type());
+        }
+        if (query.status() != null) {
+            where.append(" AND ").append(aliasPrefix).append("status = ? ");
+            params.add(query.status());
+        }
+        if (query.area() != null) {
+            where.append(" AND ").append(aliasPrefix).append("area = ? ");
+            params.add(query.area());
+        }
+        if (query.pipelineMedium() != null) {
+            where.append(" AND ").append(aliasPrefix).append("pipeline_medium = ? ");
+            params.add(query.pipelineMedium());
+        }
+        if (query.assignee() != null) {
+            where.append(" AND ").append(aliasPrefix).append("assignee = ? ");
+            params.add(query.assignee());
+        }
+        if (query.nodeId() != null) {
+            where.append(" AND EXISTS (SELECT 1 FROM jsonb_array_elements_text(")
+                    .append(aliasPrefix).append("node_ids) t(v) WHERE t.v = ?) ");
+            params.add(query.nodeId());
+        }
+        if (query.segmentId() != null) {
+            where.append(" AND EXISTS (SELECT 1 FROM jsonb_array_elements_text(")
+                    .append(aliasPrefix).append("segment_ids) t(v) WHERE t.v = ?) ");
+            params.add(query.segmentId());
+        }
+        if (query.buildingId() != null) {
+            where.append(" AND (").append(aliasPrefix).append("building_id = ? OR EXISTS (")
+                    .append("SELECT 1 FROM order_building_link obl_filter WHERE obl_filter.work_order_id = ")
+                    .append(aliasPrefix).append("id AND obl_filter.building_id = ?)) ");
+            params.add(query.buildingId());
+            params.add(query.buildingId());
+        }
+        if (createdFrom != null) {
+            where.append(" AND ").append(aliasPrefix).append("created_at >= ?::timestamptz ");
+            params.add(createdFrom);
+        }
+        if (createdTo != null) {
+            if (isDateOnly(createdTo)) {
+                where.append(" AND ").append(aliasPrefix).append("created_at < (?::date + INTERVAL '1 day') ");
+            } else {
+                where.append(" AND ").append(aliasPrefix).append("created_at <= ?::timestamptz ");
+            }
+            params.add(createdTo);
+        }
+        if (query.keyword() != null) {
+            where.append(" AND (LOWER(").append(aliasPrefix).append("id) LIKE ? OR LOWER(").append(aliasPrefix).append("title) LIKE ? ")
+                    .append("OR LOWER(").append(aliasPrefix).append("description) LIKE ? OR LOWER(COALESCE(").append(aliasPrefix).append("assignee, '')) LIKE ? ")
+                    .append("OR LOWER(COALESCE(").append(aliasPrefix).append("building_id, '')) LIKE ? OR LOWER(COALESCE(").append(aliasPrefix).append("building_name, '')) LIKE ? ")
+                    .append("OR LOWER(").append(aliasPrefix).append("node_ids::text) LIKE ? OR LOWER(").append(aliasPrefix).append("segment_ids::text) LIKE ?) ");
+            String kw = "%" + query.keyword().toLowerCase(Locale.ROOT) + "%";
+            for (int i = 0; i < 8; i++) {
+                params.add(kw);
+            }
+        }
+
+        return new QueryFilter(where.toString(), params);
+    }
+
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
     }
@@ -1633,16 +1713,40 @@ public class WorkOrderRepository {
         return value;
     }
 
-    private String nullableDate(JsonNode node) {
-        String value = text(node);
+    private String normalizeDateText(String value, String fieldName) {
         if (value == null || value.isBlank()) return null;
-        return value;
+        String trimmed = value.trim();
+        try {
+            return LocalDate.parse(trimmed).toString();
+        } catch (DateTimeParseException ex) {
+            throw badRequest(fieldName + "_invalid_date");
+        }
     }
 
-    private String nullableTimestamp(JsonNode node) {
-        String value = text(node);
+    private String normalizeTimestampText(String value, String fieldName) {
         if (value == null || value.isBlank()) return null;
-        return value;
+        String trimmed = value.trim();
+        try {
+            return OffsetDateTime.parse(trimmed).toString();
+        } catch (DateTimeParseException ignored) {
+        }
+        try {
+            return LocalDateTime.parse(trimmed).toString();
+        } catch (DateTimeParseException ignored) {
+        }
+        try {
+            return Timestamp.valueOf(trimmed).toLocalDateTime().toString();
+        } catch (IllegalArgumentException ignored) {
+        }
+        throw badRequest(fieldName + "_invalid_datetime");
+    }
+
+    private String nullableDate(JsonNode node, String fieldName) {
+        return normalizeDateText(text(node), fieldName);
+    }
+
+    private String nullableTimestamp(JsonNode node, String fieldName) {
+        return normalizeTimestampText(text(node), fieldName);
     }
 
     private Integer nullableInt(JsonNode node) {
@@ -1709,6 +1813,9 @@ public class WorkOrderRepository {
         public String cacheKey() {
             return type + "|" + status + "|" + area + "|" + pipelineMedium + "|" + nodeId + "|" + segmentId + "|" + buildingId + "|" + assignee + "|" + createdFrom + "|" + createdTo + "|" + keyword + "|" + page + "|" + limit;
         }
+    }
+
+    private record QueryFilter(String whereSql, List<Object> params) {
     }
 
     private record BuildingSeed(String id, String name) {

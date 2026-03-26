@@ -2,372 +2,140 @@
   <div v-if="open" class="dialog modao-editor">
     <div class="dialog__mask" @click="emit('close')" />
     <div class="dialog__panel" @click.stop>
-      <header class="topbar">
-        <div class="topbar__left">
-          <div class="project-group">
-            <button
-              v-if="!editingProjectTitle"
-              class="project-name-btn"
-              type="button"
-              @click="startEditProjectTitle"
-            >
-              {{ projectTitle }}
-            </button>
-            <input
-              v-else
-              ref="projectTitleInputRef"
-              v-model.trim="projectTitleDraft"
-              class="project-name-input"
-              maxlength="48"
-              @blur="commitProjectTitle"
-              @keydown.enter.prevent="commitProjectTitle"
-              @keydown.esc.prevent="cancelProjectTitle"
-            >
-            <div :class="['save-chip', saveStatusClass]">
-              <Loader2 v-if="saving" :size="14" class="spin" />
-              <span v-else class="save-dot" />
-              <span>{{ saveStatusText }}</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="topbar__main">
-          <div class="topbar__center">
-            <label class="select-wrap">
-              <span>视图</span>
-              <select class="view-select" :value="viewMode" @change="onViewModeChange">
-                <option v-for="item in viewModeOptions" :key="item.key" :value="item.key">
-                  {{ item.label }}
-                </option>
-              </select>
-            </label>
-            <button class="btn btn--ai" type="button" @click="showPlanned('AI智能助手')">
-              <span class="btn--ai__spark">✦</span>
-              <span class="btn--ai__text">AI 助手</span>
-            </button>
-          </div>
-
-          <div class="topbar__right">
-            <button class="icon-btn" type="button" :disabled="saving || !canUndo" title="撤销 (Ctrl/Cmd+Z)" @click="undoLast">
-              <RotateCcw :size="18" />
-            </button>
-            <button class="icon-btn" type="button" :disabled="saving || !canRedo" title="重做 (Ctrl/Cmd+Y)" @click="redoLast">
-              <RefreshCw :size="18" />
-            </button>
-            <button class="icon-btn" type="button" title="一键美化布局" @click="showPlanned('一键美化布局')">
-              <Zap :size="18" />
-            </button>
-            <button class="icon-btn" type="button" title="分享" @click="showPlanned('分享')">
-              <Send :size="18" />
-            </button>
-            <button class="icon-btn icon-btn--close" type="button" title="关闭" @click="emit('close')">
-              <X :size="18" />
-            </button>
-          </div>
-        </div>
-      </header>
+      <Pipe2DEditorTopbarSection
+        :project-title="projectTitle"
+        :editing-project-title="editingProjectTitle"
+        :project-title-draft="projectTitleDraft"
+        :save-status-class="saveStatusClass"
+        :save-status-text="saveStatusText"
+        :saving="saving"
+        :can-undo="canUndo"
+        :can-redo="canRedo"
+        :view-mode="viewMode"
+        :view-mode-options="viewModeOptions"
+        @start-edit-project-title="startEditProjectTitle"
+        @update:project-title-draft="projectTitleDraft = $event"
+        @commit-project-title="commitProjectTitle"
+        @cancel-project-title="cancelProjectTitle"
+        @change-view-mode="switchViewByKey"
+        @ai="showPlanned('AI智能助手')"
+        @undo="undoLast"
+        @redo="redoLast"
+        @beautify="showPlanned('一键美化布局')"
+        @share="showPlanned('分享')"
+        @close="emit('close')"
+      />
 
       <div class="workspace">
-        <aside class="left-toolbar">
-          <div class="tool-mode-hint">当前：{{ activeToolLabel }}</div>
-          <button
-            v-for="tool in toolItems"
-            :key="tool.key"
-            :class="['tool-btn', { 'tool-btn--active': activeTool === tool.key }]"
-            :data-tip="`${tool.label} (${tool.shortcut})`"
-            type="button"
-            :disabled="saving"
-            @pointerdown="startToolbarDrag(tool.key, $event)"
-            @click="selectTool(tool.key)"
-          >
-            <component :is="tool.icon" :size="20" :stroke-width="2" />
-            <span class="tool-btn__bar" />
-          </button>
-        </aside>
+        <Pipe2DEditorToolbarSection
+          :active-tool-label="activeToolLabel"
+          :tool-items="toolItems"
+          :active-tool="activeTool"
+          :saving="saving"
+          @pointerdown="handleToolbarPointerDown"
+          @select="handleToolbarSelect"
+        />
 
-        <section
-          :class="['stage', `stage--skin-${canvasSkin}`, { 'stage--drop-target': toolbarDrag.active && toolbarDrag.overCanvas }]"
-          @pointerdown="hideContextMenu"
-        >
-          <div ref="mapContainerRef" :class="canvasClass" @contextmenu.prevent />
-
-          <div
-            v-if="toolbarDrag.active"
-            :class="['drop-guide', toolbarDrag.overCanvas ? 'drop-guide--active' : '']"
-          >
-            {{ toolbarDrag.overCanvas ? `释放以放置 ${toolbarDragLabel}` : `拖拽 ${toolbarDragLabel} 到画布放置` }}
-          </div>
-
-          <div v-if="activeToolHint" class="canvas-hint">{{ activeToolHint }}</div>
-          <div v-if="loading" class="state-overlay">加载管道中...</div>
-          <div v-else-if="loadError" class="state-overlay state-overlay--error">{{ loadError }}</div>
-
-          <div v-if="!loading && !loadError && !selectedFeature" class="empty-state">
-            <div class="empty-state__title">从左侧工具开始编辑</div>
-            <div class="empty-state__sub">支持拖拽工具到画布快速放置，也可直接点选工具后点击地图</div>
-            <button class="btn" type="button" @click="showPlanned('示例模板导入')">导入示例模板</button>
-          </div>
-
-          <div v-if="mapError" class="state-overlay state-overlay--error state-overlay--bottom">{{ mapError }}</div>
-          <div v-if="snapHintVisible" class="snap-toast">已吸附到邻近端点</div>
-
-          <div
-            v-if="hoverLengthHint.visible"
-            class="hover-length"
-            :style="{ left: `${hoverLengthHint.x}px`, top: `${hoverLengthHint.y}px` }"
-          >
-            {{ hoverLengthHint.text }}
-          </div>
-
-          <div v-if="saveSuccessVisible" class="save-success">保存成功</div>
-
-          <div
-            v-if="actionMessage"
-            :class="['action-toast', actionMessage.type === 'error' ? 'action-toast--error' : 'action-toast--ok']"
-          >
-            {{ actionMessage.text }}
-          </div>
-
-          <div class="zoom-control">
-            <button class="zoom-control__btn" type="button" :disabled="saving" @click="zoomOut">-</button>
-            <input
-              class="zoom-control__slider"
-              type="range"
-              min="14"
-              max="20"
-              step="1"
-              :value="mapView.zoom"
-              @input="onZoomSliderInput"
-            >
-            <button class="zoom-control__btn" type="button" :disabled="saving" @click="zoomIn">+</button>
-            <button class="zoom-control__reset" type="button" :disabled="saving" @click="resetZoomToHundred">100%</button>
-            <span class="zoom-control__value">{{ zoomPercentText }}</span>
-          </div>
-
-          <div v-if="draftRestoredToastVisible" class="draft-toast">已恢复本地草稿</div>
-
-          <ul
-            v-if="contextMenu.visible"
-            class="stage-menu"
-            :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
-            @pointerdown.stop
-          >
-            <li><button class="stage-menu__item" type="button" :disabled="!contextMenu.canDelete" @click="handleMenuDelete">删除</button></li>
-            <li><button class="stage-menu__item" type="button" @click="handleMenuCopy">复制</button></li>
-            <li><button class="stage-menu__item" type="button" @click="handleMenuBindAsset">绑定房产</button></li>
-            <li><button class="stage-menu__item" type="button" @click="handleMenuTrace">查看链路</button></li>
-          </ul>
-        </section>
+        <Pipe2DEditorStageSection
+          :section-class="stageClass"
+          :canvas-class="canvasClass"
+          :toolbar-drag-active="toolbarDrag.active"
+          :toolbar-drag-over-canvas="toolbarDrag.overCanvas"
+          :toolbar-drag-label="toolbarDragLabel"
+          :active-tool-hint="activeToolHint"
+          :loading="loading"
+          :load-error="loadError"
+          :selected-feature-exists="Boolean(selectedFeature)"
+          :map-error="mapError"
+          :snap-hint-visible="snapHintVisible"
+          :hover-length-hint="hoverLengthHint"
+          :save-success-visible="saveSuccessVisible"
+          :action-message="actionMessage"
+          :saving="saving"
+          :zoom-level="mapView.zoom"
+          :zoom-percent-text="zoomPercentText"
+          :draft-restored-toast-visible="draftRestoredToastVisible"
+          :context-menu="contextMenu"
+          @set-map-container="setMapContainerRef"
+          @stage-pointerdown="hideContextMenu"
+          @import-template="showPlanned('示例模板导入')"
+          @zoom-out="zoomOut"
+          @zoom-in="zoomIn"
+          @zoom-change="setZoomLevel"
+          @zoom-reset="resetZoomToHundred"
+          @menu-insert="handleMenuInsert"
+          @menu-delete="handleMenuDelete"
+          @menu-copy="handleMenuCopy"
+          @menu-bind-asset="handleMenuBindAsset"
+          @menu-trace="handleMenuTrace"
+        />
 
         <button v-if="panelCollapsed" class="panel-expand" type="button" @click="panelCollapsed = false">
           <PanelRightOpen :size="16" />
           属性
         </button>
 
-        <aside v-else class="right-panel">
-          <div class="right-panel__head">
-            <div>
-              <div class="right-panel__name">{{ panelTitle }}</div>
-              <div v-if="selectedFeature" class="right-panel__sub">{{ displayPipeName }}</div>
-              <span class="right-panel__tag">{{ selectedFeatureTypeTag }}</span>
-            </div>
-            <button class="icon-btn" type="button" title="收起面板" @click="panelCollapsed = true">
-              <PanelRightClose :size="16" />
-            </button>
-          </div>
-
-          <section class="panel-card">
-            <button class="panel-collapse-toggle" type="button" @click="togglePanelSection('basic')">
-              <span>基本信息</span>
-              <component :is="panelSectionCollapsed.basic ? ChevronRight : ChevronDown" :size="16" />
-            </button>
-            <div v-show="!panelSectionCollapsed.basic" class="panel-section-body">
-              <select v-model="selectedFeatureId" class="pipe-select" :disabled="loading || !pipes.length">
-                <option v-for="item in pipes" :key="String(item.id)" :value="String(item.id)">
-                  {{ pipeOptionLabel(item) }}
-                </option>
-              </select>
-              <div class="panel-row-actions">
-                <button class="btn btn--sm" type="button" :disabled="loading" @click="loadPipes">刷新</button>
-                <button class="btn btn--sm" type="button" :disabled="saving || !selectedFeature" @click="fitCurrentPipeView">聚焦</button>
-              </div>
-              <div class="panel-field">
-                <label>管道名称</label>
-                <button
-                  v-if="!renaming"
-                  class="name-btn"
-                  type="button"
-                  :disabled="!selectedFeature"
-                  @click="startRename"
-                >
-                  {{ displayPipeName }}
-                </button>
-                <input
-                  v-else
-                  ref="renameInputRef"
-                  v-model.trim="renameDraft"
-                  class="name-input"
-                  maxlength="64"
-                  :disabled="renamingSaving"
-                  @blur="commitRename"
-                  @keydown.enter.prevent="commitRename"
-                  @keydown.esc.prevent="cancelRename"
-                >
-              </div>
-              <div class="panel-meta"><span>编号</span><strong>{{ selectedFeature ? String(selectedFeature.id) : '-' }}</strong></div>
-              <div class="panel-meta"><span>几何</span><strong>{{ selectedFeature?.geometry?.type || '-' }}</strong></div>
-              <div class="panel-meta"><span>草稿</span><strong>{{ draftStatusText }}</strong></div>
-            </div>
-          </section>
-
-          <section class="panel-card">
-            <button class="panel-collapse-toggle" type="button" @click="togglePanelSection('relation')">
-              <span>关联关系</span>
-              <component :is="panelSectionCollapsed.relation ? ChevronRight : ChevronDown" :size="16" />
-            </button>
-            <div v-show="!panelSectionCollapsed.relation" class="panel-section-body">
-              <div class="panel-meta"><span>关联楼宇</span><strong>{{ linkedBuildingCount }}</strong></div>
-              <div class="panel-meta"><span>关联房间</span><strong>{{ impactedRoomCount }}</strong></div>
-              <div class="sub-collapse">
-                <button class="sub-collapse__toggle" type="button" @click="toggleRelationDetail('traceSegments')">
-                  <span>追踪链路段</span>
-                  <component :is="relationDetailCollapsed.traceSegments ? ChevronRight : ChevronDown" :size="14" />
-                </button>
-                <div v-show="!relationDetailCollapsed.traceSegments" class="sub-collapse__body">
-                  <div class="panel-meta"><span>链路段数量</span><strong>{{ tracedSegmentCount }}</strong></div>
-                </div>
-              </div>
-              <div class="sub-collapse">
-                <button class="sub-collapse__toggle" type="button" @click="toggleRelationDetail('networkNodes')">
-                  <span>网络节点</span>
-                  <component :is="relationDetailCollapsed.networkNodes ? ChevronRight : ChevronDown" :size="14" />
-                </button>
-                <div v-show="!relationDetailCollapsed.networkNodes" class="sub-collapse__body">
-                  <div class="panel-meta"><span>节点数量</span><strong>{{ tracedNodeCount }}</strong></div>
-                </div>
-              </div>
-              <div v-if="linkedBuildingLabels.length" class="token-wrap">
-                <span v-for="label in linkedBuildingLabels" :key="label" class="token">{{ label }}</span>
-              </div>
-              <div v-if="insightError" class="inline-empty">
-                <div class="inline-empty__art" aria-hidden="true"><span /><span /></div>
-                <div>暂无数据</div>
-                <div class="inline-empty__sub">点击左侧工具栏开始绑定房产</div>
-              </div>
-            </div>
-          </section>
-
-          <section class="panel-card">
-            <button class="panel-collapse-toggle" type="button" @click="togglePanelSection('control')">
-              <span>编辑控制</span>
-              <component :is="panelSectionCollapsed.control ? ChevronRight : ChevronDown" :size="16" />
-            </button>
-            <div v-show="!panelSectionCollapsed.control" class="panel-section-body">
-              <div class="panel-row-actions">
-                <button
-                  :class="['btn btn--sm', { 'btn--active': addPointMode }]"
-                  type="button"
-                  :disabled="saving || !selectedFeature"
-                  @click="toggleAddPointMode"
-                >
-                  节点编辑
-                </button>
-                <button class="btn btn--sm" type="button" :disabled="saving || !selectedFeature" @click="insertPointAtCanvasCenter">中心加点</button>
-              </div>
-              <div class="panel-row-actions">
-                <button
-                  :class="['btn btn--sm', { 'btn--danger': deletePointMode }]"
-                  type="button"
-                  :disabled="saving || !selectedFeature"
-                  @click="toggleDeletePointMode"
-                >
-                  删除模式
-                </button>
-                <button class="btn btn--sm" type="button" :disabled="saving || !canDeletePoint" @click="deleteSelectedPoint">删除选中点</button>
-              </div>
-              <div class="panel-row-actions">
-                <button :class="['btn btn--sm', { 'btn--active': snapEnabled }]" type="button" :disabled="saving" @click="snapEnabled = !snapEnabled">
-                  {{ snapEnabled ? '端点吸附 开' : '端点吸附 关' }}
-                </button>
-                <button class="btn btn--sm" type="button" :disabled="saving" @click="toggleSceneModeByPanel">{{ sceneMode === '2d' ? '切换3D' : '切换2D' }}</button>
-              </div>
-            </div>
-          </section>
-
-          <section class="panel-card">
-            <button class="panel-collapse-toggle" type="button" @click="togglePanelSection('realtime')">
-              <span>实时数据</span>
-              <component :is="panelSectionCollapsed.realtime ? ChevronRight : ChevronDown" :size="16" />
-            </button>
-            <div v-show="!panelSectionCollapsed.realtime" class="panel-section-body">
-              <div v-if="telemetrySeries.length" class="telemetry-chart">
-                <svg viewBox="0 0 320 92" preserveAspectRatio="none" class="telemetry-svg">
-                  <polyline
-                    class="telemetry-line"
-                    :points="telemetryPolylinePoints"
-                    fill="none"
-                    stroke-width="2"
-                  />
-                </svg>
-                <div class="telemetry-legend">
-                  <span>最小 {{ telemetryMinText }}</span>
-                  <strong>{{ telemetryLatestText }}</strong>
-                  <span>最大 {{ telemetryMaxText }}</span>
-                </div>
-              </div>
-              <div v-else class="inline-empty">暂无实时测点数据</div>
-              <ul v-if="telemetryList.length" class="telemetry-list">
-                <li v-for="item in telemetryList.slice(0, 6)" :key="`${item.pointId}-${item.sampledAt}`">
-                  <span>{{ item.metric }}</span>
-                  <strong>{{ item.value }} {{ item.unit }}</strong>
-                  <em>{{ formatDateTime(item.sampledAt) }}</em>
-                </li>
-              </ul>
-            </div>
-          </section>
-
-          <section class="panel-card">
-            <button class="panel-collapse-toggle" type="button" @click="togglePanelSection('timeline')">
-              <span>运维记录</span>
-              <component :is="panelSectionCollapsed.timeline ? ChevronRight : ChevronDown" :size="16" />
-            </button>
-            <div v-show="!panelSectionCollapsed.timeline" class="panel-section-body">
-              <ul v-if="auditLogs.length" class="timeline-list">
-                <li v-for="item in auditLogs.slice(0, 8)" :key="item.id" class="timeline-item">
-                  <span class="timeline-dot" />
-                  <div class="timeline-body">
-                    <div class="timeline-title">{{ item.action }}</div>
-                    <div class="timeline-meta">{{ formatDateTime(item.changedAt) }} · {{ item.changedBy || 'system' }}</div>
-                  </div>
-                </li>
-              </ul>
-              <div v-else class="inline-empty">暂无运维记录</div>
-            </div>
-          </section>
-
-          <section class="panel-card">
-            <button class="panel-collapse-toggle" type="button" @click="togglePanelSection('runtime')">
-              <span>运行信息</span>
-              <component :is="panelSectionCollapsed.runtime ? ChevronRight : ChevronDown" :size="16" />
-            </button>
-            <div v-show="!panelSectionCollapsed.runtime" class="panel-section-body">
-              <div class="panel-meta"><span>节点总数</span><strong>{{ totalPoints }}</strong></div>
-              <div class="panel-meta"><span>管段总数</span><strong>{{ segmentCount }}</strong></div>
-              <div class="panel-meta"><span>总长度</span><strong>{{ formatMeters(totalLengthMeters) }}</strong></div>
-              <div class="panel-meta"><span>当前线段</span><strong>{{ formatMeters(activeLineLengthMeters) }}</strong></div>
-              <div class="panel-meta"><span>活动线索引</span><strong>{{ activeLineIndex + 1 }}</strong></div>
-              <div class="panel-meta"><span>选中节点</span><strong>{{ selectedPointLabel }}</strong></div>
-              <div class="panel-meta"><span>视图缩放</span><strong>Z{{ mapView.zoom }}</strong></div>
-            </div>
-          </section>
-
-          <div class="panel-footer">
-            <button class="btn" type="button" :disabled="saving" @click="handleResetDraft">取消</button>
-            <button class="btn btn--primary" type="button" :disabled="!selectedFeature || !isDirty || saving" @click="saveGeometry">
-              {{ saving ? '保存中...' : '保存修改' }}
-            </button>
-          </div>
-        </aside>
+        <Pipe2DEditorRightPanelSection
+          v-else
+          :selected-feature="selectedFeature"
+          :selected-feature-id="selectedFeatureId"
+          :pipes="pipes"
+          :loading="loading"
+          :saving="saving"
+          :display-pipe-name="displayPipeName"
+          :selected-pipe-id-text="selectedPipeIdText"
+          :selected-feature-type-tag="selectedFeatureTypeTag"
+          :renaming="renaming"
+          :rename-draft="renameDraft"
+          :renaming-saving="renamingSaving"
+          :draft-status-text="draftStatusText"
+          :panel-section-collapsed="panelSectionCollapsed"
+          :relation-active-names="relationActiveNames"
+          :linked-building-count="linkedBuildingCount"
+          :impacted-room-count="impactedRoomCount"
+          :traced-segment-count="tracedSegmentCount"
+          :traced-node-count="tracedNodeCount"
+          :linked-building-labels="linkedBuildingLabels"
+          :insight-error="insightError"
+          :add-point-mode="addPointMode"
+          :delete-point-mode="deletePointMode"
+          :can-delete-point="canDeletePoint"
+          :snap-enabled="snapEnabled"
+          :scene-mode="sceneMode"
+          :telemetry-series="telemetrySeries"
+          :telemetry-polyline-points="telemetryPolylinePoints"
+          :telemetry-min-text="telemetryMinText"
+          :telemetry-latest-text="telemetryLatestText"
+          :telemetry-max-text="telemetryMaxText"
+          :telemetry-list="telemetryList"
+          :audit-logs="auditLogs"
+          :total-points="totalPoints"
+          :segment-count="segmentCount"
+          :total-length-text="formatMeters(totalLengthMeters)"
+          :active-line-length-text="formatMeters(activeLineLengthMeters)"
+          :active-line-index="activeLineIndex"
+          :selected-point-label="selectedPointLabel"
+          :zoom-level="mapView.zoom"
+          :is-dirty="isDirty"
+          @collapse-panel="panelCollapsed = true"
+          @toggle-section="togglePanelSection"
+          @update:selected-feature-id="selectedFeatureId = $event"
+          @refresh="loadPipes"
+          @focus="fitCurrentPipeView"
+          @start-rename="startRename"
+          @update:rename-draft="renameDraft = $event"
+          @commit-rename="commitRename"
+          @cancel-rename="cancelRename"
+          @toggle-add-point-mode="toggleAddPointMode"
+          @insert-center-point="insertPointAtCanvasCenter"
+          @toggle-delete-point-mode="toggleDeletePointMode"
+          @delete-selected-point="deleteSelectedPoint"
+          @toggle-snap="snapEnabled = !snapEnabled"
+          @toggle-scene-mode="toggleSceneModeByPanel"
+          @update:relation-active-names="relationActiveNames = $event"
+          @reset-draft="handleResetDraft"
+          @save-geometry="saveGeometry"
+        />
 
         <div
           v-if="toolbarDrag.active"
@@ -379,51 +147,42 @@
         </div>
       </div>
 
-      <footer class="bottom-status">
-        <div class="status-group">
-          <span class="status-mono">节点 {{ totalPoints }}</span>
-          <span class="status-sep">|</span>
-          <span class="status-mono">管段 {{ segmentCount }}</span>
-          <span class="status-sep">|</span>
-          <span class="status-mono">楼栋 {{ Math.max(linkedBuildingCount, 3) }}</span>
-        </div>
-        <div class="status-group">
-          <span class="status-alert"><i /><span class="status-mono">{{ alertCount }}</span></span>
-        </div>
-        <div class="status-group status-group--right">
-          <span class="status-online"><i />在线 1人</span>
-          <span class="status-sep">•</span>
-          <span class="status-mono">FPS {{ fpsText }}</span>
-          <span class="status-sep">•</span>
-          <span class="status-mono">进度 {{ loadProgressText }}</span>
-        </div>
-      </footer>
+      <Pipe2DEditorStatusbarSection
+        :total-points="totalPoints"
+        :segment-count="segmentCount"
+        :linked-building-count="linkedBuildingCount"
+        :alert-count="alertCount"
+        :fps-text="fpsText"
+        :load-progress-text="loadProgressText"
+      />
+
+      <Pipe2DEditorShortcutHelp
+        :visible="shortcutHelpVisible"
+        @close="shortcutHelpVisible = false"
+      />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import {
-  ChevronDown,
-  ChevronRight,
   FileText,
   Hand,
   Home,
   Layers,
-  Loader2,
   Network,
-  PanelRightClose,
   PanelRightOpen,
   Plus,
-  RefreshCw,
-  RotateCcw,
   Search,
-  Send,
   Upload,
-  X,
-  Zap,
 } from 'lucide-vue-next'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, toRef, watch, type Component } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, toRef, watch, type Component } from 'vue'
+import Pipe2DEditorRightPanelSection from '~/components/admin/pipe2d-editor/Pipe2DEditorRightPanelSection.vue'
+import Pipe2DEditorShortcutHelp from '~/components/admin/pipe2d-editor/Pipe2DEditorShortcutHelp.vue'
+import Pipe2DEditorStageSection from '~/components/admin/pipe2d-editor/Pipe2DEditorStageSection.vue'
+import Pipe2DEditorStatusbarSection from '~/components/admin/pipe2d-editor/Pipe2DEditorStatusbarSection.vue'
+import Pipe2DEditorToolbarSection from '~/components/admin/pipe2d-editor/Pipe2DEditorToolbarSection.vue'
+import Pipe2DEditorTopbarSection from '~/components/admin/pipe2d-editor/Pipe2DEditorTopbarSection.vue'
 import { usePipe2DEditorData } from '~/composables/admin/usePipe2DEditorData'
 import { usePipe2DEditorMap } from '~/composables/admin/usePipe2DEditorMap'
 import { geoFeatureService, type GeoJsonFeature } from '~/services/geo-features'
@@ -447,7 +206,6 @@ type ToolKey =
   | 'import'
 
 type PanelSectionKey = 'basic' | 'relation' | 'control' | 'realtime' | 'timeline' | 'runtime'
-type RelationDetailKey = 'traceSegments' | 'networkNodes'
 
 type ToolbarDragState = {
   active: boolean
@@ -467,15 +225,19 @@ const viewModeOptions: Array<{ key: ViewMode; label: string }> = [
   { key: 'topology2d', label: '2D拓扑' },
 ]
 
-const toolItems: Array<{ key: ToolKey; icon: Component; label: string; shortcut: string }> = [
-  { key: 'select', icon: Hand, label: '选择工具', shortcut: 'V' },
-  { key: 'addNode', icon: Plus, label: '添加节点', shortcut: 'N' },
-  { key: 'addPipe', icon: Network, label: '添加管线', shortcut: 'P' },
-  { key: 'bindAsset', icon: Home, label: '房产绑定', shortcut: 'B' },
-  { key: 'annotate', icon: FileText, label: '批注', shortcut: 'M' },
-  { key: 'layer', icon: Layers, label: '图层', shortcut: 'L' },
-  { key: 'import', icon: Upload, label: '导入', shortcut: 'U' },
+const viewModeSet = new Set<ViewMode>(viewModeOptions.map(item => item.key))
+
+const toolItems: Array<{ key: ToolKey; icon: Component; label: string; tooltip: string; shortcut: string }> = [
+  { key: 'select', icon: Hand, label: '选择工具', tooltip: '选择工具', shortcut: 'V' },
+  { key: 'addNode', icon: Plus, label: '添加节点', tooltip: '添加节点', shortcut: 'N' },
+  { key: 'addPipe', icon: Network, label: '添加管线', tooltip: '添加管线', shortcut: 'P' },
+  { key: 'bindAsset', icon: Home, label: '房产绑定', tooltip: '绑定房产', shortcut: 'B' },
+  { key: 'annotate', icon: FileText, label: '批注', tooltip: '添加批注', shortcut: 'M' },
+  { key: 'layer', icon: Layers, label: '图层', tooltip: '图层过滤', shortcut: 'L' },
+  { key: 'import', icon: Upload, label: '导入', tooltip: '导入数据', shortcut: 'U' },
 ]
+
+const toolKeySet = new Set<ToolKey>(toolItems.map(item => item.key))
 
 const props = defineProps<{
   open: boolean
@@ -489,8 +251,6 @@ const emit = defineEmits<{
 }>()
 
 const mapContainerRef = ref<HTMLDivElement | null>(null)
-const renameInputRef = ref<HTMLInputElement | null>(null)
-const projectTitleInputRef = ref<HTMLInputElement | null>(null)
 
 const saving = ref(false)
 const actionMessage = ref<Message | null>(null)
@@ -514,6 +274,7 @@ const projectTitle = ref('校园地下管网运维系统')
 const editingProjectTitle = ref(false)
 const projectTitleDraft = ref('')
 const draftRestoredToastVisible = ref(false)
+const shortcutHelpVisible = ref(false)
 
 const panelSectionCollapsed = ref<Record<PanelSectionKey, boolean>>({
   basic: false,
@@ -523,11 +284,7 @@ const panelSectionCollapsed = ref<Record<PanelSectionKey, boolean>>({
   timeline: false,
   runtime: true,
 })
-
-const relationDetailCollapsed = ref<Record<RelationDetailKey, boolean>>({
-  traceSegments: true,
-  networkNodes: true,
-})
+const relationActiveNames = ref<string[]>([])
 
 const toolbarDrag = ref<ToolbarDragState>({
   active: false,
@@ -591,6 +348,7 @@ const {
   setUndergroundSliceEnabled,
   setBasemapById,
   hideContextMenu,
+  insertPointFromContextMenu,
   deletePointFromContextMenu,
 } = usePipe2DEditorMap({
   open: toRef(props, 'open'),
@@ -682,7 +440,11 @@ const toolCursorClass = computed(() => {
 })
 
 const canvasClass = computed(() => {
-  return ['mars-canvas', mapCursorClass.value, toolCursorClass.value]
+  return ['map-container', 'mars-canvas', mapCursorClass.value, toolCursorClass.value]
+})
+
+const stageClass = computed(() => {
+  return ['stage', `stage--skin-${canvasSkin.value}`, { 'stage--drop-target': toolbarDrag.value.active && toolbarDrag.value.overCanvas }]
 })
 
 const loadProgressText = computed(() => (loading.value ? '载入中' : '100%'))
@@ -773,24 +535,12 @@ const toolbarDragTool = computed(() => {
 
 const toolbarDragLabel = computed(() => toolbarDragTool.value?.label || '工具')
 const toolbarDragIcon = computed(() => toolbarDragTool.value?.icon || Search)
-const panelTitle = computed(() => (selectedFeature.value ? `管道 ${String(selectedFeature.value.id)}` : '未选择管道'))
-
-function pipeOptionLabel(feature: GeoJsonFeature) {
-  const p = feature.properties || {}
-  const name = String(p.name || p.ref || feature.id)
-  return `${String(feature.id)} · ${name}`
-}
+const selectedPipeIdText = computed(() => (selectedFeature.value ? String(selectedFeature.value.id) : '--'))
 
 function formatMeters(meters: number) {
   if (!Number.isFinite(meters)) return '0 m'
   if (meters >= 1000) return `${(meters / 1000).toFixed(2)} km`
   return `${meters.toFixed(1)} m`
-}
-
-function formatDateTime(value: string) {
-  const ts = new Date(value)
-  if (Number.isNaN(ts.getTime())) return value || '-'
-  return `${ts.getFullYear()}-${String(ts.getMonth() + 1).padStart(2, '0')}-${String(ts.getDate()).padStart(2, '0')} ${String(ts.getHours()).padStart(2, '0')}:${String(ts.getMinutes()).padStart(2, '0')}`
 }
 
 function isValidDraftLines(value: unknown): value is Lines {
@@ -897,7 +647,6 @@ function startRename() {
   if (!selectedFeature.value) return
   renaming.value = true
   renameDraft.value = displayPipeName.value
-  nextTick(() => renameInputRef.value?.focus())
 }
 
 async function persistPipeName(feature: GeoJsonFeature, nextName: string) {
@@ -974,7 +723,6 @@ function cancelRename() {
 function startEditProjectTitle() {
   editingProjectTitle.value = true
   projectTitleDraft.value = projectTitle.value
-  nextTick(() => projectTitleInputRef.value?.focus())
 }
 
 function commitProjectTitle() {
@@ -991,10 +739,6 @@ function togglePanelSection(key: PanelSectionKey) {
   panelSectionCollapsed.value[key] = !panelSectionCollapsed.value[key]
 }
 
-function toggleRelationDetail(key: RelationDetailKey) {
-  relationDetailCollapsed.value[key] = !relationDetailCollapsed.value[key]
-}
-
 function setEditModes(targetAdd: boolean, targetDelete: boolean) {
   if (addPointMode.value !== targetAdd) {
     toggleAddPointMode()
@@ -1006,6 +750,10 @@ function setEditModes(targetAdd: boolean, targetDelete: boolean) {
 
 function showPlanned(feature: string) {
   actionMessage.value = { type: 'ok', text: `${feature} 将在下一阶段接入` }
+}
+
+function handleMenuInsert() {
+  insertPointFromContextMenu()
 }
 
 function handleMenuDelete() {
@@ -1020,7 +768,7 @@ function handleMenuCopy() {
 
 function handleMenuBindAsset() {
   hideContextMenu()
-  showPlanned('绑定房产')
+  activateTool('bindAsset')
 }
 
 function handleMenuTrace() {
@@ -1064,6 +812,24 @@ function selectTool(tool: ToolKey) {
   activateTool(tool)
 }
 
+function isToolKey(value: string): value is ToolKey {
+  return toolKeySet.has(value as ToolKey)
+}
+
+function isViewMode(value: string): value is ViewMode {
+  return viewModeSet.has(value as ViewMode)
+}
+
+function handleToolbarPointerDown(toolKey: string, event: PointerEvent) {
+  if (!isToolKey(toolKey)) return
+  startToolbarDrag(toolKey, event)
+}
+
+function handleToolbarSelect(toolKey: string) {
+  if (!isToolKey(toolKey)) return
+  selectTool(toolKey)
+}
+
 function isPointInCanvas(clientX: number, clientY: number) {
   const canvas = mapContainerRef.value
   if (!canvas) return false
@@ -1084,6 +850,10 @@ function tryDropToolToCanvas(tool: ToolKey, clientX: number, clientY: number) {
   if (inserted) {
     actionMessage.value = { type: 'ok', text: `已放置${tool === 'addNode' ? '节点' : '管线点'}` }
   }
+}
+
+function setMapContainerRef(el: HTMLDivElement | null) {
+  mapContainerRef.value = el
 }
 
 function handleToolbarDragMove(event: PointerEvent) {
@@ -1163,8 +933,8 @@ function switchView(mode: ViewMode) {
   setUndergroundSliceEnabled(mode === 'underground')
 }
 
-function onViewModeChange(event: Event) {
-  const value = (event.target as HTMLSelectElement).value as ViewMode
+function switchViewByKey(value: string) {
+  if (!isViewMode(value)) return
   switchView(value)
 }
 
@@ -1187,12 +957,6 @@ function toggleSceneModeByPanel() {
     viewMode.value = 'global'
   }
   toggleSceneMode()
-}
-
-function onZoomSliderInput(event: Event) {
-  const value = Number((event.target as HTMLInputElement).value)
-  if (!Number.isFinite(value)) return
-  setZoomLevel(value)
 }
 
 function resetZoomToHundred() {
@@ -1236,6 +1000,11 @@ function handleDesignerShortcut(event: KeyboardEvent) {
   if (!props.open || saving.value) return
   if (shouldIgnoreShortcutTarget(event.target)) return
   const key = event.key.toLowerCase()
+  if (key === '?') {
+    event.preventDefault()
+    shortcutHelpVisible.value = true
+    return
+  }
   if (key === 'v') {
     event.preventDefault()
     activateTool('select')

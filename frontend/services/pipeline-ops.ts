@@ -63,12 +63,12 @@ export const pipelineOpsService = {
     })
   },
 
-  async fetchStats() {
-    return $fetch<{ stats: PipelineOpsStats }>('/api/pipeline-ops/stats')
+  async fetchStats(query: PipelineOrderListQuery = {}) {
+    return $fetch<{ stats: PipelineOpsStats }>('/api/pipeline-ops/stats', { query })
   },
 
-  async fetchDashboard() {
-    return $fetch<{ dashboard: PipelineOpsDashboard }>('/api/pipeline-ops/dashboard')
+  async fetchDashboard(query: PipelineOrderListQuery = {}) {
+    return $fetch<{ dashboard: PipelineOpsDashboard }>('/api/pipeline-ops/dashboard', { query })
   },
 
   async createWorkorder(payload: PipelineOrderUpsertPayload) {

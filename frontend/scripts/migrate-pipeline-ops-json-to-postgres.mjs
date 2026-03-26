@@ -5,16 +5,48 @@ import { fileURLToPath } from 'node:url'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-const backendBaseUrl = String(process.env.BACKEND_BASE_URL || 'http://localhost:8080').replace(/\/$/, '')
-const adminUser = String(process.env.BACKEND_ADMIN_USER || process.env.APP_ADMIN_USER || 'admin')
-const adminPassword = String(process.env.BACKEND_ADMIN_PASSWORD || process.env.APP_ADMIN_PASSWORD || '')
-
-if (!adminPassword) {
-  console.error('[migrate:pipeline-ops] missing BACKEND_ADMIN_PASSWORD / APP_ADMIN_PASSWORD')
-  process.exit(1)
+function parseEnvText(text) {
+  const env = {}
+  const lines = text.split(/\r?\n/)
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) continue
+    const idx = trimmed.indexOf('=')
+    if (idx <= 0) continue
+    const key = trimmed.slice(0, idx).trim()
+    let value = trimmed.slice(idx + 1).trim()
+    if (
+      (value.startsWith('"') && value.endsWith('"'))
+      || (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1)
+    }
+    env[key] = value
+  }
+  return env
 }
 
-const authHeader = `Basic ${Buffer.from(`${adminUser}:${adminPassword}`).toString('base64')}`
+function boolFromEnv(raw, defaultValue) {
+  if (raw == null || raw === '') return defaultValue
+  const normalized = String(raw).trim().toLowerCase()
+  if (!normalized) return defaultValue
+  return !['0', 'false', 'off', 'no'].includes(normalized)
+}
+
+async function loadDotEnv() {
+  try {
+    const raw = await readFile(path.resolve(__dirname, '../.env'), 'utf8')
+    return parseEnvText(raw)
+  } catch {
+    return {}
+  }
+}
+
+function buildAuthHeader(username, password) {
+  if (!username || !password) return ''
+  return `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`
+}
+
 const sourceFile = path.resolve(__dirname, '../server/data/pipeline-ops.json')
 
 function toPayload(order) {
@@ -59,13 +91,16 @@ function toPayload(order) {
   }
 }
 
-async function postWorkorder(payload) {
+async function postWorkorder(payload, backendBaseUrl, authHeader) {
+  const headers = {
+    'Content-Type': 'application/json',
+  }
+  if (authHeader) {
+    headers.Authorization = authHeader
+  }
   const res = await fetch(`${backendBaseUrl}/api/v1/pipeline-ops/workorders`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: authHeader,
-    },
+    headers,
     body: JSON.stringify(payload),
   })
   if (!res.ok) {
@@ -76,6 +111,39 @@ async function postWorkorder(payload) {
 }
 
 async function main() {
+  const fileEnv = await loadDotEnv()
+  const backendBaseUrl = String(
+    process.env.BACKEND_BASE_URL
+      || process.env.NUXT_PUBLIC_BACKEND_BASE_URL
+      || fileEnv.BACKEND_BASE_URL
+      || fileEnv.NUXT_PUBLIC_BACKEND_BASE_URL
+      || 'http://localhost:8080',
+  ).replace(/\/$/, '')
+  const writeAuthEnabled = boolFromEnv(
+    process.env.BACKEND_WRITE_AUTH_ENABLED
+      || process.env.APP_SECURITY_WRITE_AUTH_ENABLED
+      || fileEnv.BACKEND_WRITE_AUTH_ENABLED,
+    true,
+  )
+  const adminUser = String(
+    process.env.BACKEND_ADMIN_USER
+      || process.env.APP_ADMIN_USER
+      || fileEnv.BACKEND_ADMIN_USER
+      || 'admin',
+  ).trim()
+  const adminPassword = String(
+    process.env.BACKEND_ADMIN_PASSWORD
+      || process.env.APP_ADMIN_PASSWORD
+      || fileEnv.BACKEND_ADMIN_PASSWORD
+      || '',
+  ).trim()
+
+  if (writeAuthEnabled && !adminPassword) {
+    console.error('[migrate:pipeline-ops] missing BACKEND_ADMIN_PASSWORD / APP_ADMIN_PASSWORD')
+    process.exit(1)
+  }
+
+  const authHeader = writeAuthEnabled ? buildAuthHeader(adminUser, adminPassword) : ''
   const raw = await readFile(sourceFile, 'utf-8')
   const parsed = JSON.parse(raw)
   const orders = Array.isArray(parsed?.workorders) ? parsed.workorders : []
@@ -90,7 +158,7 @@ async function main() {
   for (const [index, order] of orders.entries()) {
     const label = String(order?.id || `#${index + 1}`)
     try {
-      await postWorkorder(toPayload(order || {}))
+      await postWorkorder(toPayload(order || {}), backendBaseUrl, authHeader)
       success += 1
       console.log(`[migrate:pipeline-ops] imported ${label}`)
     } catch (error) {

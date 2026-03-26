@@ -79,9 +79,25 @@ export async function getWorkorderStats() {
   return res.stats
 }
 
+export async function getWorkorderStatsFiltered(query: PipelineOrderListQuery = {}) {
+  const res = await pipelineOpsFetch<{ stats: Record<string, number> }>('/stats', {
+    method: 'GET',
+    query,
+  })
+  return res.stats
+}
+
 export async function getDashboard(): Promise<PipelineOpsDashboard> {
   const res = await pipelineOpsFetch<{ dashboard: PipelineOpsDashboard }>('/dashboard', {
     method: 'GET',
+  })
+  return res.dashboard
+}
+
+export async function getDashboardFiltered(query: PipelineOrderListQuery = {}): Promise<PipelineOpsDashboard> {
+  const res = await pipelineOpsFetch<{ dashboard: PipelineOpsDashboard }>('/dashboard', {
+    method: 'GET',
+    query,
   })
   return res.dashboard
 }

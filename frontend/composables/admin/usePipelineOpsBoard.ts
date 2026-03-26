@@ -43,6 +43,7 @@ export function usePipelineOpsBoard(mode: PipelineOpsBoardMode) {
   const limit = ref(20)
   const total = ref(0)
   const totalPages = ref(0)
+  let refreshRequestId = 0
 
   const queryStatus = ref<PipelineOrderStatus | ''>('')
   const queryArea = ref('')
@@ -71,15 +72,30 @@ export function usePipelineOpsBoard(mode: PipelineOpsBoardMode) {
     limit: limit.value,
   }))
 
+  const summaryQuery = computed(() => ({
+    type: typeFilter.value,
+    status: queryStatus.value || undefined,
+    area: queryArea.value || undefined,
+    pipelineMedium: queryMedium.value || undefined,
+    nodeId: queryNodeId.value || undefined,
+    buildingId: queryBuildingId.value || undefined,
+    assignee: queryAssignee.value || undefined,
+    createdFrom: queryCreatedFrom.value || undefined,
+    createdTo: queryCreatedTo.value || undefined,
+    q: queryKeyword.value || undefined,
+  }))
+
   async function refresh() {
+    const requestId = ++refreshRequestId
     loading.value = true
     error.value = ''
     try {
       const [workordersRes, statsRes, dashboardRes] = await Promise.all([
         pipelineOpsService.fetchWorkorders(query.value),
-        pipelineOpsService.fetchStats(),
-        pipelineOpsService.fetchDashboard(),
+        pipelineOpsService.fetchStats(summaryQuery.value),
+        pipelineOpsService.fetchDashboard(summaryQuery.value),
       ])
+      if (requestId !== refreshRequestId) return
       list.value = workordersRes.list
       total.value = workordersRes.pagination?.total || 0
       totalPages.value = workordersRes.pagination?.totalPages || 0
@@ -90,8 +106,10 @@ export function usePipelineOpsBoard(mode: PipelineOpsBoardMode) {
         if (found) detail.value = found
       }
     } catch (err: any) {
+      if (requestId !== refreshRequestId) return
       error.value = err?.data?.statusMessage || err?.message || '加载管网运维工单失败'
     } finally {
+      if (requestId !== refreshRequestId) return
       loading.value = false
     }
   }
@@ -311,8 +329,12 @@ export function usePipelineOpsBoard(mode: PipelineOpsBoardMode) {
     }
   }
 
-  onMounted(refresh)
-  watch(query, refresh)
+  onMounted(() => {
+    void refresh()
+  })
+  watch(query, () => {
+    void refresh()
+  })
 
   return {
     loading,

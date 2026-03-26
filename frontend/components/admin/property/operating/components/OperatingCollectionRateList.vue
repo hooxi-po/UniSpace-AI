@@ -84,3 +84,10 @@ const barClass = (rate: number) => (rate >= 100 ? 'is-good' : rate >= 50 ? 'is-w
 
 
 
+
+
+
+
+
+
+

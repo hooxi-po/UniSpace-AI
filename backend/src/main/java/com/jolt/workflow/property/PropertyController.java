@@ -2,9 +2,13 @@ package com.jolt.workflow.property;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -102,6 +106,54 @@ public class PropertyController {
                         "unpaidUtilities", 0
                 )
         );
+    }
+
+    @PatchMapping("/rooms/{id}/vacate")
+    public Map<String, Object> vacateRoom(@PathVariable("id") String id) {
+        int updated = jdbcTemplate.update("UPDATE rooms SET status = 'Empty' WHERE id = ?", id);
+        return Map.of("ok", updated > 0, "id", id, "status", "Empty");
+    }
+
+    @PatchMapping("/rooms/{id}/reassign")
+    public Map<String, Object> reassignRoom(@PathVariable("id") String id, @RequestBody Map<String, Object> body) {
+        String tenantType = normalizeTenantType(body == null ? null : body.get("tenantType"));
+        String department = toNullableText(body == null ? null : body.get("department"));
+
+        List<Map<String, Object>> existing = jdbcTemplate.queryForList("SELECT id, type FROM rooms WHERE id = ?", id);
+        if (existing.isEmpty()) {
+            throw new IllegalArgumentException("room_not_found");
+        }
+
+        String roomType = String.valueOf(existing.get(0).getOrDefault("type", ""));
+        if (!isRoomTypeMatchTenant(roomType, tenantType)) {
+            throw new IllegalArgumentException("room_type_not_match");
+        }
+
+        int updated = jdbcTemplate.update(
+                "UPDATE rooms SET status = 'Occupied', department = COALESCE(?, department) WHERE id = ?",
+                department,
+                id
+        );
+
+        return Map.of("ok", updated > 0, "id", id, "status", "Occupied", "tenantType", tenantType);
+    }
+
+    private String normalizeTenantType(Object raw) {
+        String normalized = String.valueOf(raw == null ? "" : raw).trim().toLowerCase(Locale.ROOT);
+        if (normalized.contains("教师") || normalized.contains("teacher")) return "教师宿舍";
+        return "学生宿舍";
+    }
+
+    private boolean isRoomTypeMatchTenant(String roomType, String tenantType) {
+        String type = String.valueOf(roomType == null ? "" : roomType).trim().toLowerCase(Locale.ROOT);
+        if ("教师宿舍".equals(tenantType)) return type.contains("teacher");
+        return type.contains("student");
+    }
+
+    private String toNullableText(Object value) {
+        if (value == null) return null;
+        String text = String.valueOf(value).trim();
+        return text.isBlank() ? null : text;
     }
 }
 

@@ -49,13 +49,15 @@ tasks.withType<Test> {
 }
 
 tasks.named<org.springframework.boot.gradle.tasks.run.BootRun>("bootRun") {
-	val dbUrl = System.getenv("DB_URL") ?: "jdbc:postgresql://localhost:5432/unispace"
-	val dbUser = System.getenv("DB_USER") ?: "postgres"
-	val dbPassword = System.getenv("DB_PASSWORD") ?: System.getenv("POSTGRES_PASSWORD")
+	val dbUrl = System.getenv("DB_URL")?.takeIf { it.isNotBlank() } ?: "jdbc:postgresql://localhost:5432/unispace"
+	val dbUser = System.getenv("DB_USER")?.takeIf { it.isNotBlank() } ?: "postgres"
+	val dbPassword = (
+		System.getenv("DB_PASSWORD")?.takeIf { it.isNotBlank() }
+			?: System.getenv("POSTGRES_PASSWORD")?.takeIf { it.isNotBlank() }
+			?: "123456"
+	)
 
 	systemProperty("spring.datasource.url", dbUrl)
 	systemProperty("spring.datasource.username", dbUser)
-	if (!dbPassword.isNullOrBlank()) {
-		systemProperty("spring.datasource.password", dbPassword)
-	}
+	systemProperty("spring.datasource.password", dbPassword)
 }

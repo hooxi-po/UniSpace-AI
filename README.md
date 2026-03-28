@@ -2,10 +2,16 @@
 
 基于 GIS / 数字孪生的校园地下管网运维系统。
 
-- 前端：Nuxt 3（Vue 3）+ Cesium（3D 地图）+ TailwindCSS + AI 助手（Gemini，SSE 流式输出）
-- 后端：Spring Boot 4 + PostgreSQL/PostGIS + Flyway（空间要素表 `geo_features`）
+- 前端：Nuxt 3（Vue 3）+ Cesium（主三维地图）+ Mars3D（后台二维/2.5D 管道编辑）+ TailwindCSS + AI 助手（Gemini，SSE 流式输出）
+- 后端：Spring Boot 4 + PostgreSQL/PostGIS + Flyway（空间要素、Twin 拓扑、`pipeline-ops` 工单）
 
-> 当前版本说明：主地图中的“管道”已切换为后端动态数据：前端请求 `GET /api/v1/features?layers=pipes`，并在前端按管道分类规则（源自道路 `highway`）映射为 `water/drain/sewage` 三类（统一线宽 `5`）。后端对 `pipes` 做了别名兼容（映射到数据库 `geo_features.layer='roads'`）。后台大厅（`/admin`）资产中心同步使用 `buildings/pipes`，支持 `visible` 开关与要素 CRUD（新增/编辑/删除）。
+> 当前版本说明：
+>
+> - 主地图中的“管道”已切换为后端动态数据：前端请求 `GET /api/v1/features?layers=pipes`，并在前端按管道分类规则（源自道路 `highway`）映射为 `water/drain/sewage` 三类（统一线宽 `5`）。
+> - 后端对 `pipes` 做了别名兼容，实际仍存储在 `geo_features.layer='roads'`。
+> - 后台大厅（`/admin`）已包含三条主链路：资产中心（`buildings/pipes` CRUD）、Mars3D 管道二维编辑器、`pipeline-ops` 工单联动看板。
+> - 管道二维编辑器采用本地 npm 模式加载 Mars3D，支持高德底图、2D/3D 切换、节点/线段选中、插点删点、右键菜单、本地草稿自动保存、Twin 几何写回、属性重命名写回。
+> - `pipeline-ops` 已打通前端看板、Nuxt server 代理、Spring Boot 仓储与 Postgres 表，列表/统计/看板使用同一套过滤条件。
 
 ---
 
@@ -15,7 +21,7 @@
 - [技术栈](#技术栈)
 - [快速开始](#快速开始)
 - [环境变量与配置](#环境变量与配置)
-- [前端说明（Nuxt + Cesium）](#前端说明-nuxt--cesium)
+- [前端说明（Nuxt + Cesium + Mars3D）](#前端说明-nuxt--cesium--mars3d)
 - [后端说明（Spring Boot + PostGIS）](#后端说明-spring-boot--postgis)
 - [数据准备：GeoJSON 拆分](#数据准备-geojson-拆分)
 - [数据导入：GeoJSON -> PostGIS（buildings/pipes（存储层 roads）实操流程）](#数据导入-geojson---postgisbuildingspipes存储层-roads实操流程)
@@ -28,52 +34,94 @@
 
 ## 项目结构
 
-```
+```text
 UniSpace-AI/
-├── start.sh                    # 一键启动（前端 + 后端）
-├── docker-compose.yml          # PostGIS（PostgreSQL 16 + PostGIS 3.4）
-├── backend/                    # Spring Boot 后端
+├── start.sh
+├── docker-compose.yml
+├── agent.md
+├── backend/
 │   ├── build.gradle.kts
 │   ├── src/main/java/com/jolt/workflow/
 │   │   ├── WorkflowApplication.java
-│   │   ├── HelloController.java
-│   │   ├── config/CorsConfig.java
-│   │   └── geo/
-│   │       ├── GeoFeatureController.java
-│   │       └── GeoFeatureRow.java
+│   │   ├── config/
+│   │   ├── geo/
+│   │   │   ├── GeoFeatureController.java
+│   │   │   ├── TwinController.java
+│   │   │   ├── TwinWriteController.java
+│   │   │   └── Module2TelemetryController.java
+│   │   └── pipelineops/
+│   │       ├── PipelineOpsController.java
+│   │       └── WorkOrderRepository.java
 │   └── src/main/resources/
 │       ├── application.properties
 │       └── db/migration/
-│           └── V1__init_postgis_and_features.sql
-└── frontend/                   # Nuxt 3 前端
+│           ├── V1__init_postgis_and_features.sql
+│           ├── V3__add_twin_topology_tables.sql
+│           ├── V8__add_buildings_and_rooms_tables.sql
+│           └── V10__add_pipeline_ops_tables.sql
+└── frontend/
     ├── nuxt.config.ts
     ├── pages/
-    │   ├── index.vue           # 主页面（Map + UI Overlay）
-    │   └── admin.vue           # 后台大厅（资产中心：buildings/pipes）
+    │   ├── index.vue                      # 主三维地图
+    │   └── admin.vue                      # 后台大厅（资产中心 + 工单联动）
     ├── components/
-    │   ├── MapView.vue         # Cesium Viewer + 图层加载/拾取（管道逻辑已抽离）
-    │   ├── MapControls.vue     # 底部图层切换
-    │   ├── LayerToggle.vue
-    │   ├── TopNav.vue
-    │   ├── SidebarLeft.vue
-    │   ├── RightSidebar.vue
-    │   └── ChatInterface.vue   # AI 聊天浮窗
+    │   ├── MapView.vue
+    │   ├── MapControls.vue
+    │   ├── ChatInterface.vue
+    │   └── admin/
+    │       ├── Pipe2DEditorDialog.vue
+    │       ├── pipe2d-editor/
+    │       │   ├── Pipe2DEditorTopbarSection.vue
+    │       │   ├── Pipe2DEditorToolbarSection.vue
+    │       │   ├── Pipe2DEditorStageSection.vue
+    │       │   ├── Pipe2DEditorRightPanelSection.vue
+    │       │   ├── Pipe2DEditorStatusbarSection.vue
+    │       │   └── Pipe2DEditorShortcutHelp.vue
+    │       └── ops/
+    │           └── PipelineOpsBoard.vue
     ├── composables/
+    │   ├── admin/
+    │   │   ├── useAssetCrud.ts
+    │   │   ├── usePipe2DEditorData.ts
+    │   │   ├── usePipe2DEditorMap.ts
+    │   │   └── usePipelineOpsBoard.ts
     │   ├── shared/
-    │   │   └── usePipeLayerLoader.ts  # 管道图层加载/分类/样式复用逻辑
-    │   ├── useConstants.ts             # Mock 资产/告警/工单数据
-    │   └── useGeminiChat.ts            # 与 /api/chat 的 SSE 流式交互
-    ├── server/api/
-    │   └── chat.post.ts        # Gemini API 代理（SSE）
+    │   │   └── usePipeLayerLoader.ts
+    │   ├── useConstants.ts
+    │   └── useGeminiChat.ts
+    ├── services/
+    │   ├── geo-features.ts
+    │   ├── twin.ts
+    │   └── pipeline-ops.ts
+    ├── server/
+    │   ├── api/
+    │   │   ├── backend/
+    │   │   │   ├── features*.ts
+    │   │   │   └── twin/pipes/[id]/*.put.ts
+    │   │   ├── pipeline-ops/
+    │   │   │   ├── workorders.get.ts
+    │   │   │   ├── workorders.post.ts
+    │   │   │   ├── workorders.patch.ts
+    │   │   │   ├── workorder.get.ts
+    │   │   │   ├── stats.get.ts
+    │   │   │   ├── dashboard.get.ts
+    │   │   │   ├── auto-create.post.ts
+    │   │   │   └── action.post.ts
+    │   │   └── chat.post.ts
+    │   └── utils/
+    │       └── pipeline-ops-db.ts
     ├── scripts/
-    │   └── ensure-nuxt-internal.mjs   # 修复 #internal/nuxt/paths 运行时报错
+    │   ├── ensure-nuxt-internal.mjs
+    │   └── migrate-pipeline-ops-json-to-postgres.mjs
+    ├── utils/
+    │   ├── mars3d-loader.ts
+    │   └── pipe2d-geometry.ts
     └── public/map/
         ├── map_all.geojson
-        ├── water.geojson
-        ├── green.geojson
         ├── buildings.geojson
+        ├── green.geojson
         ├── roads.geojson
-        └── split_geojson.py    # GeoJSON 拆分脚本
+        └── split_geojson.py
 ```
 
 ---
@@ -83,9 +131,11 @@ UniSpace-AI/
 ### 前端
 
 - Nuxt 3 / Vue 3
-- Cesium
+- Cesium（主地图）
+- Mars3D（后台二维/2.5D 管道编辑器）
 - TailwindCSS（全局样式/主地图仍使用）
 - 后台大厅（`/admin`）：浅色字节后台风格（纯 CSS，组件化在 `frontend/components/admin/`）
+- `pipeline-ops` 工单看板（前端服务层 + Nuxt server 代理）
 - `vite-plugin-cesium`
 - AI：`@google/genai`（通过 Nuxt server route 代理）
 
@@ -152,7 +202,34 @@ cd backend
 cd frontend
 npm ci || npm install
 npm run dev
+npm run typecheck
 ```
+
+#### 3.1) 跑一遍仓库级验证（推荐）
+
+```bash
+./scripts/verify-local.sh
+```
+
+说明：
+
+- 顺序执行 `backend` 单元测试、`frontend` 类型检查、`frontend` 生产构建
+- 适合在提交前或接手新模块前先确认本地环境完整
+- 若只改单侧代码，可以按需执行对应子命令；跨前后端链路改动优先跑这个脚本
+
+#### 4) 导入旧版 `pipeline-ops.json` 到 Postgres（可选）
+
+```bash
+cd frontend
+npm run migrate:pipeline-ops
+```
+
+说明：
+
+- 默认读取 `frontend/server/data/pipeline-ops.json`
+- 默认写入 `http://localhost:8080/api/v1/pipeline-ops/workorders`
+- 当 `BACKEND_WRITE_AUTH_ENABLED=true` 时需要 `BACKEND_ADMIN_PASSWORD` 或 `APP_ADMIN_PASSWORD`
+- 当 `BACKEND_WRITE_AUTH_ENABLED=false` 时，脚本不会强制要求密码
 
 ---
 
@@ -174,9 +251,11 @@ npm run dev
 `frontend/nuxt.config.ts` 中：
 
 - `GEMINI_API_KEY`：Nuxt server 侧读取的 Gemini API Key（**必需**，否则 `/api/chat` 会 500）
+- `BACKEND_BASE_URL` / `NUXT_PUBLIC_BACKEND_BASE_URL`：前端 server proxy 访问 Spring Boot 的基础地址（默认 `http://localhost:8080`）
 - `BACKEND_WRITE_AUTH_ENABLED`（默认：继承 `APP_SECURITY_WRITE_AUTH_ENABLED`；为 `false` 时 Nuxt 代理后端写接口不再附加 Basic 头）
 - `BACKEND_ADMIN_USER` / `BACKEND_ADMIN_PASSWORD`：当 `BACKEND_WRITE_AUTH_ENABLED=true` 时用于 Nuxt server 侧代理后端写接口（可复用 `APP_ADMIN_USER` / `APP_ADMIN_PASSWORD`）
-- 当 `BACKEND_WRITE_AUTH_ENABLED=true` 时，`/api/backend/*` 写路由还会校验调用方请求头中的 HTTP Basic（需与 `BACKEND_ADMIN_USER` / `BACKEND_ADMIN_PASSWORD` 一致）
+- 当 `BACKEND_WRITE_AUTH_ENABLED=true` 时，`/api/backend/*` 与 `/api/pipeline-ops/*` 的写路由都会校验调用方请求头中的 HTTP Basic（需与 `BACKEND_ADMIN_USER` / `BACKEND_ADMIN_PASSWORD` 一致）
+- 浏览器端所有代理写操作现在统一走全局认证弹层，不再使用原生 `prompt`
 
 示例：
 
@@ -189,7 +268,7 @@ export GEMINI_API_KEY=YOUR_KEY
 
 ---
 
-## 前端说明（Nuxt + Cesium）
+## 前端说明（Nuxt + Cesium + Mars3D）
 
 ### 页面入口
 
@@ -206,8 +285,10 @@ export GEMINI_API_KEY=YOUR_KEY
     - 资产中心：读取走后端 GeoJSON API（`GET /api/v1/features?...`），写操作走 Nuxt server 代理（`/api/backend/*`），并支持搜索、可见性切换、要素 CRUD
     - 组件化：表格/弹窗/操作已拆分为 `components/admin/GeoFeatureTable.vue`、`components/admin/AssetFeatureDialog.vue`、`components/admin/AssetDeleteDialog.vue`、`components/admin/AssetRowActions.vue`、`components/admin/AssetVisibilitySwitch.vue`
     - 资产 CRUD 逻辑收敛到 `composables/admin/useAssetCrud.ts`，请求封装在 `services/geo-features.ts`
-    - 编辑体验：支持「表单模式（默认）」+「高级 JSON」双模式
-    - `useConstants.ts` 中的资产/告警/工单仍为 mock（主地图与右侧详情面板仍会用到）
+    - 管道二维编辑：由 `components/admin/Pipe2DEditorDialog.vue` 打开，实际界面拆分在 `components/admin/pipe2d-editor/`
+    - 工单联动看板：由 `components/admin/ops/PipelineOpsBoard.vue` 承载巡检/维修/改造/报废/联动五种模式
+    - 编辑体验：资产表单支持「表单模式（默认）」+「高级 JSON」双模式
+    - `useConstants.ts` 中仍保留主地图右侧详情、部分 mock 统计和演示数据
 
 ### 地图核心（`components/MapView.vue`）
 
@@ -222,6 +303,49 @@ export GEMINI_API_KEY=YOUR_KEY
 - 管道样式：三类统一线宽 `5`，并使用发光材质（`PolylineGlowMaterialProperty`）
 - 图层显隐：通过 `dataSource.show = props.layers.xxx` 控制
 - 拾取：`ScreenSpaceEventHandler` + `viewer.scene.pick`，拾取 entity 后 emit `select` 给父组件
+
+### 管道二维编辑器（Mars3D）
+
+- 顶层容器：`components/admin/Pipe2DEditorDialog.vue`
+  - 只保留状态编排、草稿状态、顶部/工具栏/右侧面板的事件分发
+  - 当前 UI 已拆分为 6 个区块组件：
+    - `Pipe2DEditorTopbarSection.vue`
+    - `Pipe2DEditorToolbarSection.vue`
+    - `Pipe2DEditorStageSection.vue`
+    - `Pipe2DEditorRightPanelSection.vue`
+    - `Pipe2DEditorStatusbarSection.vue`
+    - `Pipe2DEditorShortcutHelp.vue`
+- 地图交互：`composables/admin/usePipe2DEditorMap.ts`
+  - 通过 `utils/mars3d-loader.ts` 懒加载 Mars3D；首次加载失败时允许重试
+  - 默认高德矢量底图，支持 2D/3D 切换、地下切片、缩放、聚焦当前管道
+  - 支持线段/节点选中、Mars3D `GraphicLayer` 编辑、中心加点、点击插点、删除节点、右键上下文菜单、吸附提示、长度 hover 气泡、撤销/重做
+  - 同时保留 Cesium 级别的拾取扩展，提高节点和线段的命中率
+- 数据编排：`composables/admin/usePipe2DEditorData.ts`
+  - 拉取管道列表
+  - 并行拉取 Twin drilldown / trace / telemetry / audit
+  - 保存几何时优先调用 Twin 写接口，失败时回退到 GeoFeature 更新
+- 服务层：`services/twin.ts`
+  - 读：`drilldown` / `trace` / `telemetryLatest` / `listAuditLogs`
+  - 写：`updatePipeGeometry` / `updatePipeProperties`
+- 当前编辑器已实现的持久化能力：
+  - 几何保存：`PUT /api/backend/twin/pipes/{id}/geometry`
+  - 管道重命名：`PUT /api/backend/twin/pipes/{id}/properties`，失败时回退到 `geo-features` 更新
+  - 本地草稿：切换管道前自动读写 `localStorage`，800ms 防抖 + 8s 定时暂存
+
+### 工单运维联动（`pipeline-ops`）
+
+- 页面组件：`components/admin/ops/PipelineOpsBoard.vue`
+  - 支持 `inspection` / `maintenance` / `retrofit` / `retire` / `linkage` 五种模式
+  - 包含筛选区、统计卡、Dashboard、建单表单、详情抽屉、执行日志、热水泵控制、异常巡检转维修
+- 状态编排：`composables/admin/usePipelineOpsBoard.ts`
+  - 列表、统计、Dashboard 共享同一套过滤条件
+  - 使用 `refreshRequestId` 防止快速切换筛选时旧响应覆盖新状态
+- 客户端服务：`services/pipeline-ops.ts`
+  - 所有写操作都通过同源 Nuxt API `/api/pipeline-ops/*`
+- Nuxt server 代理：
+  - 路由：`frontend/server/api/pipeline-ops/*`
+  - 代理封装：`frontend/server/utils/pipeline-ops-db.ts`
+  - 作用：统一转发到 Spring Boot `/api/v1/pipeline-ops/*`，并按配置附加写鉴权
 
 ### 资产台账（Mock）
 
@@ -254,6 +378,9 @@ export GEMINI_API_KEY=YOUR_KEY
 - `V5__add_twin_entity_tables.sql`：新增 `pipe_manholes / pipe_valves / pump_stations / building_floors / building_rooms`
 - `V6__add_module2_telemetry_tables.sql`：新增模块2测点/阈值/实时/历史/告警表
 - `V7__seed_extended_twin_topology_entities.sql`：补充扩展拓扑实体样例与全链路关系种子
+- `V8__add_buildings_and_rooms_tables.sql`：补充楼栋/房间实体表
+- `V9__seed_buildings_and_rooms_from_json.sql`：由种子数据初始化楼栋/房间
+- `V10__add_pipeline_ops_tables.sql`：新增 `work_order / order_building_link / work_order_log / pump_control_log`
 
 `backend/src/main/resources/db/migration/V1__init_postgis_and_features.sql`：
 
@@ -279,6 +406,21 @@ export GEMINI_API_KEY=YOUR_KEY
 - `ST_AsGeoJSON(geom)::jsonb` 将 geometry 输出为 GeoJSON
 
 这样可以避免在 Java 侧大量拼装 GeoJSON，提高查询与序列化效率。
+
+### `pipeline-ops` 后端
+
+- 控制器：`backend/src/main/java/com/jolt/workflow/pipelineops/PipelineOpsController.java`
+  - 提供 `workorders / workorder / stats / dashboard / auto-create / action`
+- 仓储：`backend/src/main/java/com/jolt/workflow/pipelineops/WorkOrderRepository.java`
+  - 使用 `JdbcTemplate` 直连 SQL
+  - 同时负责筛选构造、工单写入、执行日志、影响范围链路、泵控日志、Dashboard 聚合
+  - 当前已补齐多项鲁棒性校验：
+    - 日期/时间字段写入前先校验，避免数据库 cast 直接抛 500
+    - `assign` 必须带 `assignee`
+    - `convert_to_maintenance` 必须来源于异常巡检记录
+    - `set_duration` 必须为正整数分钟
+    - 无拓扑/无楼宇草稿不会自动绑定第一栋楼
+    - 影响楼宇写入前会去重，避免唯一键冲突
 
 ---
 
@@ -410,7 +552,7 @@ curl "http://localhost:8080/api/v1/features?layers=buildings,pipes&limit=5" | he
 
 > 路径前缀：`/api/v1`
 >
-> 安全策略：`GET /api/**` 公开；`POST/PUT/PATCH/DELETE /api/**` 需要 HTTP Basic（`APP_ADMIN_USER` / `APP_ADMIN_PASSWORD`）。
+> 安全策略：`GET /api/**` 公开；`POST/PUT/PATCH/DELETE /api/**` 需要 HTTP Basic（`APP_ADMIN_USER` / `APP_ADMIN_PASSWORD`）。前端写操作默认通过 Nuxt server 路由代理，并复用 `BACKEND_*` 写鉴权配置。
 
 ### `GET /api/v1/features`
 
@@ -509,6 +651,78 @@ Body：
 
 用于主地图点击管段后的真实穿透展示。
 
+### `GET /api/v1/twin/trace?startId=...&direction=up|down`
+
+用途：按上下游方向追踪拓扑路径，返回 `pathSegmentIds / pathFeatureIds / nodeIds / linkedBuildings`。
+
+### `GET /api/v1/twin/telemetry/latest?featureIds=...`
+
+用途：按管段或 featureId 查询最新测点数据。
+
+### `GET /api/v1/twin/audit/{featureId}?limit=...`
+
+用途：读取该管段最近编辑审计记录。
+
+### `PUT /api/v1/twin/pipes/{id}/geometry`
+
+用途：写回管道几何，并同步 Twin 拓扑审计链路。
+
+### `PUT /api/v1/twin/pipes/{id}/properties`
+
+用途：写回管道属性，例如名称、显示状态等。
+
+### `GET /api/v1/pipeline-ops/workorders`
+
+用途：列表查询工单。支持参数：
+
+- `type`
+- `status`
+- `area`
+- `pipelineMedium`
+- `nodeId`
+- `segmentId`
+- `buildingId`
+- `assignee`
+- `createdFrom`
+- `createdTo`
+- `q`
+- `page`
+- `limit`
+
+### `GET /api/v1/pipeline-ops/workorder?id=...`
+
+用途：查询单个工单详情。
+
+### `GET /api/v1/pipeline-ops/stats`
+
+用途：按当前过滤条件返回各状态计数。
+
+### `GET /api/v1/pipeline-ops/dashboard`
+
+用途：按当前过滤条件返回效率、楼宇影响 Top10、趋势等看板数据。
+
+### `POST /api/v1/pipeline-ops/workorders`
+
+用途：创建或更新工单草稿。
+
+### `PATCH /api/v1/pipeline-ops/workorders`
+
+用途：流转工单状态，如 `submit / assign / start / pause / to_review / approve / close / reject / reopen`。
+
+### `POST /api/v1/pipeline-ops/auto-create`
+
+用途：由 `telemetry_alert / anomaly_alert / kg_inference` 自动建单。
+
+### `POST /api/v1/pipeline-ops/action`
+
+用途：执行扩展动作：
+
+- `add_log`
+- `adjust_impact`
+- `pump_control`
+- `add_inspection_record`
+- `convert_to_maintenance`
+
 ### `POST /api/v1/module2/telemetry/ingest`
 
 用途：写入模块2测点数据（实时+历史），并按阈值自动产生告警。
@@ -593,6 +807,21 @@ rm -rf .nuxt
 npm run dev
 ```
 
+### 5) `pipeline-ops` 写请求返回 401/403
+
+检查以下配置是否一致：
+
+- 后端：`APP_SECURITY_WRITE_AUTH_ENABLED`
+- 前端：`BACKEND_WRITE_AUTH_ENABLED`
+- 写鉴权账号：`BACKEND_ADMIN_USER` / `BACKEND_ADMIN_PASSWORD`
+
+如果是本地无鉴权环境，可以显式设置：
+
+```bash
+export BACKEND_WRITE_AUTH_ENABLED=false
+export APP_SECURITY_WRITE_AUTH_ENABLED=false
+```
+
 ---
 
 ## Git 工作流（推荐）
@@ -660,7 +889,7 @@ git fetch -p
 
 ## 下一步建议
 
-- **数据统一**：将 `frontend/public/map/*.geojson` 导入 `geo_features`，前端切换为从 `/api/v1/features` 加载。
-- **接口鲁棒性**：让 `/api/v1/features` 在无数据时也返回合法 FeatureCollection（而不是 500）。
-- **台账/告警/工单接口化**：逐步替换 `useConstants.ts` 的 mock 数据为后端真实数据。
-- **房产管理模块**：`/admin` 下的“房产管理”目前为 mock，可对接真实业务数据与权限体系。
+- **主地图详情面板去 mock**：继续替换 `useConstants.ts` 中仍保留的演示数据，统一走后端真实查询。
+- **房产绑定闭环**：把二维编辑器中的“绑定房产/批注/图层过滤”从占位提示接成真实业务写入。
+- **实时协同**：为 `pipeline-ops` 与二维编辑器补 WebSocket 推送，解决多人同时编辑时的状态同步。
+- **权限与审计**：把当前 Basic 写鉴权升级为角色化权限，并接统一审计视图。

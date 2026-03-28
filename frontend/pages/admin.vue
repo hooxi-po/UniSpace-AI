@@ -142,13 +142,6 @@
         @confirm="confirmDelete"
       />
 
-      <Pipe2DEditorDialog
-        :open="pipeEditorOpen"
-        :backend-base-url="backendBaseUrl"
-        :initial-feature-id="pipeEditorFeatureId"
-        @close="pipeEditorOpen = false"
-        @saved="handlePipeEditorSaved"
-      />
     </template>
   </AdminLayout>
 </template>
@@ -165,7 +158,6 @@ import PropertyTable from '~/components/admin/PropertyTable.vue'
 import JsonDrawer from '~/components/admin/JsonDrawer.vue'
 import AssetFeatureDialog from '~/components/admin/AssetFeatureDialog.vue'
 import AssetDeleteDialog from '~/components/admin/AssetDeleteDialog.vue'
-import Pipe2DEditorDialog from '~/components/admin/Pipe2DEditorDialog.vue'
 
 import { adminCompMap } from '~/config/admin-comp-map'
 import { getTabs, getSubTabs, getThirdTabs } from '~/config/admin-menu'
@@ -182,6 +174,7 @@ import { normalizeBackendBaseUrl } from '~/utils/backend-url'
 
 const compMap = adminCompMap
 const route = useRoute()
+const router = useRouter()
 
 const searchPlaceholder = computed(() => {
   if (activeTab.value === 'property') return '搜索 id / 名称 / 类型'
@@ -235,7 +228,6 @@ const runtimeConfig = useRuntimeConfig()
 const backendBaseUrl = normalizeBackendBaseUrl(runtimeConfig.public.backendBaseUrl as string | undefined)
 const currentCount = ref(0)
 const assetReloadKey = ref(0)
-const pipeEditorOpen = ref(false)
 const pipeEditorFeatureId = ref<string | null>(null)
 
 const { detailOpen, detailObj, detailType, closeDetail, openAssetDetail, openPropertyDetail } = useAdminDetail()
@@ -282,12 +274,8 @@ function handleAssetSelect(feature: AssetFeatureLike) {
 }
 
 function openPipeEditor() {
-  pipeEditorOpen.value = true
-}
-
-function handlePipeEditorSaved(id: string) {
-  pipeEditorFeatureId.value = id
-  assetReloadKey.value += 1
+  const query = pipeEditorFeatureId.value ? { featureId: pipeEditorFeatureId.value } : {}
+  void router.push({ path: '/admin/pipe-editor', query })
 }
 </script>
 

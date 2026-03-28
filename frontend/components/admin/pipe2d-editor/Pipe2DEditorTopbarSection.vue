@@ -99,7 +99,13 @@ function onViewChange(event: Event) {
         <button class="icon-btn" type="button" title="分享" @click="emit('share')">
           <Send :size="18" />
         </button>
-        <button class="icon-btn icon-btn--close" type="button" title="关闭" @click="emit('close')">
+        <button
+          class="icon-btn icon-btn--close"
+          type="button"
+          title="关闭"
+          @pointerdown.stop.prevent="emit('close')"
+          @click.stop.prevent="emit('close')"
+        >
           <X :size="18" />
         </button>
       </div>

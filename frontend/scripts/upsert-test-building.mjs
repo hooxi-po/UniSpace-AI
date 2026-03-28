@@ -111,7 +111,8 @@ async function main() {
   const writeAuthEnabled = boolFromEnv(
     process.env.BACKEND_WRITE_AUTH_ENABLED
       || process.env.APP_SECURITY_WRITE_AUTH_ENABLED
-      || fileEnv.BACKEND_WRITE_AUTH_ENABLED,
+      || fileEnv.BACKEND_WRITE_AUTH_ENABLED
+      || fileEnv.APP_SECURITY_WRITE_AUTH_ENABLED,
     true,
   )
 

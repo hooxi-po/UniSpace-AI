@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -91,6 +92,30 @@ class WorkOrderRepositoryTest {
         assertEquals(sourceOrder.path("impactScope"), createdPayload.path("impactScope"));
         assertEquals(true, createdPayload.path("impactScope").path("manualAdjusted").asBoolean());
         assertEquals(createdPayload.path("impactScope"), created.path("impactScope"));
+    }
+
+    @Test
+    void convertToMaintenanceRejectsInspectionWithoutAbnormalRecord() {
+        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        WorkOrderRepository repository = org.mockito.Mockito.spy(new WorkOrderRepository(jdbcTemplate, objectMapper));
+
+        ObjectNode sourceOrder = inspectionOrderWithManualImpactScope();
+        ((ArrayNode) sourceOrder.path("inspection").path("records")).removeAll();
+        doReturn(sourceOrder).when(repository).getWorkorder("WO-INS-1");
+
+        ObjectNode action = objectMapper.createObjectNode();
+        action.put("action", "convert_to_maintenance");
+        ObjectNode payload = action.putObject("payload");
+        payload.put("id", "WO-INS-1");
+        payload.put("actor", "inspector");
+
+        WorkOrderRepository.PipelineOpsException ex = assertThrows(
+                WorkOrderRepository.PipelineOpsException.class,
+                () -> repository.handleAction(action)
+        );
+
+        assertEquals(400, ex.getStatusCode());
+        assertEquals("inspection_abnormal_required", ex.getMessage());
     }
 
     @Test
@@ -227,7 +252,12 @@ class WorkOrderRepositoryTest {
         sourceOrder.set("impactScope", impactScope);
 
         ObjectNode inspection = objectMapper.createObjectNode();
-        inspection.set("records", objectMapper.createArrayNode());
+        ArrayNode records = objectMapper.createArrayNode();
+        ObjectNode abnormalRecord = records.addObject();
+        abnormalRecord.put("judgement", "abnormal");
+        abnormalRecord.put("issueText", "pressure anomaly");
+        abnormalRecord.put("checkinNodeId", "N-1001");
+        inspection.set("records", records);
         sourceOrder.set("inspection", inspection);
         return sourceOrder;
     }

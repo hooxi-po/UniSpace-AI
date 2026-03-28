@@ -16,6 +16,10 @@
 # next.js
 /.next/
 /out/
+frontend/.nuxt/
+frontend/.output/
+frontend/dist/
+frontend/node_modules/
 
 # production
 /build
@@ -43,9 +47,11 @@ next-env.d.ts
 
 
 .gradle/
+.gradle-home/
 build/
 
 **/.gradle/
+**/.gradle-home/
 **/build/
 backend/bin/
 

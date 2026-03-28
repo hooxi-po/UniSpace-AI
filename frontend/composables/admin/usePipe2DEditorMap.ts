@@ -1,14 +1,35 @@
 import * as Cesium from 'cesium'
 import { computed, onBeforeUnmount, ref, watch, type ComputedRef, type Ref } from 'vue'
+import { usePipe2DEditorMapGraphics } from '~/composables/admin/pipe2d-editor/usePipe2DEditorMapGraphics'
+import { usePipe2DEditorMapInteractions } from '~/composables/admin/pipe2d-editor/usePipe2DEditorMapInteractions'
+import { usePipe2DEditorDrawMode, type DrawMode } from '~/composables/admin/pipe2d-editor/usePipe2DEditorDrawMode'
+import { usePipe2DEditorGraph, type SelectedElement } from '~/composables/admin/usePipe2DEditorGraph'
+import type { EdgeType, NodeType } from '~/utils/pipe2d-graph'
+import {
+  buildHistoryItems,
+  clamp,
+  createContextMenuState,
+  DEFAULT_VIEW,
+  estimateZoomFromHeight,
+  FITTED_VIEW_OPTIONS,
+  lineLengthMeters,
+  MAX_ZOOM,
+  MIN_ZOOM,
+  sumLength,
+  toLonLat,
+  type ContextMenuState,
+  type EditorSceneMode,
+  type HistoryItem,
+  type HoverLengthHint,
+  type PipePointMeta,
+  zoomToHeight,
+} from '~/composables/admin/pipe2d-editor/pipe2d-editor-map-shared'
 import type { GeoJsonFeature } from '~/services/geo-features'
 import { loadMars3D } from '~/utils/mars3d-loader'
 import {
   buildFittedView,
   cloneLines,
-  distanceToSegmentSquared,
   geometryToLines,
-  isSamePoint,
-  type Line,
   type Lines,
   type PipeEditorMapView,
   type Point,
@@ -31,80 +52,17 @@ type UsePipe2DEditorMapOptions = {
   requestClose?: () => void
 }
 
-type PipeLineMeta = {
-  lineIndex: number
-}
-
-type PipePointMeta = {
-  lineIndex: number
-  pointIndex: number
-}
-
-type ContextMenuState = {
-  visible: boolean
-  x: number
-  y: number
-  canInsert: boolean
-  canDelete: boolean
-}
-
-type HistoryItem = {
-  index: number
-  label: string
-  points: number
-  lengthMeters: number
-}
-
-type EditorSceneMode = '2d' | '3d'
-type HoverLengthHint = {
-  visible: boolean
-  x: number
-  y: number
-  text: string
-}
-
-const VIEW_WIDTH = 980
-const VIEW_HEIGHT = 560
-const VIEW_PADDING = 30
-const MIN_ZOOM = 14
-const MAX_ZOOM = 20
-const SNAP_PIXEL_THRESHOLD = 8
-const SELECT_POINT_THRESHOLD = 12
-const SELECT_LINE_THRESHOLD = 16
-const DEFAULT_VIEW: PipeEditorMapView = {
-  centerLon: 119.1895,
-  centerLat: 26.0254,
-  zoom: 18,
-}
-
-const FITTED_VIEW_OPTIONS = {
-  defaultView: DEFAULT_VIEW,
-  minZoom: MIN_ZOOM,
-  maxZoom: MAX_ZOOM,
-  viewWidth: VIEW_WIDTH,
-  viewHeight: VIEW_HEIGHT,
-  viewPadding: VIEW_PADDING,
-  tileSize: 256,
-} as const
-
 export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
   const mapView = ref<PipeEditorMapView>({ ...DEFAULT_VIEW })
   const activeLineIndex = ref(0)
   const selectedPoint = ref<PipePointMeta | null>(null)
   const dragging = ref<PipePointMeta | null>(null)
-  const ignoreNextClick = ref(false)
   const addPointMode = ref(false)
   const snapEnabled = ref(true)
   const history = ref<Lines[]>([])
   const redoHistory = ref<Lines[]>([])
   const deletePointMode = ref(false)
-  const contextMenu = ref<ContextMenuState>({
-    visible: false,
-    x: 0,
-    y: 0,
-    canInsert: false,
-    canDelete: false,
-  })
+  const contextMenu = ref<ContextMenuState>(createContextMenuState())
   const snapHintVisible = ref(false)
   const mapError = ref<string | null>(null)
   const sceneMode = ref<EditorSceneMode>('2d')
@@ -121,21 +79,21 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
   let mars3dLib: any | null = null
   let viewer: Cesium.Viewer | null = null
   let graphicLayer: any | null = null
-  let handler: Cesium.ScreenSpaceEventHandler | null = null
-  let snapHintTimer: ReturnType<typeof setTimeout> | null = null
-  let hoverHintTimer: ReturnType<typeof setTimeout> | null = null
-  let hoverRafId: number | null = null
-  let pendingHoverPosition: Cesium.Cartesian2 | null = null
   let dragReleaseFallback: ((event: PointerEvent) => void) | null = null
   let skipDraftLinesWatch = false
-  let layerEventsBound = false
-  let dragEditHistoryPushed = false
-  let dragEditStartLines: Lines | null = null
-  const lineGraphicMap = new Map<number, any>()
-  const currentLineEntities: Cesium.Entity[] = []
-  const currentPointEntities: Cesium.Entity[] = []
-  const contextMenuPoint = ref<Point | null>(null)
-  const contextMenuPointMeta = ref<PipePointMeta | null>(null)
+
+  // ---------------------------------------------------------------------------
+  // 图状态管理（新思维导图式编辑器）
+  // ---------------------------------------------------------------------------
+  const editorGraph = usePipe2DEditorGraph({ draftLines: options.draftLines })
+
+  // 绘制模式状态（idle / placeNode / connectEdge）
+  const drawMode = ref<DrawMode>('idle')
+  const pendingEdgeType = ref<EdgeType>('straight')
+  const connectSourceId = ref<string | null>(null)
+  const previewTarget = ref<import('~/utils/pipe2d-geometry').Point | null>(null)
+  const placeNodeType = ref<NodeType>('default')
+
 
   const snapEndpointCandidates = computed<Point[]>(() => {
     const candidates: Point[] = []
@@ -145,11 +103,11 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
       for (const line of lines) {
         if (line.length < 2) continue
         const endpoints: Point[] = [line[0], line[line.length - 1]]
-        for (const pt of endpoints) {
-          const key = `${pt[0].toFixed(8)},${pt[1].toFixed(8)}`
+        for (const point of endpoints) {
+          const key = `${point[0].toFixed(8)},${point[1].toFixed(8)}`
           if (seen.has(key)) continue
           seen.add(key)
-          candidates.push(pt)
+          candidates.push(point)
         }
       }
     }
@@ -189,60 +147,13 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
   })
 
   const historyItems = computed<HistoryItem[]>(() => {
-    const result: HistoryItem[] = []
-    for (let i = history.value.length - 1; i >= 0; i--) {
-      const snapshot = history.value[i]
-      const points = snapshot.reduce((sum, line) => sum + line.length, 0)
-      result.push({
-        index: i,
-        label: `回到第 ${i + 1} 步`,
-        points,
-        lengthMeters: sumLength(snapshot),
-      })
-    }
-    return result
+    return buildHistoryItems(history.value)
   })
 
   const mapCursorClass = computed(() => {
     if (dragging.value) return 'canvas--editing'
     return 'canvas--idle'
   })
-
-  function clamp(value: number, min: number, max: number) {
-    return Math.max(min, Math.min(max, value))
-  }
-
-  function lineLengthMeters(line: Line) {
-    if (!line || line.length < 2) return 0
-    let total = 0
-    for (let i = 0; i < line.length - 1; i++) {
-      const a = line[i]
-      const b = line[i + 1]
-      const geodesic = new Cesium.EllipsoidGeodesic(
-        Cesium.Cartographic.fromDegrees(a[0], a[1]),
-        Cesium.Cartographic.fromDegrees(b[0], b[1]),
-      )
-      total += geodesic.surfaceDistance || 0
-    }
-    return total
-  }
-
-  function sumLength(lines: Lines) {
-    return lines.reduce((sum, line) => sum + lineLengthMeters(line), 0)
-  }
-
-  function estimateZoomFromHeight(height: number, latitude: number) {
-    const cosLat = Math.max(0.2, Math.cos((latitude * Math.PI) / 180))
-    const metersPerPixel = Math.max(height / 800, 0.01)
-    const zoom = Math.log2((156543.03392 * cosLat) / metersPerPixel)
-    return clamp(Math.round(zoom), MIN_ZOOM, MAX_ZOOM)
-  }
-
-  function zoomToHeight(zoom: number, latitude: number) {
-    const cosLat = Math.max(0.2, Math.cos((latitude * Math.PI) / 180))
-    const metersPerPixel = (156543.03392 * cosLat) / (2 ** zoom)
-    return Math.max(80, metersPerPixel * 780)
-  }
 
   function syncMapViewFromCamera() {
     if (!viewer) return
@@ -263,13 +174,6 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     return Cesium.Cartesian3.fromDegrees(point[0], point[1], 0)
   }
 
-  function toLonLat(cartesian: Cesium.Cartesian3): Point {
-    const cartographic = Cesium.Cartographic.fromCartesian(cartesian)
-    const lon = Number(Cesium.Math.toDegrees(cartographic.longitude).toFixed(8))
-    const lat = Number(Cesium.Math.toDegrees(cartographic.latitude).toFixed(8))
-    return [lon, lat]
-  }
-
   function screenToLonLat(screenPosition: Cesium.Cartesian2): Point | null {
     if (!viewer) return null
     const ray = viewer.camera.getPickRay(screenPosition)
@@ -287,54 +191,44 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     return new Cesium.Cartesian2(projected.x, projected.y)
   }
 
-  function applyEndpointSnap(
-    point: Point,
-    screenPosition?: Cesium.Cartesian2,
-    excludePoint?: Point | null,
-  ): Point {
-    if (!snapEnabled.value || !snapEndpointCandidates.value.length) return point
-    const source = screenPosition || worldToScreen(point)
-    if (!source) return point
+  /**
+   * 拾取实体（用于思维导图编辑器）
+   * 检测屏幕坐标处是否有节点或边
+   */
+  function pickEntity(screenPosition: { x: number; y: number }): { type: 'node' | 'edge'; nodeId?: string; edgeId?: string } | null {
+    if (!viewer || !graphicLayer) return null
 
-    let best = point
-    let bestDistanceSq = SNAP_PIXEL_THRESHOLD * SNAP_PIXEL_THRESHOLD
-    for (const candidate of snapEndpointCandidates.value) {
-      if (excludePoint && isSamePoint(candidate, excludePoint)) continue
-      const projected = worldToScreen(candidate)
-      if (!projected) continue
-      const dx = projected.x - source.x
-      const dy = projected.y - source.y
-      const distanceSq = dx * dx + dy * dy
-      if (distanceSq <= bestDistanceSq) {
-        bestDistanceSq = distanceSq
-        best = [candidate[0], candidate[1]]
+    // 使用 Cesium 的拾取功能
+    const pickedObject = viewer.scene.pick(new Cesium.Cartesian2(screenPosition.x, screenPosition.y))
+    if (!pickedObject || !pickedObject.id) return null
+
+    // 检查是否是我们的图形对象
+    const entity = pickedObject.id
+    if (!entity.properties) return null
+
+    // 检查是否是节点
+    if (entity.properties.graphNodeId) {
+      return {
+        type: 'node',
+        nodeId: entity.properties.graphNodeId.getValue(),
       }
     }
-    if (!isSamePoint(best, point)) {
-      triggerSnapHint()
+
+    // 检查是否是边
+    if (entity.properties.graphEdgeId) {
+      return {
+        type: 'edge',
+        edgeId: entity.properties.graphEdgeId.getValue(),
+      }
     }
-    return best
+
+    return null
   }
 
   function pushHistory() {
     history.value.push(cloneLines(options.draftLines.value))
     if (history.value.length > 10) history.value.shift()
     redoHistory.value = []
-  }
-
-  function triggerSnapHint() {
-    snapHintVisible.value = true
-    if (snapHintTimer) {
-      clearTimeout(snapHintTimer)
-    }
-    snapHintTimer = setTimeout(() => {
-      snapHintVisible.value = false
-      snapHintTimer = null
-    }, 800)
-  }
-
-  function hideContextMenu() {
-    contextMenu.value.visible = false
   }
 
   function clearDragReleaseFallback() {
@@ -355,413 +249,6 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     window.addEventListener('pointerup', dragReleaseFallback, true)
   }
 
-  function hideHoverLengthHint() {
-    hoverLengthHint.value.visible = false
-    if (hoverHintTimer) {
-      clearTimeout(hoverHintTimer)
-      hoverHintTimer = null
-    }
-  }
-
-  function showHoverLengthHint(screenPosition: Cesium.Cartesian2, lineIndex: number) {
-    const line = options.draftLines.value[lineIndex]
-    if (!line || line.length < 2) {
-      hideHoverLengthHint()
-      return
-    }
-    hoverLengthHint.value = {
-      visible: true,
-      x: Math.round(screenPosition.x) + 12,
-      y: Math.round(screenPosition.y) - 14,
-      text: `长度：${lineLengthMeters(line).toFixed(1)} m`,
-    }
-    if (hoverHintTimer) {
-      clearTimeout(hoverHintTimer)
-    }
-    hoverHintTimer = setTimeout(() => {
-      hoverLengthHint.value.visible = false
-      hoverHintTimer = null
-    }, 2000)
-  }
-
-  function syncHoveredLine(nextLineIndex: number | null) {
-    if (hoveredLineIndex.value === nextLineIndex) return
-    hoveredLineIndex.value = nextLineIndex
-    // In Mars3D edit mode, full redraw on hover is expensive and can freeze interaction.
-    if (!graphicLayer) {
-      renderDraftGraphics()
-    }
-  }
-
-  function clearGraphics() {
-    if (graphicLayer && typeof graphicLayer.clear === 'function') {
-      graphicLayer.clear(true)
-      lineGraphicMap.clear()
-    }
-    if (!viewer) return
-    for (const entity of currentLineEntities) {
-      viewer.entities.remove(entity)
-    }
-    for (const entity of currentPointEntities) {
-      viewer.entities.remove(entity)
-    }
-    currentLineEntities.length = 0
-    currentPointEntities.length = 0
-  }
-
-  function lineMetaOf(entity: Cesium.Entity | null): PipeLineMeta | null {
-    if (!entity) return null
-    const meta = (entity as any).__pipeLineMeta
-    if (!meta || typeof meta !== 'object') return null
-    if (!Number.isInteger(meta.lineIndex)) return null
-    return { lineIndex: Number(meta.lineIndex) }
-  }
-
-  function pointMetaOf(entity: Cesium.Entity | null): PipePointMeta | null {
-    if (!entity) return null
-    const meta = (entity as any).__pipePointMeta
-    if (!meta || typeof meta !== 'object') return null
-    if (!Number.isInteger(meta.lineIndex) || !Number.isInteger(meta.pointIndex)) return null
-    return {
-      lineIndex: Number(meta.lineIndex),
-      pointIndex: Number(meta.pointIndex),
-    }
-  }
-
-  function lineIndexOfGraphic(graphic: any): number {
-    if (!graphic) return -1
-    const attrLineIndex = Number(graphic?.attr?.lineIndex)
-    if (Number.isInteger(attrLineIndex) && attrLineIndex >= 0) return attrLineIndex
-    const metaLineIndex = Number(graphic?.__pipeLineMeta?.lineIndex)
-    if (Number.isInteger(metaLineIndex) && metaLineIndex >= 0) return metaLineIndex
-    return -1
-  }
-
-  function toLineFromGraphic(graphic: any): Line {
-    const positions = (graphic?.positions || graphic?.positionsShow || []) as Array<Cesium.Cartesian3 | number[]>
-    const line: Line = []
-    for (const item of positions) {
-      if (Array.isArray(item)) {
-        if (item.length >= 2 && Number.isFinite(item[0]) && Number.isFinite(item[1])) {
-          line.push([Number(item[0]), Number(item[1])])
-        }
-        continue
-      }
-      if (item && typeof item === 'object') {
-        line.push(toLonLat(item as Cesium.Cartesian3))
-      }
-    }
-    return line
-  }
-
-  function syncDraftLinesFromLayer() {
-    if (!graphicLayer) return
-    const nextLines: Lines = []
-    for (const [lineIndex, graphic] of lineGraphicMap.entries()) {
-      if (!graphic) continue
-      const line = toLineFromGraphic(graphic)
-      if (line.length >= 2) {
-        nextLines[lineIndex] = line
-      }
-    }
-    const normalized = nextLines.filter((line): line is Line => Array.isArray(line) && line.length >= 2)
-    if (!normalized.length) return
-    skipDraftLinesWatch = true
-    options.draftLines.value = cloneLines(normalized)
-  }
-
-  function getNearestPointIndex(line: Line, target: Point) {
-    if (!line.length) return -1
-    let bestIndex = 0
-    let bestDistance = Number.POSITIVE_INFINITY
-    for (let i = 0; i < line.length; i += 1) {
-      const dx = line[i][0] - target[0]
-      const dy = line[i][1] - target[1]
-      const distance = dx * dx + dy * dy
-      if (distance < bestDistance) {
-        bestDistance = distance
-        bestIndex = i
-      }
-    }
-    return bestIndex
-  }
-
-  function getChangedPointIndex(beforeLine: Line | undefined, afterLine: Line | undefined) {
-    if (!beforeLine?.length || !afterLine?.length) return -1
-    const limit = Math.min(beforeLine.length, afterLine.length)
-    if (!limit) return -1
-    let bestIndex = 0
-    let bestDistance = -1
-    for (let i = 0; i < limit; i += 1) {
-      const dx = afterLine[i][0] - beforeLine[i][0]
-      const dy = afterLine[i][1] - beforeLine[i][1]
-      const distance = dx * dx + dy * dy
-      if (distance > bestDistance) {
-        bestDistance = distance
-        bestIndex = i
-      }
-    }
-    if (afterLine.length > beforeLine.length) {
-      return Math.min(afterLine.length - 1, bestIndex + 1)
-    }
-    return bestIndex
-  }
-
-  function startEditingActiveLine() {
-    const activeGraphic = lineGraphicMap.get(activeLineIndex.value)
-    if (graphicLayer && activeGraphic && typeof graphicLayer.startEditing === 'function') {
-      graphicLayer.startEditing(activeGraphic)
-    }
-  }
-
-  function bindLayerEvents() {
-    if (!graphicLayer || !mars3dLib || layerEventsBound) return
-    layerEventsBound = true
-    const eventType = mars3dLib.EventType as Record<string, string>
-
-    graphicLayer.on(eventType.click, (event: any) => {
-      const lineIndex = lineIndexOfGraphic(event?.graphic)
-      if (lineIndex < 0) return
-      activeLineIndex.value = lineIndex
-      const clickedPoint = event?.cartesian ? toLonLat(event.cartesian as Cesium.Cartesian3) : null
-      if (clickedPoint) {
-        const line = options.draftLines.value[lineIndex]
-        if (line?.length) {
-          const pointIndex = getNearestPointIndex(line, clickedPoint)
-          if (pointIndex >= 0) {
-            selectedPoint.value = { lineIndex, pointIndex }
-          }
-        }
-      }
-      if (typeof graphicLayer.startEditing === 'function' && event?.graphic) {
-        graphicLayer.startEditing(event.graphic)
-      }
-      renderDraftGraphics()
-    })
-
-    const syncHandler = (event: any) => {
-      const lineIndex = lineIndexOfGraphic(event?.graphic)
-      if (lineIndex >= 0) {
-        activeLineIndex.value = lineIndex
-      }
-      syncDraftLinesFromLayer()
-      const currentLine = options.draftLines.value[activeLineIndex.value]
-      if (currentLine?.length) {
-        let pointIndex = currentLine.length - 1
-        if (event?.cartesian) {
-          pointIndex = getNearestPointIndex(currentLine, toLonLat(event.cartesian as Cesium.Cartesian3))
-        } else if (dragEditStartLines) {
-          const changedIndex = getChangedPointIndex(
-            dragEditStartLines[activeLineIndex.value],
-            currentLine,
-          )
-          if (changedIndex >= 0) pointIndex = changedIndex
-        }
-        selectedPoint.value = { lineIndex: activeLineIndex.value, pointIndex }
-      }
-    }
-
-    if (eventType.editMovePoint) graphicLayer.on(eventType.editMovePoint, (event: any) => {
-      syncHandler(event)
-      dragging.value = null
-      setCameraControlsEnabled(true)
-      clearDragReleaseFallback()
-    })
-    if (eventType.editAddPoint) graphicLayer.on(eventType.editAddPoint, syncHandler)
-    if (eventType.editRemovePoint) graphicLayer.on(eventType.editRemovePoint, syncHandler)
-    if (eventType.editStop) graphicLayer.on(eventType.editStop, () => {
-      syncDraftLinesFromLayer()
-      dragging.value = null
-      dragEditHistoryPushed = false
-      dragEditStartLines = null
-      setCameraControlsEnabled(true)
-      clearDragReleaseFallback()
-    })
-    if (eventType.editMouseUp) graphicLayer.on(eventType.editMouseUp, () => {
-      dragging.value = null
-      setCameraControlsEnabled(true)
-      clearDragReleaseFallback()
-    })
-    if (eventType.editMouseDown) graphicLayer.on(eventType.editMouseDown, () => {
-      if (!dragEditHistoryPushed) {
-        pushHistory()
-        dragEditHistoryPushed = true
-        dragEditStartLines = cloneLines(options.draftLines.value)
-      }
-      dragging.value = selectedPoint.value || { lineIndex: activeLineIndex.value, pointIndex: 0 }
-      setCameraControlsEnabled(false)
-      installDragReleaseFallback()
-    })
-  }
-
-  function resolvePipeBaseColor() {
-    const properties = (options.selectedFeature.value?.properties || {}) as Record<string, unknown>
-    const medium = String(
-      properties.medium
-      || properties.media
-      || properties.type
-      || properties.category
-      || properties.pipelineType
-      || '',
-    ).toLowerCase()
-
-    if (/(supply|water|给水|供水)/.test(medium)) return '#60a5fa'
-    if (/(drain|排水|rain|storm)/.test(medium)) return '#34d399'
-    if (/(sewage|污水|waste)/.test(medium)) return '#34d399'
-    if (/(fire|消防)/.test(medium)) return '#f87171'
-    return '#64748b'
-  }
-
-  function renderDraftGraphics() {
-    dragEditHistoryPushed = false
-    dragEditStartLines = null
-    clearGraphics()
-    const baseColor = resolvePipeBaseColor()
-
-    if (graphicLayer && mars3dLib) {
-      options.draftLines.value.forEach((line, lineIndex) => {
-        if (line.length < 2) return
-        const activeLine = lineIndex === activeLineIndex.value
-        const hoveredLine = hoveredLineIndex.value === lineIndex
-        const graphic = new mars3dLib.graphic.PolylineEntity({
-          positions: line.map((point) => [point[0], point[1], 0]),
-          style: {
-            width: activeLine || hoveredLine ? 4 : 3,
-            color: activeLine || hoveredLine ? '#6366f1' : baseColor,
-            opacity: 0.95,
-            clampToGround: true,
-          },
-          attr: { lineIndex },
-          hasEdit: true,
-          hasMoveEdit: true,
-          hasMidPoint: true,
-        })
-        ;(graphic as any).__pipeLineMeta = { lineIndex }
-        if (graphic.entity) {
-          ;(graphic.entity as any).__pipeLineMeta = { lineIndex }
-        }
-        graphicLayer.addGraphic(graphic)
-        lineGraphicMap.set(lineIndex, graphic)
-      })
-
-      if (viewer && selectedPoint.value) {
-        const line = options.draftLines.value[selectedPoint.value.lineIndex]
-        const point = line?.[selectedPoint.value.pointIndex]
-        if (point) {
-          const halo = viewer.entities.add({
-            position: toCartesian(point),
-            point: {
-              pixelSize: 18,
-              color: Cesium.Color.fromCssColorString('#6366f1').withAlpha(0.3),
-              disableDepthTestDistance: Number.POSITIVE_INFINITY,
-            },
-          })
-          const core = viewer.entities.add({
-            position: toCartesian(point),
-            point: {
-              pixelSize: 10,
-              color: Cesium.Color.fromCssColorString('#6366f1'),
-              outlineColor: Cesium.Color.fromCssColorString('#e2e8f0'),
-              outlineWidth: 2,
-              disableDepthTestDistance: Number.POSITIVE_INFINITY,
-            },
-          })
-          currentPointEntities.push(halo, core)
-        }
-      }
-
-      startEditingActiveLine()
-      return
-    }
-
-    if (!viewer) return
-    const currentViewer = viewer
-
-    options.draftLines.value.forEach((line, lineIndex) => {
-      if (line.length < 2) return
-      const activeLine = lineIndex === activeLineIndex.value
-      const hoveredLine = hoveredLineIndex.value === lineIndex
-      const lineEntity = currentViewer.entities.add({
-        polyline: {
-          positions: line.map(toCartesian),
-          width: activeLine || hoveredLine ? 4 : 3,
-          clampToGround: true,
-          material: activeLine || hoveredLine
-            ? new Cesium.PolylineGlowMaterialProperty({
-              glowPower: activeLine ? 0.2 : 0.14,
-              color: Cesium.Color.fromCssColorString('#6366f1').withAlpha(0.95),
-            })
-            : Cesium.Color.fromCssColorString(baseColor).withAlpha(0.95),
-        },
-      })
-      ;(lineEntity as any).__pipeLineMeta = { lineIndex }
-      currentLineEntities.push(lineEntity)
-      // Add an invisible-but-pickable wider line to improve click hit area.
-      const lineHitEntity = currentViewer.entities.add({
-        polyline: {
-          positions: line.map(toCartesian),
-          width: activeLine || hoveredLine ? 14 : 12,
-          clampToGround: true,
-          material: Cesium.Color.fromCssColorString('#ffffff').withAlpha(0.01),
-        },
-      })
-      ;(lineHitEntity as any).__pipeLineMeta = { lineIndex }
-      currentLineEntities.push(lineHitEntity)
-
-      line.forEach((point, pointIndex) => {
-        const active = selectedPoint.value?.lineIndex === lineIndex
-          && selectedPoint.value?.pointIndex === pointIndex
-        if (active) {
-          const haloEntity = currentViewer.entities.add({
-            position: toCartesian(point),
-            point: {
-              pixelSize: 19,
-              color: Cesium.Color.fromCssColorString('#6366f1').withAlpha(0.3),
-              disableDepthTestDistance: Number.POSITIVE_INFINITY,
-            },
-          })
-          ;(haloEntity as any).__pipePointMeta = { lineIndex, pointIndex }
-          currentPointEntities.push(haloEntity)
-        }
-        const shadowEntity = currentViewer.entities.add({
-          position: toCartesian(point),
-          point: {
-            pixelSize: active ? 13 : 12,
-            color: Cesium.Color.fromCssColorString('#1e293b').withAlpha(0.14),
-            disableDepthTestDistance: Number.POSITIVE_INFINITY,
-          },
-        })
-        ;(shadowEntity as any).__pipePointMeta = { lineIndex, pointIndex }
-        currentPointEntities.push(shadowEntity)
-        // Add a larger transparent point so selecting nodes is easier.
-        const pointHitEntity = currentViewer.entities.add({
-          position: toCartesian(point),
-          point: {
-            pixelSize: active ? 20 : 18,
-            color: Cesium.Color.fromCssColorString('#ffffff').withAlpha(0.01),
-            disableDepthTestDistance: Number.POSITIVE_INFINITY,
-          },
-        })
-        ;(pointHitEntity as any).__pipePointMeta = { lineIndex, pointIndex }
-        currentPointEntities.push(pointHitEntity)
-        const pointEntity = currentViewer.entities.add({
-          position: toCartesian(point),
-          point: {
-            pixelSize: active ? 11 : 10,
-            color: active
-              ? Cesium.Color.fromCssColorString('#6366f1')
-              : Cesium.Color.fromCssColorString('#60a5fa'),
-            outlineColor: Cesium.Color.fromCssColorString('#e2e8f0'),
-            outlineWidth: active ? 2 : 1.5,
-            disableDepthTestDistance: Number.POSITIVE_INFINITY,
-          },
-        })
-        ;(pointEntity as any).__pipePointMeta = { lineIndex, pointIndex }
-        currentPointEntities.push(pointEntity)
-      })
-    })
-  }
-
   function setCameraControlsEnabled(enabled: boolean) {
     if (!viewer) return
     const controller = viewer.scene.screenSpaceCameraController
@@ -772,283 +259,109 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     controller.enableLook = enabled
   }
 
-  function pickEntity(screenPosition: Cesium.Cartesian2 | undefined) {
-    if (!viewer || !screenPosition) return null
-    const picked = viewer.scene.pick(screenPosition)
-    if (!picked || !Cesium.defined(picked)) return null
-    const id = (picked as any).id
-    if (id instanceof Cesium.Entity) return id
-    return null
-  }
-
-  function toWindowPosition(point: Point) {
-    if (!viewer) return null
-    const screen = Cesium.SceneTransforms.worldToWindowCoordinates(viewer.scene, toCartesian(point))
-    if (!screen) return null
-    if (!Number.isFinite(screen.x) || !Number.isFinite(screen.y)) return null
-    return screen
-  }
-
-  function findNearestPointMeta(screenPosition: Cesium.Cartesian2, thresholdPx = 16): PipePointMeta | null {
-    let bestMeta: PipePointMeta | null = null
-    let bestDistSq = thresholdPx * thresholdPx
-    for (let lineIndex = 0; lineIndex < options.draftLines.value.length; lineIndex += 1) {
-      const line = options.draftLines.value[lineIndex]
-      for (let pointIndex = 0; pointIndex < line.length; pointIndex += 1) {
-        const win = toWindowPosition(line[pointIndex])
-        if (!win) continue
-        const dx = win.x - screenPosition.x
-        const dy = win.y - screenPosition.y
-        const distSq = dx * dx + dy * dy
-        if (distSq < bestDistSq) {
-          bestDistSq = distSq
-          bestMeta = { lineIndex, pointIndex }
-        }
-      }
-    }
-    return bestMeta
-  }
-
-  function pointToSegmentDistanceSquared(p: Cesium.Cartesian2, a: Cesium.Cartesian2, b: Cesium.Cartesian2) {
-    const abx = b.x - a.x
-    const aby = b.y - a.y
-    const apx = p.x - a.x
-    const apy = p.y - a.y
-    const abLenSq = abx * abx + aby * aby
-    if (abLenSq <= 1e-6) {
-      return apx * apx + apy * apy
-    }
-    const t = Math.max(0, Math.min(1, (apx * abx + apy * aby) / abLenSq))
-    const cx = a.x + abx * t
-    const cy = a.y + aby * t
-    const dx = p.x - cx
-    const dy = p.y - cy
-    return dx * dx + dy * dy
-  }
-
-  function findNearestLineMeta(screenPosition: Cesium.Cartesian2, thresholdPx = 12): PipeLineMeta | null {
-    let bestMeta: PipeLineMeta | null = null
-    let bestDistSq = thresholdPx * thresholdPx
-    for (let lineIndex = 0; lineIndex < options.draftLines.value.length; lineIndex += 1) {
-      const line = options.draftLines.value[lineIndex]
-      for (let segmentIndex = 0; segmentIndex < line.length - 1; segmentIndex += 1) {
-        const a = toWindowPosition(line[segmentIndex])
-        const b = toWindowPosition(line[segmentIndex + 1])
-        if (!a || !b) continue
-        const distSq = pointToSegmentDistanceSquared(screenPosition, a, b)
-        if (distSq < bestDistSq) {
-          bestDistSq = distSq
-          bestMeta = { lineIndex }
-        }
-      }
-    }
-    return bestMeta
-  }
-
-  function selectPoint(lineIndex: number, pointIndex: number) {
-    activeLineIndex.value = lineIndex
-    selectedPoint.value = { lineIndex, pointIndex }
-    renderDraftGraphics()
-    startEditingActiveLine()
-  }
-
-  function startDraggingByMeta(meta: PipePointMeta) {
-    if (options.saving.value) return
-    pushHistory()
-    dragging.value = meta
-    selectPoint(meta.lineIndex, meta.pointIndex)
-    setCameraControlsEnabled(false)
-  }
-
-  function stopDragging() {
-    if (dragging.value) {
-      ignoreNextClick.value = true
-    }
-    dragging.value = null
-    setCameraControlsEnabled(true)
-    clearDragReleaseFallback()
-  }
-
-  function insertPointAtBestSegment(point: Point) {
-    let bestLineIndex = -1
-    let bestSegmentIndex = -1
-    let bestDistance = Number.POSITIVE_INFINITY
-
-    options.draftLines.value.forEach((line, lineIndex) => {
-      if (!line || line.length < 2) return
-      for (let i = 0; i < line.length - 1; i++) {
-        const d = distanceToSegmentSquared(point, line[i], line[i + 1])
-        if (d < bestDistance) {
-          bestDistance = d
-          bestLineIndex = lineIndex
-          bestSegmentIndex = i
-        }
-      }
+  const { clearGraphics, bindLayerEvents, renderDraftGraphics, startEditingActiveLine, resetGraphicsState } =
+    usePipe2DEditorMapGraphics({
+      getViewer: () => viewer,
+      getGraphicLayer: () => graphicLayer,
+      getMars3dLib: () => mars3dLib,
+      selectedFeature: options.selectedFeature,
+      draftLines: options.draftLines,
+      activeLineIndex,
+      selectedPoint,
+      hoveredLineIndex,
+      setSkipDraftLinesWatch: (next) => {
+        skipDraftLinesWatch = next
+      },
+      dragging,
+      setCameraControlsEnabled,
+      clearDragReleaseFallback,
+      installDragReleaseFallback,
+      pushHistory,
+      toCartesian,
+      graph: editorGraph.graph,
+      graphSelected: editorGraph.selected,
+      previewTarget,
+      connectSourceId,
     })
 
-    if (bestLineIndex < 0 || bestSegmentIndex < 0) return
-    const line = options.draftLines.value[bestLineIndex]
-    if (!line) return
+  const {
+    hideContextMenu,
+    stopDragging,
+    insertPointAtCanvasCenter,
+    insertPointAtScreenPosition,
+    toggleDeletePointMode,
+    toggleAddPointMode,
+    undoLast,
+    redoLast,
+    restoreFromHistory,
+    resetDraft,
+    deleteSelectedPoint,
+    endEditing,
+    insertPointFromContextMenu,
+    deletePointFromContextMenu,
+    handleKeydown,
+    bindMapEvents,
+    destroyInteractions,
+  } = usePipe2DEditorMapInteractions({
+    open: options.open,
+    selectedFeature: options.selectedFeature,
+    draftLines: options.draftLines,
+    originalLines: options.originalLines,
+    saving: options.saving,
+    actionMessage: options.actionMessage,
+    requestClose: options.requestClose,
+    getViewer: () => viewer,
+    getGraphicLayer: () => graphicLayer,
+    toCartesian,
+    screenToLonLat,
+    worldToScreen,
+    snapEndpointCandidates,
+    activeLineIndex,
+    selectedPoint,
+    dragging,
+    addPointMode,
+    deletePointMode,
+    snapEnabled,
+    history,
+    redoHistory,
+    contextMenu,
+    snapHintVisible,
+    hoverLengthHint,
+    hoveredLineIndex,
+    renderDraftGraphics,
+    startEditingActiveLine,
+    setCameraControlsEnabled,
+    clearDragReleaseFallback,
+    pushHistory,
+  })
 
-    pushHistory()
-    line.splice(bestSegmentIndex + 1, 0, point)
-    activeLineIndex.value = bestLineIndex
-    selectedPoint.value = { lineIndex: bestLineIndex, pointIndex: bestSegmentIndex + 1 }
-    renderDraftGraphics()
-  }
+  // ---------------------------------------------------------------------------
+  // 绘制模式（思维导图式节点放置 + 连线）
+  // ---------------------------------------------------------------------------
+  const {
+    enterPlaceNode,
+    enterConnectFromNode,
+    exitDrawMode,
+    bindDrawEvents,
+    destroyDrawEvents,
+  } = usePipe2DEditorDrawMode({
+    graph: editorGraph.graph,
+    selected: editorGraph.selected,
+    drawMode,
+    pendingEdgeType,
+    connectSourceId,
+    previewTarget,
+    placeNodeType,
+    getViewer: () => viewer,
+    screenToLonLat,
+    addNode: editorGraph.addNode,
+    addEdge: editorGraph.addEdge,
+    selectNode: editorGraph.selectNode,
+    selectEdge: editorGraph.selectEdge,
+    clearSelection: editorGraph.clearSelection,
+    renderDraftGraphics,
+  })
 
-  function insertPointAtCanvasCenter() {
-    if (!viewer || !options.selectedFeature.value || options.saving.value) return
-    const center = new Cesium.Cartesian2(
-      Math.round(viewer.canvas.clientWidth / 2),
-      Math.round(viewer.canvas.clientHeight / 2),
-    )
-    insertPointAtScreenPosition(center.x, center.y)
-  }
-
-  function insertPointAtScreenPosition(x: number, y: number) {
-    if (!viewer || !options.selectedFeature.value || options.saving.value) return false
-    const screen = new Cesium.Cartesian2(Math.round(x), Math.round(y))
-    const point = screenToLonLat(screen)
-    if (!point) return false
-    insertPointAtBestSegment(applyEndpointSnap(point, screen))
-    return true
-  }
-
-  function deletePointByMeta(meta: PipePointMeta) {
-    const line = options.draftLines.value[meta.lineIndex]
-    if (!line || line.length <= 2) return
-    pushHistory()
-    line.splice(meta.pointIndex, 1)
-    selectedPoint.value = null
-    renderDraftGraphics()
-  }
-
-  function toggleDeletePointMode() {
-    if (!deletePointMode.value) {
-      addPointMode.value = false
-    }
-    deletePointMode.value = !deletePointMode.value
-    startEditingActiveLine()
-  }
-
-  function toggleAddPointMode() {
-    if (!addPointMode.value) {
-      deletePointMode.value = false
-    }
-    addPointMode.value = !addPointMode.value
-    startEditingActiveLine()
-  }
-
-  function handleHoverHint(screenPosition: Cesium.Cartesian2) {
-    if (!viewer) return
-    if (dragging.value) {
-      hideHoverLengthHint()
-      return
-    }
-    const pickedEntity = pickEntity(screenPosition)
-    const pointMeta = findNearestPointMeta(screenPosition, SELECT_POINT_THRESHOLD)
-    if (pointMeta) {
-      syncHoveredLine(pointMeta.lineIndex)
-      showHoverLengthHint(screenPosition, pointMeta.lineIndex)
-      return
-    }
-    const lineMeta = lineMetaOf(pickedEntity) || findNearestLineMeta(screenPosition, SELECT_LINE_THRESHOLD)
-    if (lineMeta) {
-      syncHoveredLine(lineMeta.lineIndex)
-      showHoverLengthHint(screenPosition, lineMeta.lineIndex)
-      return
-    }
-    syncHoveredLine(null)
-    hideHoverLengthHint()
-  }
-
-  function queueHoverHint(screenPosition: Cesium.Cartesian2) {
-    if (typeof window === 'undefined') return
-    pendingHoverPosition = new Cesium.Cartesian2(screenPosition.x, screenPosition.y)
-    if (hoverRafId !== null) return
-    hoverRafId = window.requestAnimationFrame(() => {
-      hoverRafId = null
-      const next = pendingHoverPosition
-      pendingHoverPosition = null
-      if (!next) return
-      handleHoverHint(next)
-    })
-  }
-
-  function undoLast() {
-    const prev = history.value.pop()
-    if (!prev) return
-    redoHistory.value.push(cloneLines(options.draftLines.value))
-    options.draftLines.value = cloneLines(prev)
-    selectedPoint.value = null
-    hideContextMenu()
-    renderDraftGraphics()
-  }
-
-  function redoLast() {
-    const next = redoHistory.value.pop()
-    if (!next) return
-    history.value.push(cloneLines(options.draftLines.value))
-    if (history.value.length > 10) history.value.shift()
-    options.draftLines.value = cloneLines(next)
-    selectedPoint.value = null
-    hideContextMenu()
-    renderDraftGraphics()
-  }
-
-  function restoreFromHistory(index: number) {
-    if (index < 0 || index >= history.value.length) return
-    const target = history.value[index]
-    const current = cloneLines(options.draftLines.value)
-    const newer = history.value
-      .slice(index + 1)
-      .map(snapshot => cloneLines(snapshot))
-    newer.push(current)
-    redoHistory.value = newer
-    history.value = history.value
-      .slice(0, index)
-      .map(snapshot => cloneLines(snapshot))
-    options.draftLines.value = cloneLines(target)
-    selectedPoint.value = null
-    hideContextMenu()
-    renderDraftGraphics()
-  }
-
-  function resetDraft() {
-    options.draftLines.value = cloneLines(options.originalLines.value)
-    history.value = []
-    redoHistory.value = []
-    selectedPoint.value = null
-    addPointMode.value = false
-    deletePointMode.value = false
-    hideContextMenu()
-    options.actionMessage.value = null
-    renderDraftGraphics()
-  }
-
-  function deleteSelectedPoint() {
-    if (!selectedPoint.value) return
-    const { lineIndex, pointIndex } = selectedPoint.value
-    const line = options.draftLines.value[lineIndex]
-    if (!line || line.length <= 2) return
-    pushHistory()
-    line.splice(pointIndex, 1)
-    selectedPoint.value = null
-    hideContextMenu()
-    renderDraftGraphics()
-  }
-
-  function endEditing() {
-    dragging.value = null
-    selectedPoint.value = null
-    addPointMode.value = false
-    deletePointMode.value = false
-    hideContextMenu()
-    hideHoverLengthHint()
-    setCameraControlsEnabled(true)
-    renderDraftGraphics()
-  }
 
   function zoomByStep(delta: number) {
     if (!viewer) return
@@ -1139,112 +452,6 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     applyUndergroundSlice(enabled)
   }
 
-  function openContextMenu(screenPosition: Cesium.Cartesian2) {
-    const currentViewer = viewer
-    if (!currentViewer) return
-
-    const pickedEntity = pickEntity(screenPosition)
-    const pointMeta = findNearestPointMeta(screenPosition, SELECT_POINT_THRESHOLD)
-    const lineMeta = lineMetaOf(pickedEntity) || findNearestLineMeta(screenPosition, SELECT_LINE_THRESHOLD)
-    const point = screenToLonLat(screenPosition)
-    contextMenuPoint.value = point
-    contextMenuPointMeta.value = pointMeta
-
-    if (pointMeta) {
-      selectPoint(pointMeta.lineIndex, pointMeta.pointIndex)
-    } else if (lineMeta) {
-      activeLineIndex.value = lineMeta.lineIndex
-      renderDraftGraphics()
-    }
-
-    const activeLine = options.draftLines.value[activeLineIndex.value]
-    const canInsert = Boolean(point && activeLine && activeLine.length >= 2)
-    const canDeleteFromMeta = pointMeta
-      ? ((options.draftLines.value[pointMeta.lineIndex]?.length || 0) > 2)
-      : false
-
-    const rect = currentViewer.canvas.getBoundingClientRect()
-    const x = Math.max(6, Math.min(screenPosition.x, rect.width - 170))
-    const y = Math.max(6, Math.min(screenPosition.y, rect.height - 126))
-
-    contextMenu.value = {
-      visible: true,
-      x,
-      y,
-      canInsert,
-      canDelete: canDeletePoint.value || canDeleteFromMeta,
-    }
-  }
-
-  function insertPointFromContextMenu() {
-    if (!contextMenuPoint.value) return
-    insertPointAtBestSegment(contextMenuPoint.value)
-    hideContextMenu()
-  }
-
-  function deletePointFromContextMenu() {
-    if (!canDeletePoint.value && contextMenuPointMeta.value) {
-      const { lineIndex, pointIndex } = contextMenuPointMeta.value
-      const line = options.draftLines.value[lineIndex]
-      if (line && line.length > 2) {
-        pushHistory()
-        line.splice(pointIndex, 1)
-        selectedPoint.value = null
-        hideContextMenu()
-        renderDraftGraphics()
-      }
-      return
-    }
-    deleteSelectedPoint()
-    hideContextMenu()
-  }
-
-  function shouldIgnoreShortcutTarget(target: EventTarget | null) {
-    const el = target as HTMLElement | null
-    if (!el) return false
-    const tag = el.tagName?.toLowerCase()
-    if (tag === 'input' || tag === 'textarea' || tag === 'select') return true
-    if (el.isContentEditable) return true
-    return false
-  }
-
-  function handleKeydown(event: KeyboardEvent) {
-    if (!options.open.value || options.saving.value) return
-    if (shouldIgnoreShortcutTarget(event.target)) return
-
-    const key = event.key.toLowerCase()
-    const isMod = event.metaKey || event.ctrlKey
-    if (isMod && key === 'z' && !event.shiftKey) {
-      event.preventDefault()
-      undoLast()
-      return
-    }
-    if ((isMod && key === 'y') || (isMod && key === 'z' && event.shiftKey)) {
-      event.preventDefault()
-      redoLast()
-      return
-    }
-    if (key === 'escape') {
-      event.preventDefault()
-      if (options.requestClose) {
-        options.requestClose()
-      } else {
-        endEditing()
-      }
-      return
-    }
-    if (key === 'i') {
-      event.preventDefault()
-      toggleAddPointMode()
-      return
-    }
-    if (key === 'delete' || key === 'backspace') {
-      event.preventDefault()
-      deleteSelectedPoint()
-      return
-    }
-  }
-
   function setBasemapById(basemapId: string) {
     if (!marsMap || !basemapId) return
     const target = marsMap as Record<string, unknown>
@@ -1255,98 +462,20 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     target.basemap = basemapId
   }
 
-  function bindMapEvents() {
-    if (!viewer || handler) return
-    handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
-
-    handler.setInputAction((movement: Cesium.ScreenSpaceEventHandler.MotionEvent) => {
-      queueHoverHint(movement.endPosition)
-    }, Cesium.ScreenSpaceEventType.MOUSE_MOVE)
-
-    handler.setInputAction(() => {
-      if (dragging.value) {
-        stopDragging()
-      }
-    }, Cesium.ScreenSpaceEventType.LEFT_UP)
-
-    handler.setInputAction((movement: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
-      if (!viewer) return
-      hideContextMenu()
-      if (ignoreNextClick.value) {
-        ignoreNextClick.value = false
-        return
-      }
-
-      const pickedEntity = pickEntity(movement.position)
-      const pointMeta = findNearestPointMeta(movement.position, SELECT_POINT_THRESHOLD)
-
-      if (deletePointMode.value) {
-        if (pointMeta) {
-          deletePointByMeta(pointMeta)
-        }
-        return
-      }
-
-      if (addPointMode.value && !options.saving.value && options.selectedFeature.value) {
-        const point = screenToLonLat(movement.position)
-        if (!point) return
-        const snappedPoint = applyEndpointSnap(point, movement.position)
-        insertPointAtBestSegment(snappedPoint)
-        return
-      }
-
-      if (pointMeta) {
-        selectPoint(pointMeta.lineIndex, pointMeta.pointIndex)
-        return
-      }
-
-      const lineMeta = lineMetaOf(pickedEntity) || findNearestLineMeta(movement.position, SELECT_LINE_THRESHOLD)
-      if (lineMeta) {
-        activeLineIndex.value = lineMeta.lineIndex
-        startEditingActiveLine()
-        renderDraftGraphics()
-        return
-      }
-
-      selectedPoint.value = null
-      renderDraftGraphics()
-      return
-    }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
-
-    handler.setInputAction((movement: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
-      if (options.saving.value) return
-      openContextMenu(movement.position)
-    }, Cesium.ScreenSpaceEventType.RIGHT_CLICK)
-  }
-
   function destroyMap() {
-    hideContextMenu()
-    hideHoverLengthHint()
-    snapHintVisible.value = false
-    contextMenuPoint.value = null
-    contextMenuPointMeta.value = null
-    hoveredLineIndex.value = null
+    destroyInteractions()
+    destroyDrawEvents()
     clearDragReleaseFallback()
-    if (hoverRafId !== null && typeof window !== 'undefined') {
-      window.cancelAnimationFrame(hoverRafId)
-      hoverRafId = null
-    }
-    pendingHoverPosition = null
-    layerEventsBound = false
-    if (handler) {
-      handler.destroy()
-      handler = null
-    }
     if (graphicLayer && typeof graphicLayer.remove === 'function') {
       graphicLayer.remove(true)
     }
     graphicLayer = null
-    lineGraphicMap.clear()
     if (viewer) {
       viewer.camera.changed.removeEventListener(syncMapViewFromCamera)
       clearGraphics()
       viewer = null
     }
+    resetGraphicsState()
     if (marsMap && typeof marsMap.destroy === 'function') {
       marsMap.destroy()
     }
@@ -1403,6 +532,10 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
           timeline: false,
           fullscreenButton: false,
           vrButton: false,
+          contextmenu: {
+            preventDefault: true,
+            hasDefault: false,
+          },
         },
       })
       viewer = marsMap.viewer as Cesium.Viewer
@@ -1439,6 +572,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
         bindLayerEvents()
       }
       bindMapEvents()
+      bindDrawEvents()
       renderDraftGraphics()
       fitCurrentPipeView()
     } catch (error) {
@@ -1481,6 +615,10 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
       addPointMode.value = false
       deletePointMode.value = false
       hideContextMenu()
+      hoverLengthHint.value.visible = false
+      exitDrawMode()
+      // 用新加载的 draftLines 重新推断图结构
+      editorGraph.initFromLines(options.draftLines.value)
       renderDraftGraphics()
       fitCurrentPipeView()
     },
@@ -1511,14 +649,6 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     if (typeof window !== 'undefined') {
       window.removeEventListener('beforeunload', destroyMap)
       window.removeEventListener('keydown', handleKeydown)
-    }
-    if (snapHintTimer) {
-      clearTimeout(snapHintTimer)
-      snapHintTimer = null
-    }
-    if (hoverHintTimer) {
-      clearTimeout(hoverHintTimer)
-      hoverHintTimer = null
     }
     clearDragReleaseFallback()
     destroyMap()
@@ -1554,7 +684,6 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     redoLast,
     restoreFromHistory,
     resetDraft,
-    selectPoint,
     stopDragging,
     toggleAddPointMode,
     toggleDeletePointMode,
@@ -1572,5 +701,19 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     deletePointFromContextMenu,
     endEditing,
     deleteSelectedPoint,
+    // --- 图结构 (Phase 1+2) ---
+    editorGraph,
+    drawMode,
+    pendingEdgeType,
+    connectSourceId,
+    previewTarget,
+    placeNodeType,
+    enterPlaceNode,
+    enterConnectFromNode,
+    exitDrawMode,
+    // --- 辅助函数（用于思维导图编辑器） ---
+    screenToLonLat,
+    worldToScreen,
+    pickEntity,
   }
 }

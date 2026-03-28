@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { ChevronDown, ChevronRight, House, PanelRightClose } from 'lucide-vue-next'
 import { computed } from 'vue'
+import type { SelectedElement } from '~/composables/admin/usePipe2DEditorGraph'
+import type { EdgeAttributes, NodeAttributes, NodeType, PipeGraph } from '~/utils/pipe2d-graph'
+import Pipe2DEditorGraphPanel from './Pipe2DEditorGraphPanel.vue'
 
 type PanelSectionKey = 'basic' | 'relation' | 'control' | 'realtime' | 'timeline' | 'runtime'
 
@@ -66,6 +69,9 @@ const props = defineProps<{
   selectedPointLabel: string
   zoomLevel: number
   isDirty: boolean
+  // 图结构属性面板（可选）
+  graph?: PipeGraph | null
+  graphSelected?: SelectedElement
 }>()
 
 const emit = defineEmits<{
@@ -87,6 +93,13 @@ const emit = defineEmits<{
   (e: 'update:relation-active-names', value: string[]): void
   (e: 'reset-draft'): void
   (e: 'save-geometry'): void
+  // 图结构操作
+  (e: 'update-node', nodeId: string, attrs: NodeAttributes): void
+  (e: 'update-node-type', nodeId: string, type: NodeType): void
+  (e: 'update-edge', edgeId: string, attrs: EdgeAttributes): void
+  (e: 'toggle-edge-curve', edgeId: string): void
+  (e: 'remove-node', nodeId: string): void
+  (e: 'remove-edge', edgeId: string): void
 }>()
 
 const relationNamesModel = computed({
@@ -125,6 +138,19 @@ function formatDateTime(value: string) {
         <PanelRightClose :size="16" />
       </button>
     </div>
+
+    <!-- 图结构节点/管段属性面板 -->
+    <Pipe2DEditorGraphPanel
+      v-if="graph && graphSelected"
+      :graph="graph"
+      :selected="graphSelected"
+      @update-node="(id, attrs) => emit('update-node', id, attrs)"
+      @update-node-type="(id, type) => emit('update-node-type', id, type)"
+      @update-edge="(id, attrs) => emit('update-edge', id, attrs)"
+      @toggle-edge-curve="(id) => emit('toggle-edge-curve', id)"
+      @remove-node="(id) => emit('remove-node', id)"
+      @remove-edge="(id) => emit('remove-edge', id)"
+    />
 
     <section class="panel-card">
       <button class="panel-collapse-toggle" type="button" @click="emit('toggle-section', 'basic')">

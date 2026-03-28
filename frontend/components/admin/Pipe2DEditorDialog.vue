@@ -1,6 +1,6 @@
 <template>
-  <div v-if="open" class="dialog modao-editor">
-    <div class="dialog__mask" @click="emit('close')" />
+  <div v-if="open" :class="['dialog', 'modao-editor', { 'dialog--standalone': standalone }]">
+    <div v-if="!standalone" class="dialog__mask" @click="requestDialogClose" />
     <div class="dialog__panel" @click.stop>
       <Pipe2DEditorTopbarSection
         :project-title="projectTitle"
@@ -9,8 +9,8 @@
         :save-status-class="saveStatusClass"
         :save-status-text="saveStatusText"
         :saving="saving"
-        :can-undo="canUndo"
-        :can-redo="canRedo"
+        :can-undo="combinedCanUndo"
+        :can-redo="combinedCanRedo"
         :view-mode="viewMode"
         :view-mode-options="viewModeOptions"
         @start-edit-project-title="startEditProjectTitle"
@@ -19,11 +19,11 @@
         @cancel-project-title="cancelProjectTitle"
         @change-view-mode="switchViewByKey"
         @ai="showPlanned('AI智能助手')"
-        @undo="undoLast"
-        @redo="redoLast"
+        @undo="handleUndo"
+        @redo="handleRedo"
         @beautify="showPlanned('一键美化布局')"
         @share="showPlanned('分享')"
-        @close="emit('close')"
+        @close="requestDialogClose"
       />
 
       <div class="workspace">
@@ -38,11 +38,11 @@
 
         <Pipe2DEditorStageSection
           :section-class="stageClass"
-          :canvas-class="canvasClass"
+          :canvas-class="combinedCursorClass"
           :toolbar-drag-active="toolbarDrag.active"
           :toolbar-drag-over-canvas="toolbarDrag.overCanvas"
           :toolbar-drag-label="toolbarDragLabel"
-          :active-tool-hint="activeToolHint"
+          :active-tool-hint="combinedToolHint"
           :loading="loading"
           :load-error="loadError"
           :selected-feature-exists="Boolean(selectedFeature)"
@@ -135,6 +135,14 @@
           @update:relation-active-names="relationActiveNames = $event"
           @reset-draft="handleResetDraft"
           @save-geometry="saveGeometry"
+          :graph="editorGraph.graph.value"
+          :graph-selected="editorGraph.selected.value"
+          @update-node="handleUpdateNode"
+          @update-node-type="handleUpdateNodeType"
+          @update-edge="handleUpdateEdge"
+          @toggle-edge-curve="editorGraph.toggleEdgeCurve"
+          @remove-node="editorGraph.removeNode"
+          @remove-edge="editorGraph.removeEdge"
         />
 
         <div
@@ -165,18 +173,16 @@
 </template>
 
 <script setup lang="ts">
+import * as Cesium from 'cesium'
+import { PanelRightOpen } from 'lucide-vue-next'
+import { computed, onBeforeUnmount, ref, toRef, watch } from 'vue'
 import {
-  FileText,
-  Hand,
-  Home,
-  Layers,
-  Network,
-  PanelRightOpen,
-  Plus,
-  Search,
-  Upload,
-} from 'lucide-vue-next'
-import { computed, onBeforeUnmount, onMounted, ref, toRef, watch, type Component } from 'vue'
+  defaultPanelSectionCollapsed,
+  toolItems,
+  viewModeOptions,
+  type EditorMessage,
+  type PanelSectionKey,
+} from '~/components/admin/pipe2d-editor/pipe2d-editor-config'
 import Pipe2DEditorRightPanelSection from '~/components/admin/pipe2d-editor/Pipe2DEditorRightPanelSection.vue'
 import Pipe2DEditorShortcutHelp from '~/components/admin/pipe2d-editor/Pipe2DEditorShortcutHelp.vue'
 import Pipe2DEditorStageSection from '~/components/admin/pipe2d-editor/Pipe2DEditorStageSection.vue'
@@ -184,66 +190,25 @@ import Pipe2DEditorStatusbarSection from '~/components/admin/pipe2d-editor/Pipe2
 import Pipe2DEditorToolbarSection from '~/components/admin/pipe2d-editor/Pipe2DEditorToolbarSection.vue'
 import Pipe2DEditorTopbarSection from '~/components/admin/pipe2d-editor/Pipe2DEditorTopbarSection.vue'
 import { usePipe2DEditorData } from '~/composables/admin/usePipe2DEditorData'
+import { usePipe2DEditorDrafts } from '~/composables/admin/usePipe2DEditorDrafts'
 import { usePipe2DEditorMap } from '~/composables/admin/usePipe2DEditorMap'
+import { usePipe2DEditorWorkspace } from '~/composables/admin/usePipe2DEditorWorkspace'
+import { useMindmapEditor } from '~/composables/admin/useMindmapEditor'
+import { useMindmapEditorEvents } from '~/composables/admin/useMindmapEditorEvents'
 import { geoFeatureService, type GeoJsonFeature } from '~/services/geo-features'
 import { twinService } from '~/services/twin'
-import { cloneLines, geometryToLines, type Lines } from '~/utils/pipe2d-geometry'
-
-type Message = {
-  type: 'ok' | 'error'
-  text: string
-}
-
-type ViewMode = 'global' | 'underground' | 'topology2d' | 'sketch'
-type CanvasSkin = 'dots' | 'plain' | 'blueprint' | 'satellite'
-type ToolKey =
-  | 'select'
-  | 'addNode'
-  | 'addPipe'
-  | 'bindAsset'
-  | 'annotate'
-  | 'layer'
-  | 'import'
-
-type PanelSectionKey = 'basic' | 'relation' | 'control' | 'realtime' | 'timeline' | 'runtime'
-
-type ToolbarDragState = {
-  active: boolean
-  toolKey: ToolKey | null
-  clientX: number
-  clientY: number
-  startX: number
-  startY: number
-  moved: boolean
-  overCanvas: boolean
-}
-
-const viewModeOptions: Array<{ key: ViewMode; label: string }> = [
-  { key: 'global', label: '全域3D' },
-  { key: 'underground', label: '地下切片' },
-  { key: 'sketch', label: '平面草图' },
-  { key: 'topology2d', label: '2D拓扑' },
-]
-
-const viewModeSet = new Set<ViewMode>(viewModeOptions.map(item => item.key))
-
-const toolItems: Array<{ key: ToolKey; icon: Component; label: string; tooltip: string; shortcut: string }> = [
-  { key: 'select', icon: Hand, label: '选择工具', tooltip: '选择工具', shortcut: 'V' },
-  { key: 'addNode', icon: Plus, label: '添加节点', tooltip: '添加节点', shortcut: 'N' },
-  { key: 'addPipe', icon: Network, label: '添加管线', tooltip: '添加管线', shortcut: 'P' },
-  { key: 'bindAsset', icon: Home, label: '房产绑定', tooltip: '绑定房产', shortcut: 'B' },
-  { key: 'annotate', icon: FileText, label: '批注', tooltip: '添加批注', shortcut: 'M' },
-  { key: 'layer', icon: Layers, label: '图层', tooltip: '图层过滤', shortcut: 'L' },
-  { key: 'import', icon: Upload, label: '导入', tooltip: '导入数据', shortcut: 'U' },
-]
-
-const toolKeySet = new Set<ToolKey>(toolItems.map(item => item.key))
+import { type Lines } from '~/utils/pipe2d-geometry'
+import { type EdgeAttributes, type NodeAttributes, type NodeType } from '~/utils/pipe2d-graph'
 
 const props = defineProps<{
   open: boolean
   backendBaseUrl: string
   initialFeatureId?: string | null
+  onRequestClose?: () => void
+  standalone?: boolean
 }>()
+
+const standalone = computed(() => Boolean(props.standalone))
 
 const emit = defineEmits<{
   (e: 'close'): void
@@ -253,62 +218,40 @@ const emit = defineEmits<{
 const mapContainerRef = ref<HTMLDivElement | null>(null)
 
 const saving = ref(false)
-const actionMessage = ref<Message | null>(null)
+const actionMessage = ref<EditorMessage | null>(null)
 const saveSuccessVisible = ref(false)
 
 const pipes = ref<GeoJsonFeature[]>([])
 const selectedFeatureId = ref('')
-
 const draftLines = ref<Lines>([])
 const originalLines = ref<Lines>([])
 
 const renaming = ref(false)
 const renamingSaving = ref(false)
 const renameDraft = ref('')
-const draftStatusText = ref('等待加载')
-const activeTool = ref<ToolKey>('select')
-const viewMode = ref<ViewMode>('topology2d')
-const canvasSkin = ref<CanvasSkin>('dots')
-const panelCollapsed = ref(false)
-const projectTitle = ref('校园地下管网运维系统')
-const editingProjectTitle = ref(false)
-const projectTitleDraft = ref('')
-const draftRestoredToastVisible = ref(false)
-const shortcutHelpVisible = ref(false)
-
-const panelSectionCollapsed = ref<Record<PanelSectionKey, boolean>>({
-  basic: false,
-  relation: false,
-  control: false,
-  realtime: false,
-  timeline: false,
-  runtime: true,
-})
+const panelSectionCollapsed = ref<Record<PanelSectionKey, boolean>>({ ...defaultPanelSectionCollapsed })
 const relationActiveNames = ref<string[]>([])
 
-const toolbarDrag = ref<ToolbarDragState>({
-  active: false,
-  toolKey: null,
-  clientX: 0,
-  clientY: 0,
-  startX: 0,
-  startY: 0,
-  moved: false,
-  overCanvas: false,
-})
-
-const ignoreToolClickUntil = ref(0)
-
-let draftAutosaveTimer: ReturnType<typeof setTimeout> | null = null
-let draftIntervalTimer: ReturnType<typeof setInterval> | null = null
 let saveCloseTimer: ReturnType<typeof setTimeout> | null = null
-let draftToastTimer: ReturnType<typeof setTimeout> | null = null
-
-const DRAFT_STORAGE_PREFIX = 'pipe2d-editor-draft:v3:'
 
 const selectedFeature = computed(() => {
   return pipes.value.find(item => String(item.id) === selectedFeatureId.value) || null
 })
+
+function requestDialogClose() {
+  try {
+    hideContextMenu()
+  } catch {
+    // ensure close action is never blocked by menu state errors
+  } finally {
+    try {
+      props.onRequestClose?.()
+    } catch {
+      // keep close behavior resilient when parent callback throws
+    }
+    emit('close')
+  }
+}
 
 const {
   history,
@@ -350,6 +293,10 @@ const {
   hideContextMenu,
   insertPointFromContextMenu,
   deletePointFromContextMenu,
+  editorGraph,
+  screenToLonLat,
+  worldToScreen,
+  pickEntity,
 } = usePipe2DEditorMap({
   open: toRef(props, 'open'),
   mapContainerRef,
@@ -359,7 +306,56 @@ const {
   originalLines,
   saving,
   actionMessage,
-  requestClose: () => emit('close'),
+  requestClose: requestDialogClose,
+})
+
+const {
+  activeTool,
+  viewMode,
+  panelCollapsed,
+  projectTitle,
+  editingProjectTitle,
+  projectTitleDraft,
+  shortcutHelpVisible,
+  toolbarDrag,
+  activeToolLabel,
+  activeToolHint,
+  canvasClass,
+  stageClass,
+  zoomPercentText,
+  toolbarDragLabel,
+  toolbarDragIcon,
+  showPlanned,
+  activateTool,
+  setMapContainerRef,
+  handleToolbarPointerDown,
+  handleToolbarSelect,
+  switchViewByKey,
+  toggleSceneModeByPanel,
+  resetZoomToHundred,
+  startEditProjectTitle,
+  commitProjectTitle,
+  cancelProjectTitle,
+  stopWorkspaceListeners,
+} = usePipe2DEditorWorkspace({
+  open: toRef(props, 'open'),
+  saving,
+  selectedFeature,
+  mapContainerRef,
+  mapCursorClass,
+  mapView,
+  addPointMode,
+  deletePointMode,
+  sceneMode,
+  undergroundSliceEnabled,
+  actionMessage,
+  toggleAddPointMode,
+  toggleDeletePointMode,
+  insertPointAtScreenPosition,
+  toggleSceneMode,
+  setUndergroundSliceEnabled,
+  setBasemapById,
+  setZoomLevel,
 })
 
 const {
@@ -387,10 +383,89 @@ const {
   emitSaved: (id) => emit('saved', id),
 })
 
+const {
+  draftStatusText,
+  draftRestoredToastVisible,
+  clearLocalDraft,
+  setDraftStatus,
+  stopDraftTimers,
+} = usePipe2DEditorDrafts({
+  open: toRef(props, 'open'),
+  selectedFeature,
+  draftLines,
+  originalLines,
+  isDirty,
+  saving,
+  fitCurrentPipeView,
+  graph: editorGraph.graph,
+  restoreGraph: (g) => {
+    editorGraph.graph.value = g
+    editorGraph.selected.value = null
+  },
+})
+
+// 思维导图编辑器集成
+const mindmapEditor = useMindmapEditor({
+  draftLines,
+})
+
+const mindmapEvents = useMindmapEditorEvents({
+  editor: mindmapEditor,
+  mapContainerRef,
+  open: toRef(props, 'open'),
+  screenToLonLat: (pos) => screenToLonLat(new Cesium.Cartesian2(pos.x, pos.y)),
+  pickEntity,
+})
+
+// 合并思维导图模式提示和原有工具提示
+const combinedToolHint = computed(() => {
+  // 优先使用思维导图编辑器的模式提示
+  if (mindmapEditor.modeHint.value) {
+    return mindmapEditor.modeHint.value
+  }
+  // 回退到原有的工具提示
+  return activeToolHint.value
+})
+
+// 合并光标样式
+const combinedCursorClass = computed(() => {
+  const mindmapCursor = mindmapEditor.cursorClass.value
+  if (mindmapCursor) {
+    // 如果 canvasClass 是数组，将思维导图光标添加到数组中
+    if (Array.isArray(canvasClass.value)) {
+      return [...canvasClass.value.filter(c => !c.startsWith('cursor--')), mindmapCursor]
+    }
+    return [canvasClass.value, mindmapCursor]
+  }
+  // 回退到原有的光标样式
+  return canvasClass.value
+})
+
+// 合并撤销/重做状态
+const combinedCanUndo = computed(() => mindmapEditor.canUndo.value || canUndo.value)
+const combinedCanRedo = computed(() => mindmapEditor.canRedo.value || canRedo.value)
+
+// 合并撤销/重做操作
+function handleUndo() {
+  if (mindmapEditor.canUndo.value) {
+    mindmapEditor.undo()
+  } else {
+    undoLast()
+  }
+}
+
+function handleRedo() {
+  if (mindmapEditor.canRedo.value) {
+    mindmapEditor.redo()
+  } else {
+    redoLast()
+  }
+}
+
 const displayPipeName = computed(() => {
   if (!selectedFeature.value) return '未选择管道'
-  const p = selectedFeature.value.properties || {}
-  return String(p.name || p.ref || selectedFeature.value.id)
+  const properties = selectedFeature.value.properties || {}
+  return String(properties.name || properties.ref || selectedFeature.value.id)
 })
 
 const selectedPointLabel = computed(() => {
@@ -418,33 +493,6 @@ const saveStatusClass = computed(() => {
   if (saving.value) return 'save-chip--syncing'
   if (isDirty.value) return 'save-chip--dirty'
   return 'save-chip--saved'
-})
-
-const zoomPercentText = computed(() => `${Math.round((mapView.value.zoom / 20) * 100)}%`)
-const activeToolLabel = computed(() => toolItems.find(item => item.key === activeTool.value)?.label || '选择工具')
-
-const activeToolHint = computed(() => {
-  if (!selectedFeature.value) return ''
-  if (activeTool.value === 'addNode') return '点击画布在线段上插入节点'
-  if (activeTool.value === 'addPipe') return '点击画布继续编辑管线节点'
-  if (activeTool.value === 'bindAsset') return '点击管线，准备关联房产信息'
-  if (activeTool.value === 'annotate') return '点击目标位置添加运维批注'
-  return ''
-})
-
-const toolCursorClass = computed(() => {
-  if (activeTool.value === 'addNode' || activeTool.value === 'addPipe') return 'cursor--crosshair'
-  if (activeTool.value === 'bindAsset') return 'cursor--cell'
-  if (activeTool.value === 'select') return 'cursor--grab'
-  return 'cursor--default'
-})
-
-const canvasClass = computed(() => {
-  return ['map-container', 'mars-canvas', mapCursorClass.value, toolCursorClass.value]
-})
-
-const stageClass = computed(() => {
-  return ['stage', `stage--skin-${canvasSkin.value}`, { 'stage--drop-target': toolbarDrag.value.active && toolbarDrag.value.overCanvas }]
 })
 
 const loadProgressText = computed(() => (loading.value ? '载入中' : '100%'))
@@ -529,12 +577,6 @@ const telemetryLatestText = computed(() => {
   return `${latest.value.toFixed(2)} ${latest.unit}`
 })
 
-const toolbarDragTool = computed(() => {
-  return toolItems.find(item => item.key === toolbarDrag.value.toolKey) || null
-})
-
-const toolbarDragLabel = computed(() => toolbarDragTool.value?.label || '工具')
-const toolbarDragIcon = computed(() => toolbarDragTool.value?.icon || Search)
 const selectedPipeIdText = computed(() => (selectedFeature.value ? String(selectedFeature.value.id) : '--'))
 
 function formatMeters(meters: number) {
@@ -543,104 +585,10 @@ function formatMeters(meters: number) {
   return `${meters.toFixed(1)} m`
 }
 
-function isValidDraftLines(value: unknown): value is Lines {
-  if (!Array.isArray(value) || !value.length) return false
-  return value.every((line) => {
-    if (!Array.isArray(line) || line.length < 2) return false
-    return line.every((point) => {
-      if (!Array.isArray(point) || point.length < 2) return false
-      return Number.isFinite(point[0]) && Number.isFinite(point[1])
-    })
-  })
-}
-
-function draftStorageKey(featureId: string) {
-  return `${DRAFT_STORAGE_PREFIX}${featureId}`
-}
-
-function writeLocalDraft(featureId: string) {
-  if (typeof window === 'undefined') return
-  const payload = {
-    featureId,
-    savedAt: Date.now(),
-    lines: cloneLines(draftLines.value),
-  }
-  window.localStorage.setItem(draftStorageKey(featureId), JSON.stringify(payload))
-  draftStatusText.value = '草稿已暂存'
-}
-
-function readLocalDraft(featureId: string): Lines | null {
-  if (typeof window === 'undefined') return null
-  const raw = window.localStorage.getItem(draftStorageKey(featureId))
-  if (!raw) return null
-  try {
-    const payload = JSON.parse(raw) as { lines?: unknown }
-    if (!isValidDraftLines(payload.lines)) return null
-    return cloneLines(payload.lines)
-  } catch {
-    return null
-  }
-}
-
-function clearLocalDraft(featureId: string) {
-  if (typeof window === 'undefined') return
-  window.localStorage.removeItem(draftStorageKey(featureId))
-}
-
-function saveDraftToLocal(force = false) {
-  if (!props.open || saving.value || !selectedFeature.value) return
-  if (!force && !isDirty.value) return
-  writeLocalDraft(String(selectedFeature.value.id))
-}
-
-function scheduleDraftAutosave() {
-  if (draftAutosaveTimer) clearTimeout(draftAutosaveTimer)
-  draftAutosaveTimer = setTimeout(() => {
-    draftAutosaveTimer = null
-    saveDraftToLocal()
-  }, 800)
-}
-
-function stopTimers() {
-  if (draftAutosaveTimer) {
-    clearTimeout(draftAutosaveTimer)
-    draftAutosaveTimer = null
-  }
-  if (draftIntervalTimer) {
-    clearInterval(draftIntervalTimer)
-    draftIntervalTimer = null
-  }
-  if (saveCloseTimer) {
-    clearTimeout(saveCloseTimer)
-    saveCloseTimer = null
-  }
-  if (draftToastTimer) {
-    clearTimeout(draftToastTimer)
-    draftToastTimer = null
-  }
-  draftRestoredToastVisible.value = false
-}
-
-function ensureDraftInterval() {
-  if (draftIntervalTimer || typeof window === 'undefined') return
-  draftIntervalTimer = setInterval(() => {
-    saveDraftToLocal()
-  }, 8_000)
-}
-
-function restoreDraftIfExists(featureId: string) {
-  const localDraft = readLocalDraft(featureId)
-  if (!localDraft) {
-    draftStatusText.value = '与服务端一致'
-    return
-  }
-  draftLines.value = localDraft
-  draftRestoredToastVisible.value = true
-  if (draftToastTimer) clearTimeout(draftToastTimer)
-  draftToastTimer = setTimeout(() => {
-    draftRestoredToastVisible.value = false
-  }, 3000)
-  draftStatusText.value = '已恢复本地草稿'
+function clearSaveCloseTimer() {
+  if (!saveCloseTimer) return
+  clearTimeout(saveCloseTimer)
+  saveCloseTimer = null
 }
 
 function startRename() {
@@ -683,25 +631,25 @@ async function commitRename() {
   const featureId = String(selectedFeature.value.id)
   const name = renameDraft.value.trim()
   const nextName = name || featureId
-  const idx = pipes.value.findIndex(item => String(item.id) === featureId)
-  if (idx < 0) {
+  const index = pipes.value.findIndex(item => String(item.id) === featureId)
+  if (index < 0) {
     renaming.value = false
     return
   }
 
-  const prevName = String(pipes.value[idx].properties?.name || pipes.value[idx].properties?.ref || featureId)
-  if (prevName === nextName) {
+  const previousName = String(pipes.value[index].properties?.name || pipes.value[index].properties?.ref || featureId)
+  if (previousName === nextName) {
     renaming.value = false
     return
   }
 
   renamingSaving.value = true
   try {
-    await persistPipeName(pipes.value[idx], nextName)
-    pipes.value[idx] = {
-      ...pipes.value[idx],
+    await persistPipeName(pipes.value[index], nextName)
+    pipes.value[index] = {
+      ...pipes.value[index],
       properties: {
-        ...(pipes.value[idx].properties || {}),
+        ...(pipes.value[index].properties || {}),
         name: nextName,
       },
     }
@@ -720,36 +668,8 @@ function cancelRename() {
   renaming.value = false
 }
 
-function startEditProjectTitle() {
-  editingProjectTitle.value = true
-  projectTitleDraft.value = projectTitle.value
-}
-
-function commitProjectTitle() {
-  const next = projectTitleDraft.value.trim()
-  projectTitle.value = next || '校园地下管网运维系统'
-  editingProjectTitle.value = false
-}
-
-function cancelProjectTitle() {
-  editingProjectTitle.value = false
-}
-
 function togglePanelSection(key: PanelSectionKey) {
   panelSectionCollapsed.value[key] = !panelSectionCollapsed.value[key]
-}
-
-function setEditModes(targetAdd: boolean, targetDelete: boolean) {
-  if (addPointMode.value !== targetAdd) {
-    toggleAddPointMode()
-  }
-  if (deletePointMode.value !== targetDelete) {
-    toggleDeletePointMode()
-  }
-}
-
-function showPlanned(feature: string) {
-  actionMessage.value = { type: 'ok', text: `${feature} 将在下一阶段接入` }
 }
 
 function handleMenuInsert() {
@@ -776,204 +696,18 @@ function handleMenuTrace() {
   showPlanned('查看链路')
 }
 
-function activateTool(tool: ToolKey) {
-  activeTool.value = tool
-  if (tool === 'select') {
-    setEditModes(false, false)
-    return
-  }
-  if (tool === 'addNode' || tool === 'addPipe') {
-    setEditModes(true, false)
-    return
-  }
-  if (tool === 'bindAsset') {
-    setEditModes(false, false)
-    showPlanned('房产绑定')
-    return
-  }
-  if (tool === 'annotate') {
-    setEditModes(false, false)
-    showPlanned('运维批注')
-    return
-  }
-  if (tool === 'layer') {
-    setEditModes(false, false)
-    showPlanned('图层过滤')
-    return
-  }
-  if (tool === 'import') {
-    setEditModes(false, false)
-    showPlanned('数据导入')
-  }
-}
-
-function selectTool(tool: ToolKey) {
-  if (Date.now() < ignoreToolClickUntil.value) return
-  activateTool(tool)
-}
-
-function isToolKey(value: string): value is ToolKey {
-  return toolKeySet.has(value as ToolKey)
-}
-
-function isViewMode(value: string): value is ViewMode {
-  return viewModeSet.has(value as ViewMode)
-}
-
-function handleToolbarPointerDown(toolKey: string, event: PointerEvent) {
-  if (!isToolKey(toolKey)) return
-  startToolbarDrag(toolKey, event)
-}
-
-function handleToolbarSelect(toolKey: string) {
-  if (!isToolKey(toolKey)) return
-  selectTool(toolKey)
-}
-
-function isPointInCanvas(clientX: number, clientY: number) {
-  const canvas = mapContainerRef.value
-  if (!canvas) return false
-  const rect = canvas.getBoundingClientRect()
-  return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom
-}
-
-function tryDropToolToCanvas(tool: ToolKey, clientX: number, clientY: number) {
-  if (!isPointInCanvas(clientX, clientY)) return
-  activateTool(tool)
-  if (tool !== 'addNode' && tool !== 'addPipe') return
-  const canvas = mapContainerRef.value
-  if (!canvas) return
-  const rect = canvas.getBoundingClientRect()
-  const screenX = clientX - rect.left
-  const screenY = clientY - rect.top
-  const inserted = insertPointAtScreenPosition(screenX, screenY)
-  if (inserted) {
-    actionMessage.value = { type: 'ok', text: `已放置${tool === 'addNode' ? '节点' : '管线点'}` }
-  }
-}
-
-function setMapContainerRef(el: HTMLDivElement | null) {
-  mapContainerRef.value = el
-}
-
-function handleToolbarDragMove(event: PointerEvent) {
-  if (!toolbarDrag.value.active) return
-  const moved = Math.abs(event.clientX - toolbarDrag.value.startX) > 4
-    || Math.abs(event.clientY - toolbarDrag.value.startY) > 4
-  toolbarDrag.value = {
-    ...toolbarDrag.value,
-    moved,
-    clientX: event.clientX,
-    clientY: event.clientY,
-    overCanvas: isPointInCanvas(event.clientX, event.clientY),
-  }
-}
-
-function stopToolbarDragWatchers() {
-  if (typeof window === 'undefined') return
-  window.removeEventListener('pointermove', handleToolbarDragMove)
-  window.removeEventListener('pointerup', handleToolbarDragEnd)
-}
-
-function handleToolbarDragEnd(event: PointerEvent) {
-  const current = toolbarDrag.value
-  stopToolbarDragWatchers()
-  if (!current.active) return
-
-  if (current.moved && current.toolKey) {
-    ignoreToolClickUntil.value = Date.now() + 220
-    tryDropToolToCanvas(current.toolKey, event.clientX, event.clientY)
-  }
-
-  toolbarDrag.value = {
-    active: false,
-    toolKey: null,
-    clientX: 0,
-    clientY: 0,
-    startX: 0,
-    startY: 0,
-    moved: false,
-    overCanvas: false,
-  }
-}
-
-function startToolbarDrag(tool: ToolKey, event: PointerEvent) {
-  if (event.button !== 0 || saving.value) return
-  if (typeof window === 'undefined') return
-  toolbarDrag.value = {
-    active: true,
-    toolKey: tool,
-    clientX: event.clientX,
-    clientY: event.clientY,
-    startX: event.clientX,
-    startY: event.clientY,
-    moved: false,
-    overCanvas: isPointInCanvas(event.clientX, event.clientY),
-  }
-  window.addEventListener('pointermove', handleToolbarDragMove)
-  window.addEventListener('pointerup', handleToolbarDragEnd)
-}
-
-function switchView(mode: ViewMode) {
-  viewMode.value = mode
-  if (mode === 'topology2d' || mode === 'sketch') {
-    if (undergroundSliceEnabled.value) {
-      setUndergroundSliceEnabled(false)
-    }
-    if (sceneMode.value === '3d') {
-      toggleSceneMode()
-    }
-    applyCanvasSkin(mode === 'sketch' ? 'plain' : 'dots')
-    return
-  }
-  applyCanvasSkin(mode === 'global' ? 'satellite' : 'blueprint')
-  if (sceneMode.value === '2d') {
-    toggleSceneMode()
-  }
-  setUndergroundSliceEnabled(mode === 'underground')
-}
-
-function switchViewByKey(value: string) {
-  if (!isViewMode(value)) return
-  switchView(value)
-}
-
-function applyCanvasSkin(mode: CanvasSkin) {
-  canvasSkin.value = mode
-  if (mode === 'satellite') {
-    setBasemapById('gaode_img')
-  } else {
-    setBasemapById('gaode_vec')
-  }
-}
-
-function toggleSceneModeByPanel() {
-  if (sceneMode.value === '3d') {
-    if (undergroundSliceEnabled.value) {
-      setUndergroundSliceEnabled(false)
-    }
-    viewMode.value = 'topology2d'
-  } else if (viewMode.value === 'topology2d') {
-    viewMode.value = 'global'
-  }
-  toggleSceneMode()
-}
-
-function resetZoomToHundred() {
-  setZoomLevel(20)
-}
-
 async function saveGeometry() {
   const featureId = selectedFeature.value ? String(selectedFeature.value.id) : ''
   await persistGeometry()
   if (!featureId) return false
   if (actionMessage.value?.type === 'ok') {
     clearLocalDraft(featureId)
-    draftStatusText.value = '已保存到服务端'
+    setDraftStatus('已保存到服务端')
     saveSuccessVisible.value = true
-    if (saveCloseTimer) clearTimeout(saveCloseTimer)
+    clearSaveCloseTimer()
     saveCloseTimer = setTimeout(() => {
       saveSuccessVisible.value = false
+      saveCloseTimer = null
     }, 620)
     return true
   }
@@ -984,61 +718,23 @@ function handleResetDraft() {
   resetDraft()
   if (!selectedFeature.value) return
   clearLocalDraft(String(selectedFeature.value.id))
-  draftStatusText.value = '已恢复服务端版本'
-}
-
-function shouldIgnoreShortcutTarget(target: EventTarget | null) {
-  const el = target as HTMLElement | null
-  if (!el) return false
-  const tag = el.tagName?.toLowerCase()
-  if (tag === 'input' || tag === 'textarea' || tag === 'select') return true
-  if (el.isContentEditable) return true
-  return false
-}
-
-function handleDesignerShortcut(event: KeyboardEvent) {
-  if (!props.open || saving.value) return
-  if (shouldIgnoreShortcutTarget(event.target)) return
-  const key = event.key.toLowerCase()
-  if (key === '?') {
-    event.preventDefault()
-    shortcutHelpVisible.value = true
-    return
-  }
-  if (key === 'v') {
-    event.preventDefault()
-    activateTool('select')
-    return
-  }
-  if (key === 'n') {
-    event.preventDefault()
-    activateTool('addNode')
-    return
-  }
-  if (key === 'p') {
-    event.preventDefault()
-    activateTool('addPipe')
-    return
-  }
-  if (event.code === 'Space') {
-    event.preventDefault()
-    activateTool('select')
-  }
+  setDraftStatus('已恢复服务端版本')
 }
 
 watch(
   () => props.open,
   (open) => {
     if (!open) {
-      stopTimers()
       renaming.value = false
       saveSuccessVisible.value = false
-      toolbarDrag.value.active = false
-      stopToolbarDragWatchers()
+      clearSaveCloseTimer()
+      stopDraftTimers()
+      stopWorkspaceListeners()
+      mindmapEvents.unbindEvents()
       return
     }
-    ensureDraftInterval()
     loadPipes()
+    mindmapEvents.bindEvents()
   },
   { immediate: true },
 )
@@ -1053,27 +749,8 @@ watch(
   },
 )
 
-watch(selectedFeature, (feature) => {
-  if (!feature) {
-    draftLines.value = []
-    originalLines.value = []
-    draftStatusText.value = '未选择管道'
-    return
-  }
-
-  const lines = geometryToLines(feature.geometry)
-  if (!lines.length) {
-    const fallback: Lines = [[[119.1888, 26.0252], [119.1894, 26.0255]]]
-    originalLines.value = cloneLines(fallback)
-    draftLines.value = cloneLines(fallback)
-  } else {
-    originalLines.value = cloneLines(lines)
-    draftLines.value = cloneLines(lines)
-  }
-
+watch(selectedFeature, () => {
   actionMessage.value = null
-  restoreDraftIfExists(String(feature.id))
-  fitCurrentPipeView()
 })
 
 watch(
@@ -1085,39 +762,53 @@ watch(
   { immediate: true },
 )
 
-watch(
-  draftLines,
-  () => {
-    if (!props.open || !selectedFeature.value || saving.value) return
-    if (!isDirty.value) {
-      draftStatusText.value = '与服务端一致'
-      return
-    }
-    scheduleDraftAutosave()
-  },
-  { deep: true },
-)
+// 图结构事件处理器（类型明确）
+function handleUpdateNode(id: string, attrs: NodeAttributes) {
+  editorGraph.updateNode(id, { attributes: attrs })
+}
 
-watch(
-  () => props.open,
-  (opened) => {
-    if (!opened) return
-    applyCanvasSkin(canvasSkin.value)
-  },
-  { immediate: true },
-)
+function handleUpdateNodeType(id: string, type: NodeType) {
+  editorGraph.updateNode(id, { type })
+}
 
-onMounted(() => {
-  if (typeof window === 'undefined') return
-  window.addEventListener('keydown', handleDesignerShortcut)
-})
+function handleUpdateEdge(id: string, attrs: EdgeAttributes) {
+  editorGraph.updateEdge(id, { attributes: attrs })
+}
+
+
+function onWindowKeydown(event: KeyboardEvent) {
+  if (!props.open) return
+  if (event.key !== 'Escape') return
+
+  // 如果思维导图编辑器不在空闲模式，让它先处理 ESC
+  if (mindmapEditor.mode.value.type !== 'idle') {
+    // 思维导图编辑器会处理这个事件
+    return
+  }
+
+  // 如果有选中内容，先清除选中
+  if (mindmapEditor.hasSelection.value) {
+    // 思维导图编辑器会处理这个事件
+    return
+  }
+
+  // 只有在空闲模式且无选中时，才关闭对话框
+  event.preventDefault()
+  requestDialogClose()
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('keydown', onWindowKeydown)
+}
 
 onBeforeUnmount(() => {
   if (typeof window !== 'undefined') {
-    window.removeEventListener('keydown', handleDesignerShortcut)
+    window.removeEventListener('keydown', onWindowKeydown)
   }
-  stopToolbarDragWatchers()
-  stopTimers()
+  clearSaveCloseTimer()
+  stopDraftTimers()
+  stopWorkspaceListeners()
+  mindmapEvents.unbindEvents()
 })
 </script>
 

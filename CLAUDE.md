@@ -207,8 +207,40 @@ Pipe2DEditorDialog.vue (主容器)
 5. **usePipe2DEditorGraph.ts**（图结构编辑）
    - 节点（Node）和边（Edge）的增删改查
    - 节点类型：default/valve/pump/meter
-   - 边类型：straight/curved
+   - 边类型：straight/curve
    - 与 Lines 数据结构的双向同步
+
+6. **useMindmapEditor.ts**（思维导图交互）
+   - 节点创建：createNodeAt、createChildNode、createSiblingNode
+   - 节点删除：deleteSelected
+   - 边操作：createEdge、toggleEdgeCurve
+   - 选中和悬停状态管理
+
+7. **useMindmapEditorEvents.ts**（事件处理）
+   - 键盘快捷键：Tab、Enter、Delete、Ctrl+Z/Y、Ctrl+A、ESC
+   - 鼠标交互：双击、单击、多选、拖拽
+   - 悬停检测：50ms 防抖优化
+
+8. **pipe2d-editor/usePipe2DEditorMapGraphics.ts**（图元渲染）
+   - 草稿线/点渲染
+   - Mars3D 图层同步
+   - 编辑态图元回写
+   - 多级视觉反馈（光晕/轮廓/标签/徽章）
+   - 连接点渲染（四方向）
+   - 悬停效果
+
+9. **pipe2d-editor/usePipe2DEditorMapInteractions.ts**（交互逻辑）
+   - 选中/插点/删点
+   - 右键菜单
+   - 吸附提示
+   - 长度 hover
+   - 撤销/重做
+   - 键盘快捷键
+
+10. **pipe2d-editor/pipe2d-editor-map-shared.ts**（共享辅助）
+    - 地图层共享类型
+    - 缩放/测长辅助
+    - 命中辅助函数
 
 ### 数据流
 
@@ -263,12 +295,13 @@ localStorage.setItem(`pipe2d-draft-${featureId}`, JSON.stringify({
    - 如果草稿比服务端新，自动恢复
    - 显示"已恢复草稿"提示
 
-### 图结构编辑（新功能）
+### 图结构编辑与思维导图式交互
 
 **设计思路**：
 - 传统编辑：直接操作 Lines（坐标数组）
 - 图结构编辑：操作 Nodes（节点）和 Edges（边）
-- 两种模式可以共存，通过 `editorGraph.initFromLines()` 和 `editorGraph.toLines()` 互相转换
+- 思维导图模式：XMind/Miro 风格的直接操作体验
+- 三种模式可以共存，通过 `editorGraph.initFromLines()` 和 `editorGraph.toLines()` 互相转换
 
 **节点类型**：
 - `default`：普通节点
@@ -278,14 +311,45 @@ localStorage.setItem(`pipe2d-draft-${featureId}`, JSON.stringify({
 
 **边类型**：
 - `straight`：直线
-- `curved`：曲线（贝塞尔）
+- `curve`：曲线（贝塞尔）
 
-**操作**：
-- `addNode()`：添加节点
-- `addEdge()`：连接两个节点
-- `updateNode()`：更新节点属性
-- `removeNode()`：删除节点（自动删除相关边）
-- `toggleEdgeCurve()`：切换边的曲线/直线
+**核心 Composables**：
+
+1. **usePipe2DEditorGraph.ts**（图结构管理）
+   - 节点和边的增删改查
+   - 与 Lines 数据结构的双向同步
+   - 图结构验证和完整性检查
+
+2. **useMindmapEditor.ts**（思维导图交互）
+   - 节点创建：`createNodeAt`、`createChildNode`、`createSiblingNode`
+   - 节点删除：`deleteSelected`
+   - 边操作：`createEdge`、`toggleEdgeCurve`
+   - 选中状态管理：`selectedNodeIds`、`selectedEdgeIds`
+   - 悬停状态管理：`hoveredNodeId`、`hoveredEdgeId`
+
+3. **useMindmapEditorEvents.ts**（事件处理）
+   - 键盘快捷键：Tab、Enter、Delete、Ctrl+Z/Y、Ctrl+A、ESC
+   - 鼠标交互：双击、单击、多选、拖拽
+   - 悬停检测：50ms 防抖优化
+
+4. **usePipe2DEditorMapGraphics.ts**（视觉反馈）
+   - 多级视觉反馈：光晕 + 轮廓 + 标签 + 徽章
+   - 连接点渲染：四方向（上/右/下/左）
+   - 悬停效果：节点 13px + 3px 边框，边 4px 宽度
+   - 性能优化：条件渲染、防抖、requestAnimationFrame
+
+**视觉反馈层次**：
+- 选中光晕：24px 半透明圆圈
+- 节点轮廓：选中 4px / 悬停 3px / 默认 2px
+- 节点大小：选中 16px / 悬停 13px / 默认 10px
+- 标签增强：选中时显示节点类型标签
+- 徽章显示：选中时显示连接数徽章
+- 连接点：仅在选中或悬停时显示，12x12 像素
+
+**性能指标**：
+- 100 节点场景：55-60 FPS
+- 防抖优化：50ms 悬停检测
+- 渲染优化：requestAnimationFrame 节流
 
 ## 工单系统架构
 

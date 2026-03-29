@@ -9,7 +9,7 @@
  * - draftLines 由 graphToLines() 派生（computed），saveGeometry 仍走 Lines 路径（兼容旧后端）。
  */
 
-import { computed, ref, type Ref } from 'vue'
+import { computed, ref, watch, type Ref } from 'vue'
 import {
   autoControlPoints,
   cloneGraph,
@@ -58,6 +58,15 @@ export function usePipe2DEditorGraph(options: {
 
   // draftLines（折线格式）由图派生，供旧渲染层使用
   const draftLines = computed<Lines>(() => graphToLines(graph.value))
+
+  // 同步 graph 变更回传入的 draftLines（确保保存时使用最新几何）
+  watch(graph, (newGraph) => {
+    const lines = graphToLines(newGraph)
+    // 只有在实际变化时才更新，避免循环触发
+    if (JSON.stringify(lines) !== JSON.stringify(options.draftLines.value)) {
+      options.draftLines.value = lines
+    }
+  }, { deep: true })
 
   // ---------------------------------------------------------------------------
   // 初始化：从旧 Lines 格式推断图结构

@@ -13,7 +13,7 @@
  * - Shift+拖拽：框选
  */
 
-import type { Ref } from 'vue'
+import { watch, type Ref } from 'vue'
 import type { UseMindmapEditorReturn } from './useMindmapEditor'
 import type { Point } from '~/utils/pipe2d-geometry'
 
@@ -109,9 +109,31 @@ export function useMindmapEditorEvents(
       // Ctrl/Cmd + 点击 → 多选
       editor.toggleNodeSelection(nodeId)
     } else if (event.shiftKey) {
-      // Shift + 点击 → 连接（暂时简化，不检查 primary）
-      // TODO: 实现连接逻辑
-      console.log('Shift+click to connect', nodeId)
+      // Shift + 点击 → 连接
+      const mode = editor.mode.value
+      if (mode.type === 'connect') {
+        // 连接模式：source 来自 mode，当前点击节点作为 target
+        if (mode.sourceNodeId !== nodeId) {
+          editor.connectNodes(mode.sourceNodeId, nodeId)
+          editor.selectNode(nodeId)
+        }
+        editor.exitCurrentMode()
+        return
+      }
+
+      // 非连接模式：若已有单节点选中，使用该节点作为 source
+      if (editor.selectedNodeIds.value.size === 1) {
+        const sourceId = Array.from(editor.selectedNodeIds.value)[0]
+        if (sourceId !== nodeId) {
+          editor.connectNodes(sourceId, nodeId)
+        }
+        editor.selectNode(nodeId)
+        return
+      }
+
+      // 否则以当前节点作为连接起点，进入连接模式
+      editor.selectNode(nodeId)
+      editor.enterConnectMode(nodeId, 'right')
     } else {
       // 单击 → 选中
       editor.selectNode(nodeId)
@@ -297,51 +319,132 @@ export function useMindmapEditorEvents(
     // 暂时不需要处理
   }
 
+  // ========== 悬停检测 ==========
+
+  let hoverCheckTimeout: ReturnType<typeof setTimeout> | null = null
+  const HOVER_DEBOUNCE_MS = 50 // 防抖延迟
+
+  /**
+   * 处理鼠标移动（悬停检测）
+   */
+  function handleMouseMove(event: MouseEvent): void {
+    if (!isEnabled()) return
+
+    // 防抖：避免频繁检测
+    if (hoverCheckTimeout) {
+      clearTimeout(hoverCheckTimeout)
+    }
+
+    hoverCheckTimeout = setTimeout(() => {
+      const screenPos = { x: event.clientX, y: event.clientY }
+      const target = pickEntity(screenPos)
+
+      if (!target) {
+        // 鼠标不在任何实体上
+        editor.hoveredNodeId.value = null
+        editor.hoveredEdgeId.value = null
+        return
+      }
+
+      if (target.type === 'node') {
+        editor.hoveredNodeId.value = target.nodeId || null
+        editor.hoveredEdgeId.value = null
+      } else if (target.type === 'edge') {
+        editor.hoveredNodeId.value = null
+        editor.hoveredEdgeId.value = target.edgeId || null
+      } else if (target.type === 'connectionPoint') {
+        // 连接点属于节点，也算悬停节点
+        editor.hoveredNodeId.value = target.nodeId || null
+        editor.hoveredEdgeId.value = null
+      }
+    }, HOVER_DEBOUNCE_MS)
+  }
+
   // ========== 事件绑定 ==========
 
-  let eventsBound = false
+  let keyboardEventsBound = false
+  let boundContainer: HTMLDivElement | null = null
+
+  function bindCanvasEvents(container: HTMLDivElement): void {
+    if (boundContainer === container) return
+
+    if (boundContainer) {
+      boundContainer.removeEventListener('click', handleCanvasClick as EventListener)
+      boundContainer.removeEventListener('dblclick', handleCanvasDoubleClick as EventListener)
+      boundContainer.removeEventListener('mousemove', handleMouseMove as EventListener)
+    }
+
+    container.addEventListener('click', handleCanvasClick as EventListener)
+    container.addEventListener('dblclick', handleCanvasDoubleClick as EventListener)
+    container.addEventListener('mousemove', handleMouseMove as EventListener)
+    boundContainer = container
+  }
+
+  function bindCanvasEventsIfReady(): void {
+    const container = mapContainerRef.value
+    if (!container) return
+    bindCanvasEvents(container)
+  }
 
   /**
    * 绑定事件监听器
    */
   function bindEvents(): void {
-    if (eventsBound) return
-
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && !keyboardEventsBound) {
       window.addEventListener('keydown', handleKeyDown)
       window.addEventListener('keyup', handleKeyUp)
+      keyboardEventsBound = true
     }
 
-    // 绑定画布事件
-    const container = mapContainerRef.value
-    if (container) {
-      container.addEventListener('click', handleCanvasClick as EventListener)
-      container.addEventListener('dblclick', handleCanvasDoubleClick as EventListener)
-    }
-
-    eventsBound = true
+    // 画布容器可能晚于 open 挂载，需要惰性绑定
+    bindCanvasEventsIfReady()
   }
 
   /**
    * 解绑事件监听器
    */
   function unbindEvents(): void {
-    if (!eventsBound) return
+    if (!keyboardEventsBound && !boundContainer) return
 
-    if (typeof window !== 'undefined') {
+    // 清除防抖定时器
+    if (hoverCheckTimeout) {
+      clearTimeout(hoverCheckTimeout)
+      hoverCheckTimeout = null
+    }
+
+    if (typeof window !== 'undefined' && keyboardEventsBound) {
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
+      keyboardEventsBound = false
     }
 
     // 解绑画布事件
-    const container = mapContainerRef.value
-    if (container) {
-      container.removeEventListener('click', handleCanvasClick as EventListener)
-      container.removeEventListener('dblclick', handleCanvasDoubleClick as EventListener)
+    if (boundContainer) {
+      boundContainer.removeEventListener('click', handleCanvasClick as EventListener)
+      boundContainer.removeEventListener('dblclick', handleCanvasDoubleClick as EventListener)
+      boundContainer.removeEventListener('mousemove', handleMouseMove as EventListener)
+      boundContainer = null
     }
 
-    eventsBound = false
+    // 清除悬停状态
+    editor.hoveredNodeId.value = null
+    editor.hoveredEdgeId.value = null
   }
+
+  // map 容器晚挂载时自动补绑；切容器时自动迁移事件绑定
+  watch(mapContainerRef, (container) => {
+    if (!open.value) return
+    if (!container) {
+      if (boundContainer) {
+        boundContainer.removeEventListener('click', handleCanvasClick as EventListener)
+        boundContainer.removeEventListener('dblclick', handleCanvasDoubleClick as EventListener)
+        boundContainer.removeEventListener('mousemove', handleMouseMove as EventListener)
+        boundContainer = null
+      }
+      return
+    }
+    bindCanvasEvents(container)
+  })
 
   // ========== 返回 API ==========
   return {

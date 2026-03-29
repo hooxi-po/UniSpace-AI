@@ -17,6 +17,7 @@
 - `Pipe2DEditorDialog.vue` 现在是编排壳，界面区块已经拆到 `frontend/components/admin/pipe2d-editor/`。
 - 二维编辑器壳层状态已继续下沉：工作区交互在 `frontend/composables/admin/usePipe2DEditorWorkspace.ts`，本地草稿与自动保存在 `frontend/composables/admin/usePipe2DEditorDrafts.ts`。
 - 二维编辑器地图层已继续分层：共享类型/几何辅助在 `frontend/composables/admin/pipe2d-editor/pipe2d-editor-map-shared.ts`，交互/命中/快捷键在 `frontend/composables/admin/pipe2d-editor/usePipe2DEditorMapInteractions.ts`，图层渲染与 Mars3D 图元同步在 `frontend/composables/admin/pipe2d-editor/usePipe2DEditorMapGraphics.ts`，`usePipe2DEditorMap.ts` 只保留装配、初始化和视图控制。
+- 二维编辑器已实现思维导图式交互：`useMindmapEditor.ts` 负责核心操作，`useMindmapEditorEvents.ts` 负责事件处理，`usePipe2DEditorMapGraphics.ts` 负责多级视觉反馈和连接点渲染。
 - Mars3D 懒加载在 `frontend/utils/mars3d-loader.ts`，首轮加载失败后允许重试，不能再假设失败后永久缓存。
 - 二维编辑器几何保存优先走 Twin 写接口，失败时回退到 `geo-features` 更新；管道重命名也已经真实写回后端。
 - 本地草稿机制已上线：`localStorage` 按 featureId 缓存，`800ms` 防抖 + `8s` 定时暂存。
@@ -565,6 +566,9 @@ cd frontend && npm run migrate:pipeline-ops
 - `frontend/components/admin/pipe2d-editor/pipe2d-editor-config.ts`
 - `frontend/composables/admin/usePipe2DEditorWorkspace.ts`
 - `frontend/composables/admin/usePipe2DEditorDrafts.ts`
+- `frontend/composables/admin/usePipe2DEditorGraph.ts`
+- `frontend/composables/admin/useMindmapEditor.ts`
+- `frontend/composables/admin/useMindmapEditorEvents.ts`
 - `frontend/composables/admin/pipe2d-editor/pipe2d-editor-map-shared.ts`
 - `frontend/composables/admin/pipe2d-editor/usePipe2DEditorMapInteractions.ts`
 - `frontend/composables/admin/pipe2d-editor/usePipe2DEditorMapGraphics.ts`
@@ -573,6 +577,7 @@ cd frontend && npm run migrate:pipeline-ops
 - `frontend/services/twin.ts`
 - `frontend/utils/mars3d-loader.ts`
 - `frontend/utils/pipe2d-geometry.ts`
+- `frontend/utils/pipe2d-graph.ts`
 
 ### 前端工单联动
 

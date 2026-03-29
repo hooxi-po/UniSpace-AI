@@ -48,6 +48,10 @@ type UsePipe2DEditorMapInteractionsOptions = {
   hoverLengthHint: Ref<HoverLengthHint>
   hoveredLineIndex: Ref<number | null>
   renderDraftGraphics: () => void
+  // 思维导图状态（用于检查是否处于思维导图编辑模式）
+  mindmapSelectedNodeIds?: Ref<Set<string>>
+  mindmapSelectedEdgeIds?: Ref<Set<string>>
+  mindmapModeType?: Ref<string>
   startEditingActiveLine: () => void
   setCameraControlsEnabled: (enabled: boolean) => void
   clearDragReleaseFallback: () => void
@@ -483,10 +487,28 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
     }
     if (key === 'escape') {
       event.preventDefault()
-      if (options.requestClose) {
-        options.requestClose()
-      } else {
+      // 优先取消当前编辑状态，而不是关闭整个编辑器
+      // 检查是否有活动的编辑状态：
+      // 1. 传统编辑模式（插点/删点/选点）
+      // 2. 思维导图模式（当前 mode 非 idle，或存在选中）
+      const hasTraditionalEdit = options.addPointMode.value
+        || options.deletePointMode.value
+        || options.selectedPoint.value !== null
+
+      const isMindmapActiveMode = (options.mindmapModeType?.value ?? 'idle') !== 'idle'
+      const hasMindmapSelection =
+        (options.mindmapSelectedNodeIds?.value.size ?? 0) > 0 ||
+        (options.mindmapSelectedEdgeIds?.value.size ?? 0) > 0
+
+      if (hasTraditionalEdit) {
+        // 取消传统编辑状态
         endEditing()
+      } else if (isMindmapActiveMode || hasMindmapSelection) {
+        // 思维导图状态由 useMindmapEditorEvents 处理，这里禁止关闭对话框
+        return
+      } else if (options.requestClose) {
+        // 只有在完全空闲状态下才允许关闭编辑器
+        options.requestClose()
       }
       return
     }

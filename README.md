@@ -318,19 +318,47 @@ export GEMINI_API_KEY=YOUR_KEY
 - 地图交互：`composables/admin/usePipe2DEditorMap.ts`
   - 通过 `utils/mars3d-loader.ts` 懒加载 Mars3D；首次加载失败时允许重试
   - 默认高德矢量底图，支持 2D/3D 切换、地下切片、缩放、聚焦当前管道
-  - 支持线段/节点选中、Mars3D `GraphicLayer` 编辑、中心加点、点击插点、删除节点、右键上下文菜单、吸附提示、长度 hover 气泡、撤销/重做
-  - 同时保留 Cesium 级别的拾取扩展，提高节点和线段的命中率
+  - 装配地图实例、相机同步、底图切换和视图控制
+- 地图交互：`composables/admin/pipe2d-editor/usePipe2DEditorMapInteractions.ts`
+  - 负责线段/节点选中、点击插点、中心加点、删除节点、右键菜单、吸附提示、长度 hover、撤销/重做、键盘快捷键
+  - 使用 Cesium 拾取 + 邻近命中兜底，保持 Mars3D 编辑态下的点线可选中
+- 地图共享辅助：`composables/admin/pipe2d-editor/pipe2d-editor-map-shared.ts`
+  - 负责地图层共享类型、缩放/测长辅助、命中辅助函数
+- 地图图元渲染：`composables/admin/pipe2d-editor/usePipe2DEditorMapGraphics.ts`
+  - 负责草稿线/点渲染、Mars3D 图层同步、编辑态图元回写、拖拽释放兜底
+  - 多级视觉反馈：光晕 + 轮廓 + 标签 + 徽章
+  - 连接点渲染：四方向（上/右/下/左），仅在选中或悬停时显示
+  - 悬停效果：节点 13px + 3px 边框，边 4px 宽度
+- 思维导图交互：`composables/admin/useMindmapEditor.ts`
+  - 节点创建：createNodeAt、createChildNode、createSiblingNode
+  - 节点删除：deleteSelected
+  - 边操作：createEdge、toggleEdgeCurve
+  - 选中和悬停状态管理
+- 事件处理：`composables/admin/useMindmapEditorEvents.ts`
+  - 键盘快捷键：Tab、Enter、Delete、Ctrl+Z/Y、Ctrl+A、ESC
+  - 鼠标交互：双击、单击、多选、拖拽
+  - 悬停检测：50ms 防抖优化
+- 工作区壳层状态：`composables/admin/usePipe2DEditorWorkspace.ts`
+  - 负责工具栏拖拽放置、视图切换、项目标题、快捷键、画布皮肤与壳层 UI 状态
 - 数据编排：`composables/admin/usePipe2DEditorData.ts`
-  - 拉取管道列表
-  - 并行拉取 Twin drilldown / trace / telemetry / audit
-  - 保存几何时优先调用 Twin 写接口，失败时回退到 GeoFeature 更新
+  - `loadPipes()`
+  - `loadInsights()`：并行拉 `drilldown / trace / telemetry / audit`
+  - `saveGeometry()`：优先 Twin 写，失败回退 `geo-features.update()`
+- 草稿管理：`composables/admin/usePipe2DEditorDrafts.ts`
+  - 负责本地草稿恢复、`800ms` 防抖暂存、`8s` 周期暂存、服务端草稿状态文案
 - 服务层：`services/twin.ts`
   - 读：`drilldown` / `trace` / `telemetryLatest` / `listAuditLogs`
   - 写：`updatePipeGeometry` / `updatePipeProperties`
-- 当前编辑器已实现的持久化能力：
-  - 几何保存：`PUT /api/backend/twin/pipes/{id}/geometry`
-  - 管道重命名：`PUT /api/backend/twin/pipes/{id}/properties`，失败时回退到 `geo-features` 更新
-  - 本地草稿：切换管道前自动读写 `localStorage`，800ms 防抖 + 8s 定时暂存
+- 当前已落地的编辑器持久化：
+  - 几何保存
+  - 名称重命名保存
+  - 草稿本地恢复
+  - 保存成功 toast
+  - 审计日志回读
+- 性能指标：
+  - 100 节点场景：55-60 FPS
+  - 防抖优化：50ms 悬停检测
+  - 渲染优化：requestAnimationFrame 节流
 
 ### 工单运维联动（`pipeline-ops`）
 

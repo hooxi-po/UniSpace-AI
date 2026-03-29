@@ -253,6 +253,14 @@ function requestDialogClose() {
   }
 }
 
+// 先初始化思维导图编辑器的状态容器（空状态）
+const mindmapSelectedNodeIds = ref<Set<string>>(new Set())
+const mindmapSelectedEdgeIds = ref<Set<string>>(new Set())
+const mindmapHoveredNodeId = ref<string | null>(null)
+const mindmapHoveredEdgeId = ref<string | null>(null)
+const mindmapModeType = ref<string>('idle')
+
+// 初始化地图编辑器（传递思维导图状态引用）
 const {
   history,
   mapView,
@@ -307,7 +315,41 @@ const {
   saving,
   actionMessage,
   requestClose: requestDialogClose,
+  // 传递思维导图状态引用
+  mindmapSelectedNodeIds,
+  mindmapSelectedEdgeIds,
+  mindmapHoveredNodeId,
+  mindmapHoveredEdgeId,
+  mindmapModeType,
 })
+
+// 然后初始化思维导图编辑器（使用共享的 editorGraph 和状态引用）
+const mindmapEditor = useMindmapEditor({
+  draftLines,
+  editorGraph, // 传递共享的图结构编辑器
+})
+
+// 同步思维导图编辑器的状态到共享的 ref
+// 使用 watch 保持双向同步
+watch(mindmapEditor.selectedNodeIds, (newVal) => {
+  mindmapSelectedNodeIds.value = newVal
+}, { deep: true })
+
+watch(mindmapEditor.selectedEdgeIds, (newVal) => {
+  mindmapSelectedEdgeIds.value = newVal
+}, { deep: true })
+
+watch(mindmapEditor.hoveredNodeId, (newVal) => {
+  mindmapHoveredNodeId.value = newVal
+})
+
+watch(mindmapEditor.hoveredEdgeId, (newVal) => {
+  mindmapHoveredEdgeId.value = newVal
+})
+
+watch(() => mindmapEditor.mode.value.type, (newVal) => {
+  mindmapModeType.value = newVal
+}, { immediate: true })
 
 const {
   activeTool,
@@ -404,11 +446,7 @@ const {
   },
 })
 
-// 思维导图编辑器集成
-const mindmapEditor = useMindmapEditor({
-  draftLines,
-})
-
+// 思维导图事件处理器
 const mindmapEvents = useMindmapEditorEvents({
   editor: mindmapEditor,
   mapContainerRef,

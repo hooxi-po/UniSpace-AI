@@ -50,6 +50,14 @@ type UsePipe2DEditorMapOptions = {
   saving: Ref<boolean>
   actionMessage: Ref<Message | null>
   requestClose?: () => void
+  // 思维导图选中状态（Phase 3 新增，可选）
+  mindmapSelectedNodeIds?: Ref<Set<string>>
+  mindmapSelectedEdgeIds?: Ref<Set<string>>
+  // 思维导图悬停状态（Phase 3.3 新增，可选）
+  mindmapHoveredNodeId?: Ref<string | null>
+  mindmapHoveredEdgeId?: Ref<string | null>
+  // 思维导图模式（用于 ESC 等全局按键冲突处理）
+  mindmapModeType?: Ref<string>
 }
 
 export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
@@ -193,9 +201,13 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
 
   /**
    * 拾取实体（用于思维导图编辑器）
-   * 检测屏幕坐标处是否有节点或边
+   * 检测屏幕坐标处是否有节点、边或连接点
    */
-  function pickEntity(screenPosition: { x: number; y: number }): { type: 'node' | 'edge'; nodeId?: string; edgeId?: string } | null {
+  function pickEntity(screenPosition: { x: number; y: number }):
+    | { type: 'node'; nodeId: string }
+    | { type: 'edge'; edgeId: string }
+    | { type: 'connectionPoint'; nodeId: string; direction: 'top' | 'right' | 'bottom' | 'left' }
+    | null {
     if (!viewer || !graphicLayer) return null
 
     // 使用 Cesium 的拾取功能
@@ -206,8 +218,17 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     const entity = pickedObject.id
     if (!entity.properties) return null
 
+    // 检查是否是连接点（优先级最高）
+    if (entity.properties.isConnectionPoint && entity.properties.isConnectionPoint.getValue()) {
+      return {
+        type: 'connectionPoint',
+        nodeId: entity.properties.graphNodeId.getValue(),
+        direction: entity.properties.direction.getValue(),
+      }
+    }
+
     // 检查是否是节点
-    if (entity.properties.graphNodeId) {
+    if (entity.properties.graphNodeId && !entity.properties.isHalo && !entity.properties.isBadge) {
       return {
         type: 'node',
         nodeId: entity.properties.graphNodeId.getValue(),
@@ -215,7 +236,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     }
 
     // 检查是否是边
-    if (entity.properties.graphEdgeId) {
+    if (entity.properties.graphEdgeId && !entity.properties.isHalo) {
       return {
         type: 'edge',
         edgeId: entity.properties.graphEdgeId.getValue(),
@@ -282,6 +303,12 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
       graphSelected: editorGraph.selected,
       previewTarget,
       connectSourceId,
+      // 传递思维导图选中状态
+      mindmapSelectedNodeIds: options.mindmapSelectedNodeIds,
+      mindmapSelectedEdgeIds: options.mindmapSelectedEdgeIds,
+      // 传递思维导图悬停状态
+      mindmapHoveredNodeId: options.mindmapHoveredNodeId,
+      mindmapHoveredEdgeId: options.mindmapHoveredEdgeId,
     })
 
   const {
@@ -333,6 +360,10 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     setCameraControlsEnabled,
     clearDragReleaseFallback,
     pushHistory,
+    // 传递思维导图状态（用于 ESC 键处理）
+    mindmapSelectedNodeIds: options.mindmapSelectedNodeIds,
+    mindmapSelectedEdgeIds: options.mindmapSelectedEdgeIds,
+    mindmapModeType: options.mindmapModeType,
   })
 
   // ---------------------------------------------------------------------------

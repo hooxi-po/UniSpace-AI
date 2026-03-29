@@ -15,6 +15,8 @@ import { usePipe2DEditorGraph } from './usePipe2DEditorGraph'
 export interface UseMindmapEditorOptions {
   /** 传入现有 draftLines ref（用于初始化和保存） */
   draftLines: Ref<Lines>
+  /** 图结构编辑器实例（必须与地图编辑器共享同一个实例） */
+  editorGraph: ReturnType<typeof usePipe2DEditorGraph>
 }
 
 export interface UseMindmapEditorReturn {
@@ -25,6 +27,10 @@ export interface UseMindmapEditorReturn {
   selectedNodeIds: Ref<Set<string>>
   /** 选中的边 ID 集合 */
   selectedEdgeIds: Ref<Set<string>>
+  /** 悬停的节点 ID */
+  hoveredNodeId: Ref<string | null>
+  /** 悬停的边 ID */
+  hoveredEdgeId: Ref<string | null>
 
   // ========== 计算属性 ==========
   /** 模式提示文本 */
@@ -76,15 +82,15 @@ export interface UseMindmapEditorReturn {
 export function useMindmapEditor(
   options: UseMindmapEditorOptions
 ): UseMindmapEditorReturn {
-  // ========== 集成图结构编辑器 ==========
-  const graphEditor = usePipe2DEditorGraph({
-    draftLines: options.draftLines,
-  })
+  // ========== 使用外部传入的图结构编辑器（与地图编辑器共享） ==========
+  const graphEditor = options.editorGraph
 
   // ========== 状态 ==========
   const mode = ref<EditorMode>(EditorModeHelpers.idle())
   const selectedNodeIds = ref<Set<string>>(new Set())
   const selectedEdgeIds = ref<Set<string>>(new Set())
+  const hoveredNodeId = ref<string | null>(null)
+  const hoveredEdgeId = ref<string | null>(null)
 
   // ========== 计算属性 ==========
   const modeHint = computed(() => {
@@ -281,6 +287,8 @@ export function useMindmapEditor(
     mode,
     selectedNodeIds,
     selectedEdgeIds,
+    hoveredNodeId,
+    hoveredEdgeId,
 
     // 计算属性
     modeHint,

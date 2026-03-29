@@ -56,6 +56,11 @@ type UsePipe2DEditorMapGraphicsOptions = {
   graphSelected?: Ref<SelectedElement>
   previewTarget?: Ref<Point | null>
   connectSourceId?: Ref<string | null>
+  // 思维导图编辑器选中状态（Phase 3 新增）
+  mindmapSelectedNodeIds?: Ref<Set<string>>
+  mindmapSelectedEdgeIds?: Ref<Set<string>>
+  mindmapHoveredNodeId?: Ref<string | null>
+  mindmapHoveredEdgeId?: Ref<string | null>
 }
 
 export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOptions) {
@@ -145,38 +150,156 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
     const graph = options.graph.value
     const selected = options.graphSelected?.value
 
+    // 清除旧的节点实体，避免重复渲染泄漏
+    for (const entity of currentGraphNodeEntities) {
+      viewer.entities.remove(entity)
+    }
+    currentGraphNodeEntities.length = 0
+
+    // 思维导图选中状态
+    const mindmapSelectedIds = options.mindmapSelectedNodeIds?.value || new Set<string>()
+    const mindmapHoveredId = options.mindmapHoveredNodeId?.value
+
     for (const node of graph.nodes) {
       const color = NODE_TYPE_COLORS[node.type] || NODE_TYPE_COLORS.default
-      const isSelected = selected?.kind === 'node' && selected.nodeId === node.id
-      const pixelSize = isSelected ? 14 : 10
+
+      // 检查选中状态（支持传统选中和思维导图多选）
+      const isTraditionalSelected = selected?.kind === 'node' && selected.nodeId === node.id
+      const isMindmapSelected = mindmapSelectedIds.has(node.id)
+      const isHovered = mindmapHoveredId === node.id
+      const isSelected = isTraditionalSelected || isMindmapSelected
+
+      // 根据状态调整视觉效果
+      const pixelSize = isSelected ? 16 : (isHovered ? 13 : 10)
+      const outlineWidth = isSelected ? 4 : (isHovered ? 3 : 2)
+      const alpha = isSelected ? 1.0 : (isHovered ? 0.9 : 0.85)
+
+      // 选中时添加光晕效果
+      if (isSelected) {
+        const halo = viewer.entities.add({
+          position: options.toCartesian([node.lon, node.lat]),
+          point: {
+            pixelSize: 24,
+            color: Cesium.Color.fromCssColorString(color).withAlpha(0.3),
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          },
+          properties: {
+            graphNodeId: node.id,
+            isHalo: true,
+          },
+        })
+        currentGraphNodeEntities.push(halo)
+      }
+
+      // 主节点圆点
       const circle = viewer.entities.add({
         position: options.toCartesian([node.lon, node.lat]),
         point: {
           pixelSize,
-          color: Cesium.Color.fromCssColorString(color),
-          outlineColor: Cesium.Color.WHITE,
-          outlineWidth: isSelected ? 3 : 2,
+          color: Cesium.Color.fromCssColorString(color).withAlpha(alpha),
+          outlineColor: isSelected ? Cesium.Color.fromCssColorString('#fbbf24') : Cesium.Color.WHITE,
+          outlineWidth,
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        },
+        properties: {
+          graphNodeId: node.id,
         },
       })
       currentGraphNodeEntities.push(circle)
 
-      const label = NODE_TYPE_LABELS[node.type] || NODE_TYPE_LABELS.default
+      // 节点标签
+      const label = node.attributes.label || NODE_TYPE_LABELS[node.type] || NODE_TYPE_LABELS.default
       const text = viewer.entities.add({
         position: options.toCartesian([node.lon, node.lat]),
         label: {
           text: label,
-          font: '12px sans-serif',
+          font: isSelected ? '14px sans-serif' : '12px sans-serif',
           fillColor: Cesium.Color.WHITE,
           outlineColor: Cesium.Color.BLACK,
           outlineWidth: 2,
           style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-          pixelOffset: new Cesium.Cartesian2(0, -18),
+          pixelOffset: new Cesium.Cartesian2(0, isSelected ? -22 : -18),
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          scale: isSelected ? 1.1 : 1.0,
+        },
+        properties: {
+          graphNodeId: node.id,
         },
       })
       currentGraphNodeEntities.push(text)
+
+      // 多选时显示选中数量标记
+      if (isMindmapSelected && mindmapSelectedIds.size > 1) {
+        const badge = viewer.entities.add({
+          position: options.toCartesian([node.lon, node.lat]),
+          label: {
+            text: '✓',
+            font: '10px sans-serif',
+            fillColor: Cesium.Color.fromCssColorString('#10b981'),
+            backgroundColor: Cesium.Color.WHITE,
+            backgroundPadding: new Cesium.Cartesian2(3, 2),
+            showBackground: true,
+            pixelOffset: new Cesium.Cartesian2(12, -12),
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          },
+          properties: {
+            graphNodeId: node.id,
+            isBadge: true,
+          },
+        })
+        currentGraphNodeEntities.push(badge)
+      }
+
+      // 连接点渲染（悬停或选中时显示）
+      if (isSelected || isHovered) {
+        const connectionPointDistance = 20 // 连接点距离节点中心的像素距离
+        const directions: Array<{ name: 'top' | 'right' | 'bottom' | 'left'; offset: [number, number] }> = [
+          { name: 'top', offset: [0, -connectionPointDistance] },
+          { name: 'right', offset: [connectionPointDistance, 0] },
+          { name: 'bottom', offset: [0, connectionPointDistance] },
+          { name: 'left', offset: [-connectionPointDistance, 0] },
+        ]
+
+        for (const dir of directions) {
+          const connectionPoint = viewer.entities.add({
+            position: options.toCartesian([node.lon, node.lat]),
+            billboard: {
+              image: createConnectionPointCanvas(),
+              width: 12,
+              height: 12,
+              pixelOffset: new Cesium.Cartesian2(dir.offset[0], dir.offset[1]),
+              disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            },
+            properties: {
+              graphNodeId: node.id,
+              isConnectionPoint: true,
+              direction: dir.name,
+            },
+          })
+          currentGraphNodeEntities.push(connectionPoint)
+        }
+      }
     }
+  }
+
+  // 创建连接点的 Canvas 图像
+  function createConnectionPointCanvas(): HTMLCanvasElement {
+    const canvas = document.createElement('canvas')
+    canvas.width = 12
+    canvas.height = 12
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return canvas
+
+    // 绘制圆形连接点
+    ctx.fillStyle = '#6366f1'
+    ctx.strokeStyle = '#ffffff'
+    ctx.lineWidth = 1.5
+    ctx.beginPath()
+    ctx.arc(6, 6, 4, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.stroke()
+
+    return canvas
   }
 
   function renderGraphEdgeEntities() {
@@ -186,12 +309,27 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
     const graph = options.graph.value
     const selected = options.graphSelected?.value
 
+    // 清除旧的边实体，避免重复渲染泄漏
+    for (const entity of currentGraphEdgeEntities) {
+      viewer.entities.remove(entity)
+    }
+    currentGraphEdgeEntities.length = 0
+
+    // 思维导图选中状态
+    const mindmapSelectedIds = options.mindmapSelectedEdgeIds?.value || new Set<string>()
+    const mindmapHoveredId = options.mindmapHoveredEdgeId?.value
+
     for (const edge of graph.edges) {
       const srcNode = graph.nodes.find(n => n.id === edge.sourceId)
       const tgtNode = graph.nodes.find(n => n.id === edge.targetId)
       if (!srcNode || !tgtNode) continue
 
-      const isSelected = selected?.kind === 'edge' && selected.edgeId === edge.id
+      // 检查选中状态
+      const isTraditionalSelected = selected?.kind === 'edge' && selected.edgeId === edge.id
+      const isMindmapSelected = mindmapSelectedIds.has(edge.id)
+      const isHovered = mindmapHoveredId === edge.id
+      const isSelected = isTraditionalSelected || isMindmapSelected
+
       let positions: Point[]
 
       if (edge.edgeType === 'curve' && edge.controlPoints?.length === 2) {
@@ -204,12 +342,38 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
         positions = [[srcNode.lon, srcNode.lat], [tgtNode.lon, tgtNode.lat]]
       }
 
+      // 根据状态调整视觉效果
+      const width = isSelected ? 6 : (isHovered ? 4 : 3)
+      const color = isSelected ? '#6366f1' : (isHovered ? '#818cf8' : '#94a3b8')
+      const alpha = isSelected ? 1.0 : (isHovered ? 0.9 : 0.8)
+
+      // 选中时添加底层光晕
+      if (isSelected) {
+        const haloPolyline = viewer.entities.add({
+          polyline: {
+            positions: positions.map(options.toCartesian),
+            width: 12,
+            material: Cesium.Color.fromCssColorString(color).withAlpha(0.2),
+            clampToGround: true,
+          },
+          properties: {
+            graphEdgeId: edge.id,
+            isHalo: true,
+          },
+        })
+        currentGraphEdgeEntities.push(haloPolyline)
+      }
+
+      // 主边线
       const polyline = viewer.entities.add({
         polyline: {
           positions: positions.map(options.toCartesian),
-          width: isSelected ? 5 : 3,
-          material: Cesium.Color.fromCssColorString(isSelected ? '#6366f1' : '#94a3b8'),
+          width,
+          material: Cesium.Color.fromCssColorString(color).withAlpha(alpha),
           clampToGround: true,
+        },
+        properties: {
+          graphEdgeId: edge.id,
         },
       })
       currentGraphEdgeEntities.push(polyline)
@@ -551,6 +715,32 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
     currentGraphNodeEntities.length = 0
     currentGraphEdgeEntities.length = 0
     previewLineEntity = null
+  }
+
+  // 监听思维导图选中状态变化，重新渲染
+  if (options.mindmapSelectedNodeIds) {
+    watch(options.mindmapSelectedNodeIds, () => {
+      renderGraphNodeEntities()
+    }, { deep: true })
+  }
+
+  if (options.mindmapSelectedEdgeIds) {
+    watch(options.mindmapSelectedEdgeIds, () => {
+      renderGraphEdgeEntities()
+    }, { deep: true })
+  }
+
+  // 监听思维导图悬停状态变化，重新渲染
+  if (options.mindmapHoveredNodeId) {
+    watch(options.mindmapHoveredNodeId, () => {
+      renderGraphNodeEntities()
+    })
+  }
+
+  if (options.mindmapHoveredEdgeId) {
+    watch(options.mindmapHoveredEdgeId, () => {
+      renderGraphEdgeEntities()
+    })
   }
 
   return {

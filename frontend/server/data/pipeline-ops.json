@@ -1,0 +1,188 @@
+{
+  "workorders": [
+    {
+      "id": "WO-INS-001",
+      "title": "教学区北侧供水阀井巡检",
+      "description": "例行巡检，核查节点压力与阀门状态。",
+      "type": "inspection",
+      "source": "manual",
+      "status": "in_progress",
+      "pipelineMedium": "water",
+      "priority": "medium",
+      "area": "教学区",
+      "topologyChain": ["N-1001", "S-2101", "N-1002"],
+      "nodeIds": ["N-1001", "N-1002"],
+      "segmentIds": ["S-2101"],
+      "buildingId": "BLD-001",
+      "buildingName": "博学楼",
+      "roomIds": ["RM-BLD-001-101", "RM-BLD-001-102"],
+      "equipmentIds": ["PUMP-03"],
+      "assignee": "巡检班组A",
+      "reviewer": "运维主管",
+      "plannedDate": "2026-03-02",
+      "deadlineAt": "",
+      "startedAt": "2026-03-02T00:00:00.000Z",
+      "reviewedAt": "",
+      "finishedAt": "",
+      "closedAt": "",
+      "resultSummary": "",
+      "linkedWorkorderIds": [],
+      "impactScope": {
+        "impactedBuildings": [
+          {
+            "buildingId": "BLD-001",
+            "buildingName": "博学楼",
+            "floors": [1],
+            "rooms": [
+              {
+                "buildingId": "BLD-001",
+                "buildingName": "博学楼",
+                "floorNo": 1,
+                "roomNo": "101",
+                "roomId": "RM-BLD-001-101",
+                "equipmentIds": ["PUMP-101"]
+              },
+              {
+                "buildingId": "BLD-001",
+                "buildingName": "博学楼",
+                "floorNo": 1,
+                "roomNo": "102",
+                "roomId": "RM-BLD-001-102",
+                "equipmentIds": ["PUMP-102"]
+              }
+            ]
+          }
+        ],
+        "bypassRequirement": "维修/改造期间，博学楼 需临时断水并做好用水保障。",
+        "manualAdjusted": false,
+        "adjustmentLogs": []
+      },
+      "pumpControls": [],
+      "executionLogs": [
+        {
+          "id": "LOG-INS-001",
+          "stage": "created",
+          "content": "工单创建（人工）",
+          "actor": "admin-ui",
+          "createdAt": "2026-03-02T00:00:00.000Z",
+          "location": null,
+          "photoUrls": [],
+          "voiceUrl": "",
+          "nodeId": "",
+          "isMobileUpload": false
+        },
+        {
+          "id": "LOG-INS-002",
+          "stage": "start_execute",
+          "content": "开始巡检执行",
+          "actor": "巡检班组A",
+          "createdAt": "2026-03-02T00:05:00.000Z",
+          "location": null,
+          "photoUrls": [],
+          "voiceUrl": "",
+          "nodeId": "N-1001",
+          "isMobileUpload": true
+        }
+      ],
+      "inspection": {
+        "routeNodeIds": ["N-1001", "N-1002"],
+        "scanCheckinNodeIds": ["N-1001"],
+        "records": []
+      },
+      "maintenance": null,
+      "retrofit": null,
+      "retire": null,
+      "notifications": [],
+      "createdBy": "admin-ui",
+      "createdAt": "2026-03-02T00:00:00.000Z",
+      "updatedAt": "2026-03-02T00:05:00.000Z"
+    },
+    {
+      "id": "WO-MAI-001",
+      "title": "实验楼污水支线堵塞维修",
+      "description": "监测数据异常触发，疑似堵塞需疏通。",
+      "type": "maintenance",
+      "source": "telemetry_alert",
+      "status": "todo",
+      "pipelineMedium": "sewage",
+      "priority": "high",
+      "area": "实验区",
+      "topologyChain": ["N-2301", "S-4302", "S-4303"],
+      "nodeIds": ["N-2301"],
+      "segmentIds": ["S-4302", "S-4303"],
+      "buildingId": "BLD-002",
+      "buildingName": "综合实验楼",
+      "roomIds": ["RM-BLD-002-101"],
+      "equipmentIds": ["VALVE-12"],
+      "assignee": "",
+      "reviewer": "运维主管",
+      "plannedDate": "2026-03-02",
+      "deadlineAt": "",
+      "startedAt": "",
+      "reviewedAt": "",
+      "finishedAt": "",
+      "closedAt": "",
+      "resultSummary": "",
+      "linkedWorkorderIds": [],
+      "impactScope": {
+        "impactedBuildings": [
+          {
+            "buildingId": "BLD-002",
+            "buildingName": "综合实验楼",
+            "floors": [1],
+            "rooms": [
+              {
+                "buildingId": "BLD-002",
+                "buildingName": "综合实验楼",
+                "floorNo": 1,
+                "roomNo": "101",
+                "roomId": "RM-BLD-002-101",
+                "equipmentIds": ["PUMP-101"]
+              }
+            ]
+          }
+        ],
+        "bypassRequirement": "维修/改造期间，综合实验楼 需临时限制污水排放并避让地下作业面。",
+        "manualAdjusted": false,
+        "adjustmentLogs": []
+      },
+      "pumpControls": [],
+      "executionLogs": [
+        {
+          "id": "LOG-MAI-001",
+          "stage": "created",
+          "content": "工单创建（监测异常自动触发）",
+          "actor": "system",
+          "createdAt": "2026-03-02T00:00:00.000Z",
+          "location": null,
+          "photoUrls": [],
+          "voiceUrl": "",
+          "nodeId": "",
+          "isMobileUpload": false
+        }
+      ],
+      "inspection": null,
+      "maintenance": {
+        "materials": [],
+        "steps": [],
+        "faultCause": "",
+        "healthBefore": "unknown",
+        "healthAfter": "unknown",
+        "acceptancePhotos": [],
+        "buildingRecoveryConfirmed": false,
+        "cost": {
+          "laborCost": 0,
+          "materialCost": 0,
+          "durationHours": 0,
+          "totalCost": 0
+        }
+      },
+      "retrofit": null,
+      "retire": null,
+      "notifications": [],
+      "createdBy": "system",
+      "createdAt": "2026-03-02T00:00:00.000Z",
+      "updatedAt": "2026-03-02T00:00:00.000Z"
+    }
+  ]
+}

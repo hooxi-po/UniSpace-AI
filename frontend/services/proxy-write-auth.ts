@@ -2,8 +2,11 @@ const WRITE_PROXY_AUTH_ERRORS = new Set([
   'proxy_write_auth_required',
   'proxy_write_auth_forbidden',
 ])
+export const PROXY_WRITE_AUTH_REQUEST_EVENT = 'proxy-write-auth:request'
 
 let cachedAuthorization: string | null = null
+let pendingAuthorizationPromise: Promise<string | null> | null = null
+let pendingAuthorizationResolver: ((authorization: string | null) => void) | null = null
 
 function withAuthorization(init: RequestInit | undefined, authorization: string | null): RequestInit {
   if (!authorization) {
@@ -53,17 +56,38 @@ function encodeBasicToken(username: string, password: string) {
   return Buffer.from(`${username}:${password}`).toString('base64')
 }
 
-function promptForAuthorizationHeader() {
-  if (typeof window === 'undefined') return null
+function resolvePendingAuthorization(authorization: string | null) {
+  if (!pendingAuthorizationResolver) {
+    pendingAuthorizationPromise = null
+    return
+  }
+  pendingAuthorizationResolver(authorization)
+  pendingAuthorizationResolver = null
+  pendingAuthorizationPromise = null
+}
 
-  const username = window.prompt('请输入写操作管理员用户名')
-  if (!username) return null
+function requestAuthorizationHeader() {
+  if (typeof window === 'undefined') return Promise.resolve(null)
+  if (pendingAuthorizationPromise) return pendingAuthorizationPromise
 
-  const password = window.prompt('请输入管理员密码')
-  if (password === null) return null
+  pendingAuthorizationPromise = new Promise((resolve) => {
+    pendingAuthorizationResolver = resolve
+    window.dispatchEvent(new CustomEvent(PROXY_WRITE_AUTH_REQUEST_EVENT))
+  })
+  return pendingAuthorizationPromise
+}
 
+export function submitProxyWriteAuthorization(username: string, password: string) {
   const token = encodeBasicToken(username, password)
-  return `Basic ${token}`
+  resolvePendingAuthorization(`Basic ${token}`)
+}
+
+export function cancelProxyWriteAuthorization() {
+  resolvePendingAuthorization(null)
+}
+
+export function clearCachedProxyWriteAuthorization() {
+  cachedAuthorization = null
 }
 
 function shouldPromptForAuth(response: Response, errorCode: string) {
@@ -87,7 +111,7 @@ export async function fetchWithProxyWriteAuth(url: string, init?: RequestInit) {
     cachedAuthorization = null
   }
 
-  const promptedAuthorization = promptForAuthorizationHeader()
+  const promptedAuthorization = await requestAuthorizationHeader()
   if (!promptedAuthorization) {
     return response
   }

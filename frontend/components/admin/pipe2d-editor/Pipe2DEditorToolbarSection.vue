@@ -1,0 +1,50 @@
+<script setup lang="ts">
+import type { Component } from 'vue'
+
+type ToolItem = {
+  key: string
+  icon: Component
+  label: string
+  tooltip: string
+  shortcut: string
+}
+
+defineProps<{
+  activeToolLabel: string
+  toolItems: ToolItem[]
+  activeTool: string
+  saving: boolean
+}>()
+
+const emit = defineEmits<{
+  (e: 'pointerdown', toolKey: string, event: PointerEvent): void
+  (e: 'select', toolKey: string): void
+}>()
+</script>
+
+<template>
+  <aside class="left-toolbar">
+    <div class="tool-mode-hint">当前：{{ activeToolLabel }}</div>
+    <el-tooltip
+      v-for="tool in toolItems"
+      :key="tool.key"
+      :content="`${tool.tooltip} (${tool.shortcut})`"
+      placement="right"
+      effect="light"
+      popper-class="md-tooltip"
+    >
+      <button
+        :class="['tool-btn', 'tool-item', { 'tool-btn--active': activeTool === tool.key, active: activeTool === tool.key }]"
+        type="button"
+        :disabled="saving"
+        @pointerdown="emit('pointerdown', tool.key, $event)"
+        @click="emit('select', tool.key)"
+      >
+        <component :is="tool.icon" :size="20" :stroke-width="2" />
+        <span class="tool-btn__bar" />
+      </button>
+    </el-tooltip>
+  </aside>
+</template>
+
+<style scoped src="../Pipe2DEditorDialog.css"></style>

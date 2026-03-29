@@ -9,7 +9,18 @@ import {
   PIPE_LAYER_NAMES,
   usePipeLayerLoader,
 } from '~/composables/shared/usePipeLayerLoader'
+import { useMapViewWorkorderHeat } from '~/composables/shared/useMapViewWorkorderHeat'
+import { useMapViewSelection } from '~/composables/shared/useMapViewSelection'
 import { normalizeBackendBaseUrl } from '~/utils/backend-url'
+import {
+  appendCacheBust,
+  buildModelScale,
+  fetchPagedFeatureCollectionByBboxes,
+  getCurrentViewBboxes,
+  getModelNativeSizeMeters,
+  MODEL_NATIVE_SIZE_FALLBACK,
+  pickReplacementBuilding,
+} from '~/utils/map-view-helpers'
 import { styleBuildingEntity, styleGreenEntity, stylePipeNodeEntity } from '~/utils/map-entity-style'
 
 const DEFAULT_CAMERA = {
@@ -35,6 +46,11 @@ type MapLayers = {
 
 interface Props {
   selectedId: string | null
+  selectedTargets?: {
+    pipes?: string[]
+    buildings?: string[]
+    rooms?: string[]
+  }
   viewport: Viewport
   layers: MapLayers
   backendBaseUrl: string
@@ -51,14 +67,6 @@ const emit = defineEmits<{
 const cesiumContainerRef = ref<HTMLDivElement | null>(null)
 let viewer: Cesium.Viewer | null = null
 let handler: Cesium.ScreenSpaceEventHandler | null = null
-let highlightedEntity: Cesium.Entity | null = null
-let highlightedOriginal: {
-  polygonMaterial?: Cesium.MaterialProperty
-  polylineMaterial?: Cesium.MaterialProperty
-  polylineWidth?: number
-  pointColor?: Cesium.Property
-  pointPixelSize?: number
-} | null = null
 
 const BUILDING_DISTANCE_CONDITION = new Cesium.DistanceDisplayCondition(0, 8000)
 const PIPE_NODE_DISTANCE_CONDITION = new Cesium.DistanceDisplayCondition(0, 4500)
@@ -71,6 +79,9 @@ const dataSources = {
   pipeNodes: new Cesium.CustomDataSource('pipeNodes'),
   sewage: new Cesium.CustomDataSource('sewage'),
   drain: new Cesium.CustomDataSource('drain'),
+  models: new Cesium.CustomDataSource('models'),
+  workorderHeat: new Cesium.CustomDataSource('workorderHeat'),
+  focus: new Cesium.CustomDataSource('focus'),
 }
 
 const normalizedBackendBaseUrl = computed(() => normalizeBackendBaseUrl(props.backendBaseUrl))
@@ -88,8 +99,18 @@ const dynamicLayerQueryKey = ref<Record<LayerName, string>>({
   pipeNodes: '',
   buildings: '',
   green: '',
+  models: '',
+  workorderHeat: '',
+  focus: '',
 })
 let dynamicLayerReloadTimer: ReturnType<typeof setTimeout> | null = null
+
+const BUILDING_REPLACEMENT_MODEL = {
+  name: 'Office 建筑模型',
+  url: '/models/officeBuild.glb',
+}
+const BUILDING_REPLACEMENT_TARGET_ID = 'building_test_1'
+const BUILDING_REPLACEMENT_TARGET_NAME = '测试建筑1'
 
 function serializeBboxes(bboxes: string[]) {
   return bboxes.join('|')
@@ -105,89 +126,24 @@ watchEffect(() => {
       dataSource.show = layerProp
     }
   }
+  dataSources.models.show = Boolean(props.layers.buildings)
 })
-
-watch(
-  () => props.selectedId,
-  () => {
-    if (!viewer) return
-
-    // Restore previous highlight
-    if (highlightedEntity && highlightedOriginal) {
-      if (highlightedEntity.polygon && highlightedOriginal.polygonMaterial) {
-        highlightedEntity.polygon.material = highlightedOriginal.polygonMaterial
-      }
-      if (highlightedEntity.polyline) {
-        if (highlightedOriginal.polylineMaterial) {
-          highlightedEntity.polyline.material = highlightedOriginal.polylineMaterial
-        }
-        if (typeof highlightedOriginal.polylineWidth === 'number') {
-          highlightedEntity.polyline.width = new Cesium.ConstantProperty(
-            highlightedOriginal.polylineWidth
-          )
-        }
-      }
-      if (highlightedEntity.point) {
-        if (highlightedOriginal.pointColor) {
-          highlightedEntity.point.color = highlightedOriginal.pointColor
-        }
-        if (typeof highlightedOriginal.pointPixelSize === 'number') {
-          highlightedEntity.point.pixelSize = new Cesium.ConstantProperty(
-            highlightedOriginal.pointPixelSize
-          )
-        }
-      }
-    }
-
-    highlightedEntity = null
-    highlightedOriginal = null
-
-    if (!props.selectedId) return
-
-    // Find entity across all datasources
-    let target: Cesium.Entity | null = null
-    for (const ds of Object.values(dataSources)) {
-      const e = ds.entities.getById(props.selectedId)
-      if (e) {
-        target = e
-        break
-      }
-    }
-
-    if (!target) return
-
-    highlightedEntity = target
-    highlightedOriginal = {
-      polygonMaterial: target.polygon?.material,
-      polylineMaterial: target.polyline?.material,
-      polylineWidth: target.polyline?.width?.getValue(viewer.clock.currentTime),
-      pointColor: target.point?.color,
-      pointPixelSize: target.point?.pixelSize?.getValue(viewer.clock.currentTime),
-    }
-
-    const highlightColor = new Cesium.ColorMaterialProperty(
-      Cesium.Color.YELLOW.withAlpha(0.9)
-    )
-
-    if (target.polygon) {
-      target.polygon.material = highlightColor
-      target.polygon.outline = new Cesium.ConstantProperty(true)
-      target.polygon.outlineColor = new Cesium.ConstantProperty(
-        Cesium.Color.YELLOW.withAlpha(0.9)
-      )
-    }
-
-    if (target.polyline) {
-      target.polyline.material = highlightColor
-      target.polyline.width = new Cesium.ConstantProperty(6)
-    }
-    if (target.point) {
-      target.point.color = new Cesium.ConstantProperty(Cesium.Color.YELLOW.withAlpha(0.95))
-      target.point.pixelSize = new Cesium.ConstantProperty(10)
-    }
+const { applySelectionHighlight } = useMapViewSelection({
+  getViewer: () => viewer,
+  dataSources,
+  getSelectedId: () => props.selectedId,
+  getSelectedTargets: () => props.selectedTargets,
+})
+const {
+  cleanupWorkorderHeat,
+  mountWorkorderHeatmap,
+} = useMapViewWorkorderHeat({
+  getViewer: () => viewer,
+  dataSource: dataSources.workorderHeat,
+  onPumpControlRefreshed: () => {
+    scheduleDynamicLayerReload(true)
   },
-  { immediate: true }
-)
+})
 
 onMounted(() => {
   if (!cesiumContainerRef.value) return
@@ -238,7 +194,8 @@ onMounted(() => {
 
   // Add all data sources to the viewer
   Object.values(dataSources).forEach(ds => viewer?.dataSources.add(ds))
-  currentViewportBboxes.value = getCurrentViewBboxes()
+  mountWorkorderHeatmap()
+  currentViewportBboxes.value = getCurrentViewBboxes(viewer)
 
   // Load and process GeoJSON layers based on visibility
   loadGeoJsonLayers()
@@ -265,6 +222,20 @@ function setupClickHandler() {
       const properties = viewer
         ? entity.properties?.getValue(viewer.clock.currentTime)
         : undefined
+
+      if (properties && (properties as any).__workorderHeat) {
+        const workorderId = String((properties as any).__workorderId || '').trim()
+        if (workorderId && typeof window !== 'undefined') {
+          const query = new URLSearchParams({
+            tab: 'ops',
+            sub: 'ops_linkage',
+            third: 'ops_linkage_board',
+            workorderId,
+          })
+          window.open(`/admin?${query.toString()}`, '_blank')
+          return
+        }
+      }
       
       emit('select', {
         id: entity.id,
@@ -380,97 +351,6 @@ function getLayerSourceUrl(layerName: LayerName): string | null {
   return staticLayerFiles[layerName] || null
 }
 
-function appendCacheBust(url: string): string {
-  const separator = url.includes('?') ? '&' : '?'
-  return `${url}${separator}t=${Date.now()}`
-}
-
-function appendQuery(url: string, query: Record<string, string | number | undefined>) {
-  const u = new URL(url, typeof window !== 'undefined' ? window.location.origin : 'http://localhost')
-  for (const [key, value] of Object.entries(query)) {
-    if (value === undefined || value === '') {
-      u.searchParams.delete(key)
-      continue
-    }
-    u.searchParams.set(key, String(value))
-  }
-  return u.toString()
-}
-
-function getCurrentViewBboxes() {
-  if (!viewer) return []
-  const rectangle = viewer.camera.computeViewRectangle(viewer.scene.globe.ellipsoid)
-  if (!rectangle) return []
-
-  const west = Cesium.Math.toDegrees(rectangle.west)
-  const south = Cesium.Math.toDegrees(rectangle.south)
-  const east = Cesium.Math.toDegrees(rectangle.east)
-  const north = Cesium.Math.toDegrees(rectangle.north)
-  const minLat = Math.max(-90, Math.min(south, north))
-  const maxLat = Math.min(90, Math.max(south, north))
-
-  if (![west, minLat, east, maxLat].every(Number.isFinite)) return []
-
-  const normalizedWest = Math.max(-180, Math.min(180, west))
-  const normalizedEast = Math.max(-180, Math.min(180, east))
-  if (normalizedWest <= normalizedEast) {
-    return [[normalizedWest, minLat, normalizedEast, maxLat].map(v => v.toFixed(6)).join(',')]
-  }
-
-  // When crossing anti-meridian, split into two envelopes.
-  return [
-    [normalizedWest, minLat, 180, maxLat].map(v => v.toFixed(6)).join(','),
-    [-180, minLat, normalizedEast, maxLat].map(v => v.toFixed(6)).join(','),
-  ]
-}
-
-async function fetchPagedFeatureCollection(baseUrl: string, bbox: string | null) {
-  const features: Record<string, unknown>[] = []
-  for (let page = 1; page <= DYNAMIC_LAYER_MAX_PAGES; page++) {
-    const requestUrl = appendQuery(baseUrl, {
-      bbox: bbox || undefined,
-      page,
-      limit: DYNAMIC_LAYER_PAGE_SIZE,
-    })
-    const res = await fetch(requestUrl)
-    if (!res.ok) {
-      throw new Error(`load_layer_http_${res.status}`)
-    }
-    const fc = (await res.json()) as { features?: Record<string, unknown>[] }
-    const pageFeatures = Array.isArray(fc.features) ? fc.features : []
-    features.push(...pageFeatures)
-    if (pageFeatures.length < DYNAMIC_LAYER_PAGE_SIZE) break
-  }
-
-  return {
-    type: 'FeatureCollection',
-    features,
-  }
-}
-
-async function fetchPagedFeatureCollectionByBboxes(baseUrl: string, bboxes: string[]) {
-  const uniqueFeatures = new Map<string, Record<string, unknown>>()
-  const featuresWithoutId: Record<string, unknown>[] = []
-  const effectiveBboxes = bboxes.length ? bboxes : [null]
-
-  for (const bbox of effectiveBboxes) {
-    const fc = await fetchPagedFeatureCollection(baseUrl, bbox)
-    for (const feature of fc.features) {
-      const id = feature.id
-      if (id === undefined || id === null) {
-        featuresWithoutId.push(feature)
-        continue
-      }
-      uniqueFeatures.set(String(id), feature)
-    }
-  }
-
-  return {
-    type: 'FeatureCollection',
-    features: [...uniqueFeatures.values(), ...featuresWithoutId],
-  }
-}
-
 const dynamicLayerLoadSeq: Record<LayerName, number> = {
   water: 0,
   sewage: 0,
@@ -478,6 +358,9 @@ const dynamicLayerLoadSeq: Record<LayerName, number> = {
   pipeNodes: 0,
   buildings: 0,
   green: 0,
+  models: 0,
+  workorderHeat: 0,
+  focus: 0,
 }
 
 function buildDynamicLayerQueryKey(layerName: LayerName) {
@@ -494,7 +377,9 @@ function loadLayer(layerName: LayerName, force = false) {
     const queryKey = buildDynamicLayerQueryKey(layerName)
     if (!force && dynamicLayerQueryKey.value[layerName] === queryKey) return
     dynamicLayerQueryKey.value[layerName] = queryKey
-    loadPipeLayers(force)
+    void loadPipeLayers(force).then(() => {
+      applySelectionHighlight()
+    })
     return
   }
 
@@ -510,16 +395,69 @@ function loadLayer(layerName: LayerName, force = false) {
     const sourceUrl = getLayerSourceUrl(layerName)
     if (!sourceUrl) return
 
-    fetchPagedFeatureCollectionByBboxes(sourceUrl, currentViewportBboxes.value)
+    fetchPagedFeatureCollectionByBboxes(
+      sourceUrl,
+      currentViewportBboxes.value,
+      DYNAMIC_LAYER_PAGE_SIZE,
+      DYNAMIC_LAYER_MAX_PAGES,
+    )
       .then(fc => Cesium.GeoJsonDataSource.load(fc, { clampToGround: true }))
       .then(layerDataSource => {
         if (!viewer || loadSeq !== dynamicLayerLoadSeq[layerName]) return
         dataSource.entities.removeAll()
+        let replacement = null
+        if (layerName === 'buildings') {
+          dataSources.models.entities.removeAll()
+          replacement = pickReplacementBuilding(
+            layerDataSource.entities.values,
+            viewer.clock.currentTime,
+            BUILDING_REPLACEMENT_TARGET_ID,
+            BUILDING_REPLACEMENT_TARGET_NAME,
+          )
+        }
         for (const entity of layerDataSource.entities.values) {
           entity.label = undefined
           entity.billboard = undefined
           entity.description = undefined
           if (layerName === 'buildings') {
+            if (replacement && String(entity.id) === replacement.id) {
+              const initialScale = buildModelScale(
+                replacement.footprintTargetSize,
+                MODEL_NATIVE_SIZE_FALLBACK,
+              )
+              const modelEntity = dataSources.models.entities.add({
+                id: entity.id,
+                name: BUILDING_REPLACEMENT_MODEL.name,
+                position: replacement.center,
+                orientation: Cesium.Transforms.headingPitchRollQuaternion(
+                  replacement.center,
+                  new Cesium.HeadingPitchRoll(replacement.heading, 0, 0),
+                ),
+                model: new Cesium.ModelGraphics({
+                  uri: BUILDING_REPLACEMENT_MODEL.url,
+                  scale: initialScale,
+                  runAnimations: true,
+                  heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND,
+                }),
+                properties: new Cesium.PropertyBag({
+                  ...replacement.originalProperties,
+                  __assetType: 'building',
+                  __renderMode: 'replacement-model',
+                  __modelUrl: BUILDING_REPLACEMENT_MODEL.url,
+                }),
+              })
+
+              void getModelNativeSizeMeters(viewer, BUILDING_REPLACEMENT_MODEL.url).then((nativeSizeMeters) => {
+                if (!viewer || loadSeq !== dynamicLayerLoadSeq.buildings) return
+                const latestModelEntity = dataSources.models.entities.getById(modelEntity.id)
+                if (!latestModelEntity?.model) return
+                latestModelEntity.model.scale = new Cesium.ConstantProperty(
+                  buildModelScale(replacement.footprintTargetSize, nativeSizeMeters),
+                )
+                viewer.scene.requestRender()
+              })
+              continue
+            }
             entity.point = undefined
             styleBuildingEntity(entity)
             if (entity.polygon) {
@@ -539,6 +477,7 @@ function loadLayer(layerName: LayerName, force = false) {
         }
         loadedLayers.value.add(layerName)
         dynamicLayerQueryKey.value[layerName] = queryKey
+        applySelectionHighlight()
       })
       .catch(err => {
         console.error(`Failed to load ${layerName} layer:`, sourceUrl, err)
@@ -567,14 +506,13 @@ function loadLayer(layerName: LayerName, force = false) {
         // Apply appropriate styling based on layer type
         if (layerName === 'green') {
           styleGreenEntity(entity)
-        } else if (layerName === 'buildings') {
-          styleBuildingEntity(entity)
         }
 
         dataSource.entities.add(entity)
       }
 
       loadedLayers.value.add(layerName)
+      applySelectionHighlight()
     })
     .catch(err => {
       // eslint-disable-next-line no-console
@@ -593,6 +531,9 @@ function unloadLayer(layerName: LayerName) {
   if (!dataSource) return
 
   dataSource.entities.removeAll()
+  if (layerName === 'buildings') {
+    dataSources.models.entities.removeAll()
+  }
   loadedLayers.value.delete(layerName)
   dynamicLayerQueryKey.value[layerName] = ''
 }
@@ -620,7 +561,7 @@ function loadGeoJsonLayers() {
 
 function reloadDynamicLayers(force = false) {
   if (!viewer) return
-  const latestBboxes = getCurrentViewBboxes()
+  const latestBboxes = getCurrentViewBboxes(viewer)
 
   const latestBboxKey = serializeBboxes(latestBboxes)
   const currentBboxKey = serializeBboxes(currentViewportBboxes.value)
@@ -709,6 +650,7 @@ watch(
 )
 
 onBeforeUnmount(() => {
+  cleanupWorkorderHeat()
   if (dynamicLayerReloadTimer) {
     clearTimeout(dynamicLayerReloadTimer)
     dynamicLayerReloadTimer = null

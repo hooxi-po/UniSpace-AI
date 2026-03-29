@@ -487,7 +487,7 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
     }
     if (key === 'escape') {
       event.preventDefault()
-      // 优先取消当前编辑状态，而不是关闭整个编辑器
+      // ESC 键只用于取消当前编辑操作，不关闭编辑器
       // 检查是否有活动的编辑状态：
       // 1. 传统编辑模式（插点/删点/选点）
       // 2. 思维导图模式（当前 mode 非 idle，或存在选中）
@@ -504,12 +504,10 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
         // 取消传统编辑状态
         endEditing()
       } else if (isMindmapActiveMode || hasMindmapSelection) {
-        // 思维导图状态由 useMindmapEditorEvents 处理，这里禁止关闭对话框
+        // 思维导图状态由 useMindmapEditorEvents 处理
         return
-      } else if (options.requestClose) {
-        // 只有在完全空闲状态下才允许关闭编辑器
-        options.requestClose()
       }
+      // 注意：不再调用 requestClose()，ESC 不关闭编辑器
       return
     }
     if (key === 'i') {

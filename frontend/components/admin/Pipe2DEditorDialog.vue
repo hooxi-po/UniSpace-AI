@@ -818,21 +818,11 @@ function onWindowKeydown(event: KeyboardEvent) {
   if (!props.open) return
   if (event.key !== 'Escape') return
 
-  // 如果思维导图编辑器不在空闲模式，让它先处理 ESC
-  if (mindmapEditor.mode.value.type !== 'idle') {
-    // 思维导图编辑器会处理这个事件
-    return
-  }
-
-  // 如果有选中内容，先清除选中
-  if (mindmapEditor.hasSelection.value) {
-    // 思维导图编辑器会处理这个事件
-    return
-  }
-
-  // 只有在空闲模式且无选中时，才关闭对话框
+  // ESC 键不再关闭编辑器，只用于取消编辑操作
+  // 编辑操作的取消由 usePipe2DEditorMapInteractions 和 useMindmapEditorEvents 处理
+  // 用户需要通过点击关闭按钮来关闭编辑器
   event.preventDefault()
-  requestDialogClose()
+  // 不再调用 requestDialogClose()
 }
 
 if (typeof window !== 'undefined') {

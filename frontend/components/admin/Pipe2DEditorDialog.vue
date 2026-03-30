@@ -9,6 +9,8 @@
         :save-status-class="saveStatusClass"
         :save-status-text="saveStatusText"
         :saving="saving"
+        :is-dirty="isDirty"
+        :selected-feature="selectedFeature"
         :can-undo="combinedCanUndo"
         :can-redo="combinedCanRedo"
         :view-mode="viewMode"
@@ -23,6 +25,7 @@
         @redo="handleRedo"
         @beautify="showPlanned('一键美化布局')"
         @share="showPlanned('分享')"
+        @save-geometry="saveGeometry"
         @close="requestDialogClose"
       />
 
@@ -175,7 +178,7 @@
 <script setup lang="ts">
 import * as Cesium from 'cesium'
 import { PanelRightOpen } from 'lucide-vue-next'
-import { computed, onBeforeUnmount, ref, toRef, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, toRef, watch } from 'vue'
 import {
   defaultPanelSectionCollapsed,
   toolItems,
@@ -264,6 +267,7 @@ const mindmapModeType = ref<string>('idle')
 const {
   history,
   mapView,
+  mapReady,
   activeLineIndex,
   selectedPoint,
   mapCursorClass,
@@ -790,6 +794,19 @@ watch(
 watch(selectedFeature, () => {
   actionMessage.value = null
 })
+
+// 当地图准备好且有管道数据时，确保渲染
+watch(
+  [mapReady, pipes, selectedFeature],
+  ([ready, pipesList, feature]) => {
+    if (!props.open || !ready || !pipesList.length || !feature) return
+    // 地图已准备好，且有数据，调用 fitCurrentPipeView 确保显示
+    nextTick(() => {
+      fitCurrentPipeView()
+    })
+  },
+)
+
 
 watch(
   [() => props.open, selectedFeatureId],

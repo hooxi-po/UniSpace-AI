@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Loader2, RefreshCw, RotateCcw, Send, X, Zap } from 'lucide-vue-next'
+import { Check, Loader2, RefreshCw, RotateCcw, Send, X, Zap } from 'lucide-vue-next'
 
 type ViewModeOption = {
   key: string
@@ -13,6 +13,8 @@ defineProps<{
   saveStatusClass: string
   saveStatusText: string
   saving: boolean
+  isDirty: boolean
+  selectedFeature: unknown
   canUndo: boolean
   canRedo: boolean
   viewMode: string
@@ -30,6 +32,7 @@ const emit = defineEmits<{
   (e: 'redo'): void
   (e: 'beautify'): void
   (e: 'share'): void
+  (e: 'save-geometry'): void
   (e: 'close'): void
 }>()
 
@@ -98,6 +101,14 @@ function onViewChange(event: Event) {
         </button>
         <button class="icon-btn" type="button" title="分享" @click="emit('share')">
           <Send :size="18" />
+        </button>
+        <button
+          class="btn btn--primary btn--save"
+          type="button"
+          :disabled="!selectedFeature || !isDirty || saving"
+          @click="emit('save-geometry')"
+        >
+          {{ saving ? '保存中...' : '保存修改' }}
         </button>
         <button
           class="icon-btn icon-btn--close"

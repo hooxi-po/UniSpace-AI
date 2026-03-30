@@ -82,6 +82,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
   })
   const hoveredLineIndex = ref<number | null>(null)
   const undergroundSliceEnabled = ref(false)
+  const mapReady = ref(false)
 
   let marsMap: any | null = null
   let mars3dLib: any | null = null
@@ -184,6 +185,16 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
 
   function screenToLonLat(screenPosition: Cesium.Cartesian2): Point | null {
     if (!viewer) return null
+
+    // 在 2D 模式下使用不同的拾取方法
+    if (viewer.scene.mode === Cesium.SceneMode.SCENE2D || viewer.scene.mode === Cesium.SceneMode.COLUMBUS_VIEW) {
+      // 2D 模式：直接使用相机拾取椭球体表面
+      const cartesian = viewer.camera.pickEllipsoid(screenPosition, viewer.scene.globe.ellipsoid)
+      if (!cartesian) return null
+      return toLonLat(cartesian)
+    }
+
+    // 3D 模式：使用射线拾取地球表面
     const ray = viewer.camera.getPickRay(screenPosition)
     if (!ray) return null
     const cartesian = viewer.scene.globe.pick(ray, viewer.scene)
@@ -606,6 +617,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
       bindDrawEvents()
       renderDraftGraphics()
       fitCurrentPipeView()
+      mapReady.value = true
     } catch (error) {
       mapError.value = error instanceof Error ? error.message : 'Mars3D 初始化失败'
     }
@@ -687,6 +699,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
 
   return {
     mapView,
+    mapReady,
     activeLineIndex,
     selectedPoint,
     addPointMode,

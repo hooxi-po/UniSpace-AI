@@ -25,25 +25,19 @@ const emit = defineEmits<{
 <template>
   <aside class="left-toolbar">
     <div class="tool-mode-hint">当前：{{ activeToolLabel }}</div>
-    <el-tooltip
+    <button
       v-for="tool in toolItems"
       :key="tool.key"
-      :content="`${tool.tooltip} (${tool.shortcut})`"
-      placement="right"
-      effect="light"
-      popper-class="md-tooltip"
+      :class="['tool-btn', 'tool-item', { 'tool-btn--active': activeTool === tool.key, active: activeTool === tool.key }]"
+      type="button"
+      :disabled="saving"
+      :title="`${tool.tooltip} (${tool.shortcut})`"
+      @pointerdown="emit('pointerdown', tool.key, $event)"
+      @click="emit('select', tool.key)"
     >
-      <button
-        :class="['tool-btn', 'tool-item', { 'tool-btn--active': activeTool === tool.key, active: activeTool === tool.key }]"
-        type="button"
-        :disabled="saving"
-        @pointerdown="emit('pointerdown', tool.key, $event)"
-        @click="emit('select', tool.key)"
-      >
-        <component :is="tool.icon" :size="20" :stroke-width="2" />
-        <span class="tool-btn__bar" />
-      </button>
-    </el-tooltip>
+      <component :is="tool.icon" :size="20" :stroke-width="2" />
+      <span class="tool-btn__bar" />
+    </button>
   </aside>
 </template>
 

@@ -102,11 +102,6 @@ const emit = defineEmits<{
   (e: 'remove-edge', edgeId: string): void
 }>()
 
-const relationNamesModel = computed({
-  get: () => props.relationActiveNames,
-  set: (value: string[]) => emit('update:relation-active-names', value),
-})
-
 function onSelectFeature(event: Event) {
   emit('update:selected-feature-id', (event.target as HTMLSelectElement).value)
 }
@@ -205,14 +200,8 @@ function formatDateTime(value: string) {
       <div v-show="!panelSectionCollapsed.relation" class="panel-section-body">
         <div class="panel-meta"><span>关联楼宇</span><strong>{{ linkedBuildingCount }}</strong></div>
         <div class="panel-meta"><span>关联房间</span><strong>{{ impactedRoomCount }}</strong></div>
-        <el-collapse v-model="relationNamesModel" class="relation-collapse">
-          <el-collapse-item title="追踪链路段" name="traceSegments">
-            <div class="panel-meta"><span>链路段数量</span><strong>{{ tracedSegmentCount }}</strong></div>
-          </el-collapse-item>
-          <el-collapse-item title="网络节点" name="networkNodes">
-            <div class="panel-meta"><span>节点数量</span><strong>{{ tracedNodeCount }}</strong></div>
-          </el-collapse-item>
-        </el-collapse>
+        <div class="panel-meta"><span>链路段数量</span><strong>{{ tracedSegmentCount }}</strong></div>
+        <div class="panel-meta"><span>节点数量</span><strong>{{ tracedNodeCount }}</strong></div>
         <div v-if="linkedBuildingLabels.length" class="token-wrap">
           <span v-for="label in linkedBuildingLabels" :key="label" class="token">{{ label }}</span>
         </div>
@@ -220,43 +209,6 @@ function formatDateTime(value: string) {
           <House class="empty-icon" :size="18" />
           <div>暂无数据</div>
           <div class="tip">点击左侧工具栏开始绑定房产</div>
-        </div>
-      </div>
-    </section>
-
-    <section class="panel-card">
-      <button class="panel-collapse-toggle" type="button" @click="emit('toggle-section', 'control')">
-        <span>编辑控制</span>
-        <component :is="panelSectionCollapsed.control ? ChevronRight : ChevronDown" :size="16" />
-      </button>
-      <div v-show="!panelSectionCollapsed.control" class="panel-section-body">
-        <div class="panel-row-actions">
-          <button
-            :class="['btn btn--sm', { 'btn--active': addPointMode }]"
-            type="button"
-            :disabled="saving || !selectedFeature"
-            @click="emit('toggle-add-point-mode')"
-          >
-            节点编辑
-          </button>
-          <button class="btn btn--sm" type="button" :disabled="saving || !selectedFeature" @click="emit('insert-center-point')">中心加点</button>
-        </div>
-        <div class="panel-row-actions">
-          <button
-            :class="['btn btn--sm', { 'btn--danger': deletePointMode }]"
-            type="button"
-            :disabled="saving || !selectedFeature"
-            @click="emit('toggle-delete-point-mode')"
-          >
-            删除模式
-          </button>
-          <button class="btn btn--sm" type="button" :disabled="saving || !canDeletePoint" @click="emit('delete-selected-point')">删除选中点</button>
-        </div>
-        <div class="panel-row-actions">
-          <button :class="['btn btn--sm', { 'btn--active': snapEnabled }]" type="button" :disabled="saving" @click="emit('toggle-snap')">
-            {{ snapEnabled ? '端点吸附 开' : '端点吸附 关' }}
-          </button>
-          <button class="btn btn--sm" type="button" :disabled="saving" @click="emit('toggle-scene-mode')">{{ sceneMode === '2d' ? '切换3D' : '切换2D' }}</button>
         </div>
       </div>
     </section>
@@ -327,13 +279,6 @@ function formatDateTime(value: string) {
         <div class="panel-meta"><span>视图缩放</span><strong>Z{{ zoomLevel }}</strong></div>
       </div>
     </section>
-
-    <div class="panel-footer">
-      <button class="btn" type="button" :disabled="saving" @click="emit('reset-draft')">取消</button>
-      <button class="btn btn--primary" type="button" :disabled="!selectedFeature || !isDirty || saving" @click="emit('save-geometry')">
-        {{ saving ? '保存中...' : '保存修改' }}
-      </button>
-    </div>
   </aside>
 </template>
 

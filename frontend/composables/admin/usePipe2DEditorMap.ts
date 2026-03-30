@@ -189,7 +189,9 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     // 在 2D 模式下使用不同的拾取方法
     if (viewer.scene.mode === Cesium.SceneMode.SCENE2D || viewer.scene.mode === Cesium.SceneMode.COLUMBUS_VIEW) {
       // 2D 模式：直接使用相机拾取椭球体表面
-      const cartesian = viewer.camera.pickEllipsoid(screenPosition, viewer.scene.globe.ellipsoid)
+      const ellipsoid = viewer.scene.globe?.ellipsoid
+      if (!ellipsoid) return null
+      const cartesian = viewer.camera.pickEllipsoid(screenPosition, ellipsoid)
       if (!cartesian) return null
       return toLonLat(cartesian)
     }

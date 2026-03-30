@@ -13,6 +13,8 @@
         :selected-feature="selectedFeature"
         :can-undo="combinedCanUndo"
         :can-redo="combinedCanRedo"
+        :snap-enabled="snapEnabled"
+        :scene-mode="sceneMode"
         :view-mode="viewMode"
         :view-mode-options="viewModeOptions"
         @start-edit-project-title="startEditProjectTitle"
@@ -23,6 +25,8 @@
         @ai="showPlanned('AI智能助手')"
         @undo="handleUndo"
         @redo="handleRedo"
+        @toggle-snap="snapEnabled = !snapEnabled"
+        @toggle-scene-mode="toggleSceneModeByPanel"
         @beautify="showPlanned('一键美化布局')"
         @share="showPlanned('分享')"
         @save-geometry="saveGeometry"
@@ -236,6 +240,7 @@ const panelSectionCollapsed = ref<Record<PanelSectionKey, boolean>>({ ...default
 const relationActiveNames = ref<string[]>([])
 
 let saveCloseTimer: ReturnType<typeof setTimeout> | null = null
+const hasInitiallyRendered = ref(false)
 
 const selectedFeature = computed(() => {
   return pipes.value.find(item => String(item.id) === selectedFeatureId.value) || null
@@ -767,6 +772,7 @@ watch(
   () => props.open,
   (open) => {
     if (!open) {
+      hasInitiallyRendered.value = false
       renaming.value = false
       saveSuccessVisible.value = false
       clearSaveCloseTimer()
@@ -799,10 +805,12 @@ watch(selectedFeature, () => {
 watch(
   [mapReady, pipes, selectedFeature],
   ([ready, pipesList, feature]) => {
+    if (hasInitiallyRendered.value) return
     if (!props.open || !ready || !pipesList.length || !feature) return
     // 地图已准备好，且有数据，调用 fitCurrentPipeView 确保显示
     nextTick(() => {
       fitCurrentPipeView()
+      hasInitiallyRendered.value = true
     })
   },
 )

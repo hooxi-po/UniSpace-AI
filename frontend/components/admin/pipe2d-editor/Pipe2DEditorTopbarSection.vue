@@ -17,6 +17,8 @@ defineProps<{
   selectedFeature: unknown
   canUndo: boolean
   canRedo: boolean
+  snapEnabled: boolean
+  sceneMode: string
   viewMode: string
   viewModeOptions: ViewModeOption[]
 }>()
@@ -30,6 +32,8 @@ const emit = defineEmits<{
   (e: 'ai'): void
   (e: 'undo'): void
   (e: 'redo'): void
+  (e: 'toggle-snap'): void
+  (e: 'toggle-scene-mode'): void
   (e: 'beautify'): void
   (e: 'share'): void
   (e: 'save-geometry'): void
@@ -95,6 +99,24 @@ function onViewChange(event: Event) {
         </button>
         <button class="icon-btn" type="button" :disabled="saving || !canRedo" title="重做 (Ctrl/Cmd+Y)" @click="emit('redo')">
           <RefreshCw :size="18" />
+        </button>
+        <button
+          class="btn btn--sm"
+          type="button"
+          :disabled="saving"
+          :title="snapEnabled ? '关闭吸附' : '开启吸附'"
+          @click="emit('toggle-snap')"
+        >
+          {{ snapEnabled ? '吸附: 开' : '吸附: 关' }}
+        </button>
+        <button
+          class="btn btn--sm"
+          type="button"
+          :disabled="saving"
+          title="切换 2D / 3D"
+          @click="emit('toggle-scene-mode')"
+        >
+          {{ sceneMode === '3d' ? '切换至2D' : '切换至3D' }}
         </button>
         <button class="icon-btn" type="button" title="一键美化布局" @click="emit('beautify')">
           <Zap :size="18" />

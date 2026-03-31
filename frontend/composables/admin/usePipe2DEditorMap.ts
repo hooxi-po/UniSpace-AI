@@ -247,17 +247,23 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
 
     // 检查是否是节点
     if (entity.properties.graphNodeId && !entity.properties.isHalo && !entity.properties.isBadge) {
+      const nodeId = typeof entity.properties.graphNodeId.getValue === 'function'
+        ? entity.properties.graphNodeId.getValue()
+        : entity.properties.graphNodeId
       return {
         type: 'node',
-        nodeId: entity.properties.graphNodeId.getValue(),
+        nodeId,
       }
     }
 
     // 检查是否是边
     if (entity.properties.graphEdgeId && !entity.properties.isHalo) {
+      const edgeId = typeof entity.properties.graphEdgeId.getValue === 'function'
+        ? entity.properties.graphEdgeId.getValue()
+        : entity.properties.graphEdgeId
       return {
         type: 'edge',
-        edgeId: entity.properties.graphEdgeId.getValue(),
+        edgeId,
       }
     }
 

@@ -40,6 +40,12 @@ type UsePipe2DEditorMapInteractionsOptions = {
   dragging: Ref<PipePointMeta | null>
   addPointMode: Ref<boolean>
   deletePointMode: Ref<boolean>
+  addNodeMode: Ref<boolean>
+  placeGraphNodeAtScreen: (x: number, y: number) => boolean
+  pickGraphEntity: (screenPosition: { x: number; y: number }) => { type: 'node'; nodeId: string } | { type: 'edge'; edgeId: string } | null
+  selectGraphNode: (nodeId: string) => void
+  selectGraphEdge: (edgeId: string) => void
+  clearGraphSelection?: () => void
   snapEnabled: Ref<boolean>
   history: Ref<Lines[]>
   redoHistory: Ref<Lines[]>
@@ -494,6 +500,7 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
       const hasTraditionalEdit = options.addPointMode.value
         || options.deletePointMode.value
         || options.selectedPoint.value !== null
+        || options.addNodeMode.value
 
       const isMindmapActiveMode = (options.mindmapModeType?.value ?? 'idle') !== 'idle'
       const hasMindmapSelection =
@@ -501,6 +508,10 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
         (options.mindmapSelectedEdgeIds?.value.size ?? 0) > 0
 
       if (hasTraditionalEdit) {
+        // 退出 addNodeMode
+        if (options.addNodeMode.value) {
+          options.addNodeMode.value = false
+        }
         // 取消传统编辑状态
         endEditing()
       } else if (isMindmapActiveMode || hasMindmapSelection) {
@@ -553,6 +564,11 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
         return
       }
 
+      if (options.addNodeMode.value && !options.saving.value && options.selectedFeature.value) {
+        options.placeGraphNodeAtScreen(movement.position.x, movement.position.y)
+        return
+      }
+
       if (options.addPointMode.value && !options.saving.value && options.selectedFeature.value) {
         const point = options.screenToLonLat(movement.position)
         if (!point) return
@@ -574,7 +590,22 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
         return
       }
 
+      // 检查是否点中了图节点或图边
+      const graphHit = options.pickGraphEntity({ x: movement.position.x, y: movement.position.y })
+      if (graphHit?.type === 'node') {
+        options.selectGraphNode(graphHit.nodeId)
+        options.renderDraftGraphics()
+        return
+      }
+      if (graphHit?.type === 'edge') {
+        options.selectGraphEdge(graphHit.edgeId)
+        options.renderDraftGraphics()
+        return
+      }
+
       options.selectedPoint.value = null
+      // 点击空白区域时同步清除图节点/边的选中状态
+      options.clearGraphSelection?.()
       options.renderDraftGraphics()
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
 

@@ -136,10 +136,11 @@ export function useMindmapEditor(
     const [lon, lat] = point
     const node = graphEditor.addNode(lon, lat, type, { label: text })
 
-    // 选中新创建的节点
+    // 选中新创建的节点（同步两套选中状态）
     selectedNodeIds.value.clear()
     selectedEdgeIds.value.clear()
     selectedNodeIds.value.add(node.id)
+    graphEditor.selectNode(node.id)
   }
 
   function createChildNode(): void {
@@ -162,12 +163,13 @@ export function useMindmapEditor(
       { label: '新节点' }
     )
 
-    // 连接父节点和子节点
+    // 连接父节点到子节点
     graphEditor.addEdge(parentId, childNode.id, 'straight')
 
     // 选中新节点
     selectedNodeIds.value.clear()
     selectedNodeIds.value.add(childNode.id)
+    graphEditor.selectNode(childNode.id)
   }
 
   function createSiblingNode(): void {
@@ -190,16 +192,16 @@ export function useMindmapEditor(
       { label: '新节点' }
     )
 
-    // 查找兄弟节点的父节点
+    // 复用兄弟节点的父连接（共享同一父节点）
     const parentEdge = graphEditor.graph.value.edges.find(e => e.targetId === siblingId)
     if (parentEdge) {
-      // 连接父节点和新节点
       graphEditor.addEdge(parentEdge.sourceId, newNode.id, 'straight')
     }
 
     // 选中新节点
     selectedNodeIds.value.clear()
     selectedNodeIds.value.add(newNode.id)
+    graphEditor.selectNode(newNode.id)
   }
 
   function connectNodes(sourceId: string, targetId: string, type: EdgeType = 'straight'): void {
@@ -231,25 +233,36 @@ export function useMindmapEditor(
     selectedNodeIds.value.clear()
     selectedEdgeIds.value.clear()
     selectedNodeIds.value.add(nodeId)
+    graphEditor.selectNode(nodeId)
   }
 
   function selectEdge(edgeId: string): void {
     selectedNodeIds.value.clear()
     selectedEdgeIds.value.clear()
     selectedEdgeIds.value.add(edgeId)
+    graphEditor.selectEdge(edgeId)
   }
 
   function toggleNodeSelection(nodeId: string): void {
     if (selectedNodeIds.value.has(nodeId)) {
       selectedNodeIds.value.delete(nodeId)
+      if (selectedNodeIds.value.size === 0) {
+        graphEditor.clearSelection()
+      } else {
+        // 将 graphEditor 指向集合中仍然选中的任意一个节点
+        const remaining = Array.from(selectedNodeIds.value)[selectedNodeIds.value.size - 1]
+        graphEditor.selectNode(remaining)
+      }
     } else {
       selectedNodeIds.value.add(nodeId)
+      graphEditor.selectNode(nodeId)
     }
   }
 
   function clearSelection(): void {
     selectedNodeIds.value.clear()
     selectedEdgeIds.value.clear()
+    graphEditor.clearSelection()
   }
 
   function selectAll(): void {

@@ -58,6 +58,10 @@ type UsePipe2DEditorMapOptions = {
   mindmapHoveredEdgeId?: Ref<string | null>
   // 思维导图模式（用于 ESC 等全局按键冲突处理）
   mindmapModeType?: Ref<string>
+  // 思维导图选中操作回调（用于从 Cesium 路径同步回 mindmapEditor 内部状态）
+  mindmapSelectNode?: (nodeId: string) => void
+  mindmapSelectEdge?: (edgeId: string) => void
+  mindmapClearSelection?: () => void
 }
 
 export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
@@ -66,6 +70,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
   const selectedPoint = ref<PipePointMeta | null>(null)
   const dragging = ref<PipePointMeta | null>(null)
   const addPointMode = ref(false)
+  const addNodeMode = ref(false)
   const snapEnabled = ref(true)
   const history = ref<Lines[]>([])
   const redoHistory = ref<Lines[]>([])
@@ -82,6 +87,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
   })
   const hoveredLineIndex = ref<number | null>(null)
   const undergroundSliceEnabled = ref(false)
+  const mapReady = ref(false)
 
   let marsMap: any | null = null
   let mars3dLib: any | null = null
@@ -184,6 +190,18 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
 
   function screenToLonLat(screenPosition: Cesium.Cartesian2): Point | null {
     if (!viewer) return null
+
+    // 在 2D 模式下使用不同的拾取方法
+    if (viewer.scene.mode === Cesium.SceneMode.SCENE2D || viewer.scene.mode === Cesium.SceneMode.COLUMBUS_VIEW) {
+      // 2D 模式：直接使用相机拾取椭球体表面
+      const ellipsoid = viewer.scene.globe?.ellipsoid
+      if (!ellipsoid) return null
+      const cartesian = viewer.camera.pickEllipsoid(screenPosition, ellipsoid)
+      if (!cartesian) return null
+      return toLonLat(cartesian)
+    }
+
+    // 3D 模式：使用射线拾取地球表面
     const ray = viewer.camera.getPickRay(screenPosition)
     if (!ray) return null
     const cartesian = viewer.scene.globe.pick(ray, viewer.scene)
@@ -208,7 +226,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     | { type: 'edge'; edgeId: string }
     | { type: 'connectionPoint'; nodeId: string; direction: 'top' | 'right' | 'bottom' | 'left' }
     | null {
-    if (!viewer || !graphicLayer) return null
+    if (!viewer) return null
 
     // 使用 Cesium 的拾取功能
     const pickedObject = viewer.scene.pick(new Cesium.Cartesian2(screenPosition.x, screenPosition.y))
@@ -348,6 +366,44 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     dragging,
     addPointMode,
     deletePointMode,
+    addNodeMode,
+    placeGraphNodeAtScreen,
+    pickGraphEntity: (pos) => {
+      const result = pickEntity(pos)
+      if (!result) return null
+      if (result.type === 'node') return { type: 'node' as const, nodeId: result.nodeId }
+      if (result.type === 'edge') return { type: 'edge' as const, edgeId: result.edgeId }
+      return null
+    },
+    selectGraphNode: (nodeId: string) => {
+      editorGraph.selectNode(nodeId)
+      if (options.mindmapSelectNode) {
+        options.mindmapSelectNode(nodeId)
+      } else {
+        options.mindmapSelectedNodeIds?.value.clear()
+        options.mindmapSelectedEdgeIds?.value.clear()
+        options.mindmapSelectedNodeIds?.value.add(nodeId)
+      }
+    },
+    selectGraphEdge: (edgeId: string) => {
+      editorGraph.selectEdge(edgeId)
+      if (options.mindmapSelectEdge) {
+        options.mindmapSelectEdge(edgeId)
+      } else {
+        options.mindmapSelectedNodeIds?.value.clear()
+        options.mindmapSelectedEdgeIds?.value.clear()
+        options.mindmapSelectedEdgeIds?.value.add(edgeId)
+      }
+    },
+    clearGraphSelection: () => {
+      editorGraph.clearSelection()
+      if (options.mindmapClearSelection) {
+        options.mindmapClearSelection()
+      } else {
+        options.mindmapSelectedNodeIds?.value.clear()
+        options.mindmapSelectedEdgeIds?.value.clear()
+      }
+    },
     snapEnabled,
     history,
     redoHistory,
@@ -393,6 +449,22 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     renderDraftGraphics,
   })
 
+
+  function placeGraphNodeAtScreen(x: number, y: number): boolean {
+    const screen = new Cesium.Cartesian2(Math.round(x), Math.round(y))
+    const point = screenToLonLat(screen)
+    if (!point) return false
+    const node = editorGraph.addNode(point[0], point[1], 'default', { label: '新节点' })
+    editorGraph.selectNode(node.id)
+    if (options.mindmapSelectNode) {
+      options.mindmapSelectNode(node.id)
+    } else {
+      options.mindmapSelectedNodeIds?.value.clear()
+      options.mindmapSelectedEdgeIds?.value.clear()
+      options.mindmapSelectedNodeIds?.value.add(node.id)
+    }
+    return true
+  }
 
   function zoomByStep(delta: number) {
     if (!viewer) return
@@ -494,6 +566,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
   }
 
   function destroyMap() {
+    mapReady.value = false
     destroyInteractions()
     destroyDrawEvents()
     clearDragReleaseFallback()
@@ -512,6 +585,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     }
     marsMap = null
     mars3dLib = null
+    mapReady.value = false
   }
 
   async function ensureMapReady() {
@@ -606,6 +680,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
       bindDrawEvents()
       renderDraftGraphics()
       fitCurrentPipeView()
+      mapReady.value = true
     } catch (error) {
       mapError.value = error instanceof Error ? error.message : 'Mars3D 初始化失败'
     }
@@ -687,9 +762,11 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
 
   return {
     mapView,
+    mapReady,
     activeLineIndex,
     selectedPoint,
     addPointMode,
+    addNodeMode,
     snapEnabled,
     history,
     historyItems,
@@ -720,6 +797,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     toggleDeletePointMode,
     insertPointAtCanvasCenter,
     insertPointAtScreenPosition,
+    placeGraphNodeAtScreen,
     zoomIn,
     zoomOut,
     setZoomLevel,

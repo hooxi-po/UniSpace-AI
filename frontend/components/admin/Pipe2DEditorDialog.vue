@@ -142,8 +142,8 @@
           @update:relation-active-names="relationActiveNames = $event"
           @reset-draft="handleResetDraft"
           @save-geometry="saveGeometry"
-          :graph="editorGraph.graph.value"
-          :graph-selected="editorGraph.selected.value"
+          :graph="editorGraphValue"
+          :graph-selected="editorGraphSelected"
           @update-node="handleUpdateNode"
           @update-node-type="handleUpdateNodeType"
           @update-edge="handleUpdateEdge"
@@ -268,6 +268,18 @@ const mindmapHoveredNodeId = ref<string | null>(null)
 const mindmapHoveredEdgeId = ref<string | null>(null)
 const mindmapModeType = ref<string>('idle')
 
+// 思维导图选中回调持有者（由 mindmapEditor 初始化后赋值，通过闭包延迟调用）
+type MindmapSelectCallbacks = {
+  selectNode: (nodeId: string) => void
+  selectEdge: (edgeId: string) => void
+  clearSelection: () => void
+}
+const _mindmapSelectCbs: MindmapSelectCallbacks = {
+  selectNode: () => {},
+  selectEdge: () => {},
+  clearSelection: () => {},
+}
+
 // 初始化地图编辑器（传递思维导图状态引用）
 const {
   history,
@@ -301,6 +313,8 @@ const {
   toggleAddPointMode,
   insertPointAtCanvasCenter,
   insertPointAtScreenPosition,
+  placeGraphNodeAtScreen,
+  addNodeMode,
   zoomIn,
   zoomOut,
   setZoomLevel,
@@ -330,6 +344,10 @@ const {
   mindmapHoveredNodeId,
   mindmapHoveredEdgeId,
   mindmapModeType,
+  // 传递选中操作回调，确保 Cesium 路径同步回 mindmapEditor 内部状态
+  mindmapSelectNode: (nodeId: string) => _mindmapSelectCbs.selectNode(nodeId),
+  mindmapSelectEdge: (edgeId: string) => _mindmapSelectCbs.selectEdge(edgeId),
+  mindmapClearSelection: () => _mindmapSelectCbs.clearSelection(),
 })
 
 // 然后初始化思维导图编辑器（使用共享的 editorGraph 和状态引用）
@@ -337,6 +355,11 @@ const mindmapEditor = useMindmapEditor({
   draftLines,
   editorGraph, // 传递共享的图结构编辑器
 })
+
+// 将 mindmapEditor 的选中方法绑定到回调持有者，使 Cesium 路径能同步过来
+_mindmapSelectCbs.selectNode = (nodeId) => mindmapEditor.selectNode(nodeId)
+_mindmapSelectCbs.selectEdge = (edgeId) => mindmapEditor.selectEdge(edgeId)
+_mindmapSelectCbs.clearSelection = () => mindmapEditor.clearSelection()
 
 // 同步思维导图编辑器的状态到共享的 ref
 // 使用 watch 保持双向同步
@@ -396,6 +419,7 @@ const {
   mapCursorClass,
   mapView,
   addPointMode,
+  addNodeMode,
   deletePointMode,
   sceneMode,
   undergroundSliceEnabled,
@@ -403,6 +427,7 @@ const {
   toggleAddPointMode,
   toggleDeletePointMode,
   insertPointAtScreenPosition,
+  placeGraphNodeAtScreen,
   toggleSceneMode,
   setUndergroundSliceEnabled,
   setBasemapById,
@@ -625,6 +650,8 @@ const telemetryLatestText = computed(() => {
 })
 
 const selectedPipeIdText = computed(() => (selectedFeature.value ? String(selectedFeature.value.id) : '--'))
+const editorGraphValue = computed(() => editorGraph.graph.value)
+const editorGraphSelected = computed(() => editorGraph.selected.value)
 
 function formatMeters(meters: number) {
   if (!Number.isFinite(meters)) return '0 m'

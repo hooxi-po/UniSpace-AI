@@ -21,6 +21,7 @@ type UsePipe2DEditorWorkspaceOptions = {
   mapCursorClass: ComputedRef<string>
   mapView: Ref<PipeEditorMapView>
   addPointMode: Ref<boolean>
+  addNodeMode: Ref<boolean>
   deletePointMode: Ref<boolean>
   sceneMode: Ref<'2d' | '3d'>
   undergroundSliceEnabled: Ref<boolean>
@@ -28,6 +29,7 @@ type UsePipe2DEditorWorkspaceOptions = {
   toggleAddPointMode: () => void
   toggleDeletePointMode: () => void
   insertPointAtScreenPosition: (screenX: number, screenY: number) => boolean
+  placeGraphNodeAtScreen: (screenX: number, screenY: number) => boolean
   toggleSceneMode: () => void
   setUndergroundSliceEnabled: (enabled: boolean) => void
   setBasemapById: (id: string) => void
@@ -59,7 +61,7 @@ export function usePipe2DEditorWorkspace(options: UsePipe2DEditorWorkspaceOption
     }
 
     // 工具提示
-    if (activeTool.value === 'addNode') return '点击线段插入节点 | 按 Esc 取消'
+    if (activeTool.value === 'addNode') return '点击画布创建节点 | 按 Esc 退出'
     if (activeTool.value === 'addPipe') return '点击画布继续编辑管线节点 | 双击结束'
     if (activeTool.value === 'bindAsset') return '点击管线关联房产信息 | 按 Esc 取消'
     if (activeTool.value === 'annotate') return '点击位置添加批注 | 按 Esc 取消'
@@ -94,7 +96,8 @@ export function usePipe2DEditorWorkspace(options: UsePipe2DEditorWorkspaceOption
     options.mapContainerRef.value = el
   }
 
-  function setEditModes(targetAdd: boolean, targetDelete: boolean) {
+  function setEditModes(targetAdd: boolean, targetDelete: boolean, targetAddNode = false) {
+    options.addNodeMode.value = targetAddNode
     if (options.addPointMode.value !== targetAdd) {
       options.toggleAddPointMode()
     }
@@ -110,25 +113,29 @@ export function usePipe2DEditorWorkspace(options: UsePipe2DEditorWorkspaceOption
   function activateTool(tool: ToolKey) {
     activeTool.value = tool
     if (tool === 'select') {
-      setEditModes(false, false)
+      setEditModes(false, false, false)
       return
     }
-    if (tool === 'addNode' || tool === 'addPipe') {
-      setEditModes(true, false)
+    if (tool === 'addNode') {
+      setEditModes(false, false, true)
+      return
+    }
+    if (tool === 'addPipe') {
+      setEditModes(true, false, false)
       return
     }
     if (tool === 'bindAsset') {
-      setEditModes(false, false)
+      setEditModes(false, false, false)
       showPlanned('房产绑定')
       return
     }
     if (tool === 'annotate') {
-      setEditModes(false, false)
+      setEditModes(false, false, false)
       showPlanned('运维批注')
       return
     }
     if (tool === 'layer') {
-      setEditModes(false, false)
+      setEditModes(false, false, false)
       showPlanned('图层过滤')
       return
     }
@@ -157,9 +164,16 @@ export function usePipe2DEditorWorkspace(options: UsePipe2DEditorWorkspaceOption
     const rect = canvas.getBoundingClientRect()
     const screenX = clientX - rect.left
     const screenY = clientY - rect.top
-    const inserted = options.insertPointAtScreenPosition(screenX, screenY)
-    if (inserted) {
-      options.actionMessage.value = { type: 'ok', text: `已放置${tool === 'addNode' ? '节点' : '管线点'}` }
+    if (tool === 'addNode') {
+      const placed = options.placeGraphNodeAtScreen(screenX, screenY)
+      if (placed) {
+        options.actionMessage.value = { type: 'ok', text: '已放置节点' }
+      }
+    } else {
+      const inserted = options.insertPointAtScreenPosition(screenX, screenY)
+      if (inserted) {
+        options.actionMessage.value = { type: 'ok', text: '已放置管线点' }
+      }
     }
   }
 

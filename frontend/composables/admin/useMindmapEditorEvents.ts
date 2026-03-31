@@ -4,7 +4,6 @@
  * 处理鼠标、键盘事件，实现思维导图式的交互
  *
  * 核心交互：
- * - 双击空白：创建节点
  * - 双击节点：编辑文本
  * - Tab：创建子节点
  * - Enter：创建兄弟节点
@@ -174,13 +173,7 @@ export function useMindmapEditorEvents(
     const screenPos = { x: event.clientX, y: event.clientY }
     const target = pickEntity(screenPos)
 
-    if (!target) {
-      // 双击空白 → 创建节点
-      const point = screenToLonLat(screenPos)
-      if (point) {
-        editor.createNodeAt(point)
-      }
-    } else if (target.type === 'node' && target.nodeId) {
+    if (target?.type === 'node' && target.nodeId) {
       // 双击节点 → 编辑文本
       editor.enterEditTextMode(target.nodeId)
     }

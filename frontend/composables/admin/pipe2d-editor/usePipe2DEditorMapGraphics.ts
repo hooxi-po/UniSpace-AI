@@ -169,18 +169,32 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
       const isHovered = mindmapHoveredId === node.id
       const isSelected = isTraditionalSelected || isMindmapSelected
 
-      // 小圆点样式（统一为 8px，和 Lines 点一致）
-      const pixelSize = 8
-      const outlineWidth = isSelected ? 3 : 2
+      // 小圆点样式（和 Lines 点一致）
+      const visibleSize = isSelected ? 11 : 10
+      const outlineWidth = isSelected ? 2 : 1.5
       const outlineColor = isSelected
         ? Cesium.Color.fromCssColorString('#fbbf24')  // 选中时金色轮廓
-        : Cesium.Color.WHITE
+        : Cesium.Color.fromCssColorString('#e2e8f0')
+
+      // 透明点击区域（扩大点击范围）
+      const hitArea = viewer.entities.add({
+        position: options.toCartesian([node.lon, node.lat]),
+        point: {
+          pixelSize: isSelected ? 20 : 18,
+          color: Cesium.Color.fromCssColorString('#ffffff').withAlpha(0.01),
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        },
+        properties: {
+          graphNodeId: node.id,
+        },
+      })
+      currentGraphNodeEntities.push(hitArea)
 
       // 主节点圆点
       const circle = viewer.entities.add({
         position: options.toCartesian([node.lon, node.lat]),
         point: {
-          pixelSize,
+          pixelSize: visibleSize,
           color: Cesium.Color.fromCssColorString(color),
           outlineColor,
           outlineWidth,

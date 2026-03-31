@@ -163,8 +163,7 @@ export function useMindmapEditor(
       { label: '新节点' }
     )
 
-    // 连接父节点到子节点
-    graphEditor.addEdge(parentId, childNode.id, 'straight')
+    // 不自动连线，用户需要手动连接
 
     // 选中新节点
     selectedNodeIds.value.clear()
@@ -192,11 +191,7 @@ export function useMindmapEditor(
       { label: '新节点' }
     )
 
-    // 复用兄弟节点的父连接（共享同一父节点）
-    const parentEdge = graphEditor.graph.value.edges.find(e => e.targetId === siblingId)
-    if (parentEdge) {
-      graphEditor.addEdge(parentEdge.sourceId, newNode.id, 'straight')
-    }
+    // 不自动连线，用户需要手动连接
 
     // 选中新节点
     selectedNodeIds.value.clear()

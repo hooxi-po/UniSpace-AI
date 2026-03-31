@@ -61,7 +61,7 @@ export function usePipe2DEditorWorkspace(options: UsePipe2DEditorWorkspaceOption
     }
 
     // 工具提示
-    if (activeTool.value === 'addNode') return '点击画布创建节点 | 按 Esc 退出'
+    if (activeTool.value === 'addNode') return '点击画布创建设备节点（窨井/阀门/泵站等） | 按 Esc 退出'
     if (activeTool.value === 'addPipe') return '点击画布继续编辑管线节点 | 双击结束'
     if (activeTool.value === 'bindAsset') return '点击管线关联房产信息 | 按 Esc 取消'
     if (activeTool.value === 'annotate') return '点击位置添加批注 | 按 Esc 取消'

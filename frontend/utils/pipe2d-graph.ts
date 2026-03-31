@@ -22,22 +22,36 @@ export type NodeType =
 export type NodeAttributes = {
   label?: string
   elevation?: number      // 高程（米）
-  depth?: number          // 埋深（米）
   installDate?: string    // 安装日期 ISO
+  status?: 'normal' | 'warning' | 'error'  // 状态
+  notes?: string          // 备注
+
+  // 窨井专有属性
+  manholeType?: 'inspection' | 'drainage' | 'cable' | 'other'  // 窨井类型
+  manholeNo?: string      // 窨井编号
+  depth?: number          // 深度（米）
+  diameter?: number       // 直径（米）
   material?: string       // 材质
-  remark?: string         // 备注
-  // 阀门专有
-  valveNo?: string
-  valveStatus?: 'open' | 'closed' | 'partial'
-  // 检查井专有
-  manholeNo?: string
-  manholeDepth?: number
-  // 泵站专有
-  pumpPower?: number      // kW
-  pumpHead?: number       // m
-  // 水表专有
-  meterNo?: string
-  meterDiameter?: number  // mm
+  coverType?: string      // 井盖类型
+
+  // 阀门专有属性
+  valveType?: 'gate' | 'ball' | 'butterfly' | 'check'  // 阀门类型
+  valveNo?: string        // 阀门编号
+  valveSize?: number      // 口径（mm）
+  valveStatus?: 'open' | 'closed' | 'partial'  // 阀门状态
+
+  // 泵站专有属性
+  pumpCapacity?: number   // 流量（m³/h）
+  pumpPower?: number      // 功率（kW）
+  pumpHead?: number       // 扬程（m）
+  pumpStatus?: 'running' | 'stopped' | 'maintenance'
+
+  // 测点专有属性
+  sensorType?: 'pressure' | 'flow' | 'temperature' | 'level'
+  sensorId?: string       // 传感器ID
+  meterNo?: string        // 水表编号
+  meterDiameter?: number  // 水表口径（mm）
+
   // 可扩展
   [key: string]: unknown
 }

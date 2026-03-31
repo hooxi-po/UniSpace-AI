@@ -169,35 +169,20 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
       const isHovered = mindmapHoveredId === node.id
       const isSelected = isTraditionalSelected || isMindmapSelected
 
-      // 根据状态调整视觉效果
-      const pixelSize = isSelected ? 16 : (isHovered ? 13 : 10)
-      const outlineWidth = isSelected ? 4 : (isHovered ? 3 : 2)
-      const alpha = isSelected ? 1.0 : (isHovered ? 0.9 : 0.85)
-
-      // 选中时添加光晕效果
-      if (isSelected) {
-        const halo = viewer.entities.add({
-          position: options.toCartesian([node.lon, node.lat]),
-          point: {
-            pixelSize: 24,
-            color: Cesium.Color.fromCssColorString(color).withAlpha(0.3),
-            disableDepthTestDistance: Number.POSITIVE_INFINITY,
-          },
-          properties: {
-            graphNodeId: node.id,
-            isHalo: true,
-          },
-        })
-        currentGraphNodeEntities.push(halo)
-      }
+      // 小圆点样式（统一为 8px，和 Lines 点一致）
+      const pixelSize = 8
+      const outlineWidth = isSelected ? 3 : 2
+      const outlineColor = isSelected
+        ? Cesium.Color.fromCssColorString('#fbbf24')  // 选中时金色轮廓
+        : Cesium.Color.WHITE
 
       // 主节点圆点
       const circle = viewer.entities.add({
         position: options.toCartesian([node.lon, node.lat]),
         point: {
           pixelSize,
-          color: Cesium.Color.fromCssColorString(color).withAlpha(alpha),
-          outlineColor: isSelected ? Cesium.Color.fromCssColorString('#fbbf24') : Cesium.Color.WHITE,
+          color: Cesium.Color.fromCssColorString(color),
+          outlineColor,
           outlineWidth,
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
         },
@@ -207,99 +192,29 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
       })
       currentGraphNodeEntities.push(circle)
 
-      // 节点标签
-      const label = node.attributes.label || NODE_TYPE_LABELS[node.type] || NODE_TYPE_LABELS.default
-      const text = viewer.entities.add({
-        position: options.toCartesian([node.lon, node.lat]),
-        label: {
-          text: label,
-          font: isSelected ? '14px sans-serif' : '12px sans-serif',
-          fillColor: Cesium.Color.WHITE,
-          outlineColor: Cesium.Color.BLACK,
-          outlineWidth: 2,
-          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-          pixelOffset: new Cesium.Cartesian2(0, isSelected ? -22 : -18),
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-          scale: isSelected ? 1.1 : 1.0,
-        },
-        properties: {
-          graphNodeId: node.id,
-        },
-      })
-      currentGraphNodeEntities.push(text)
-
-      // 多选时显示选中数量标记
-      if (isMindmapSelected && mindmapSelectedIds.size > 1) {
-        const badge = viewer.entities.add({
+      // 节点标签（仅在选中或有自定义标签时显示）
+      const hasCustomLabel = node.attributes.label && node.attributes.label !== NODE_TYPE_LABELS[node.type]
+      if (isSelected || hasCustomLabel) {
+        const label = node.attributes.label || NODE_TYPE_LABELS[node.type] || NODE_TYPE_LABELS.default
+        const text = viewer.entities.add({
           position: options.toCartesian([node.lon, node.lat]),
           label: {
-            text: '✓',
-            font: '10px sans-serif',
-            fillColor: Cesium.Color.fromCssColorString('#10b981'),
-            backgroundColor: Cesium.Color.WHITE,
-            backgroundPadding: new Cesium.Cartesian2(3, 2),
-            showBackground: true,
-            pixelOffset: new Cesium.Cartesian2(12, -12),
+            text: label,
+            font: '12px sans-serif',
+            fillColor: Cesium.Color.WHITE,
+            outlineColor: Cesium.Color.BLACK,
+            outlineWidth: 2,
+            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+            pixelOffset: new Cesium.Cartesian2(0, -14),
             disableDepthTestDistance: Number.POSITIVE_INFINITY,
           },
           properties: {
             graphNodeId: node.id,
-            isBadge: true,
           },
         })
-        currentGraphNodeEntities.push(badge)
-      }
-
-      // 连接点渲染（悬停或选中时显示）
-      if (isSelected || isHovered) {
-        const connectionPointDistance = 20 // 连接点距离节点中心的像素距离
-        const directions: Array<{ name: 'top' | 'right' | 'bottom' | 'left'; offset: [number, number] }> = [
-          { name: 'top', offset: [0, -connectionPointDistance] },
-          { name: 'right', offset: [connectionPointDistance, 0] },
-          { name: 'bottom', offset: [0, connectionPointDistance] },
-          { name: 'left', offset: [-connectionPointDistance, 0] },
-        ]
-
-        for (const dir of directions) {
-          const connectionPoint = viewer.entities.add({
-            position: options.toCartesian([node.lon, node.lat]),
-            billboard: {
-              image: createConnectionPointCanvas(),
-              width: 12,
-              height: 12,
-              pixelOffset: new Cesium.Cartesian2(dir.offset[0], dir.offset[1]),
-              disableDepthTestDistance: Number.POSITIVE_INFINITY,
-            },
-            properties: {
-              graphNodeId: node.id,
-              isConnectionPoint: true,
-              direction: dir.name,
-            },
-          })
-          currentGraphNodeEntities.push(connectionPoint)
-        }
+        currentGraphNodeEntities.push(text)
       }
     }
-  }
-
-  // 创建连接点的 Canvas 图像
-  function createConnectionPointCanvas(): HTMLCanvasElement {
-    const canvas = document.createElement('canvas')
-    canvas.width = 12
-    canvas.height = 12
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return canvas
-
-    // 绘制圆形连接点
-    ctx.fillStyle = '#6366f1'
-    ctx.strokeStyle = '#ffffff'
-    ctx.lineWidth = 1.5
-    ctx.beginPath()
-    ctx.arc(6, 6, 4, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.stroke()
-
-    return canvas
   }
 
   function renderGraphEdgeEntities() {

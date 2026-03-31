@@ -578,7 +578,26 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
       }
 
       if (pointMeta) {
+        // 选中 Lines 点时，清除图节点/边选中
+        options.clearGraphSelection?.()
         selectPoint(pointMeta.lineIndex, pointMeta.pointIndex)
+        return
+      }
+
+      // 检查是否点中了图节点或图边
+      const graphHit = options.pickGraphEntity({ x: movement.position.x, y: movement.position.y })
+      if (graphHit?.type === 'node') {
+        // 选中图节点时，清除 Lines 点选中
+        options.selectedPoint.value = null
+        options.selectGraphNode(graphHit.nodeId)
+        options.renderDraftGraphics()
+        return
+      }
+      if (graphHit?.type === 'edge') {
+        // 选中图边时，清除 Lines 点选中
+        options.selectedPoint.value = null
+        options.selectGraphEdge(graphHit.edgeId)
+        options.renderDraftGraphics()
         return
       }
 
@@ -586,19 +605,6 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
       if (lineMeta) {
         options.activeLineIndex.value = lineMeta.lineIndex
         options.startEditingActiveLine()
-        options.renderDraftGraphics()
-        return
-      }
-
-      // 检查是否点中了图节点或图边
-      const graphHit = options.pickGraphEntity({ x: movement.position.x, y: movement.position.y })
-      if (graphHit?.type === 'node') {
-        options.selectGraphNode(graphHit.nodeId)
-        options.renderDraftGraphics()
-        return
-      }
-      if (graphHit?.type === 'edge') {
-        options.selectGraphEdge(graphHit.edgeId)
         options.renderDraftGraphics()
         return
       }

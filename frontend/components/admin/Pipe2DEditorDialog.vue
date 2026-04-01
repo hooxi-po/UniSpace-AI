@@ -126,7 +126,7 @@
           :is-dirty="isDirty"
           @collapse-panel="panelCollapsed = true"
           @toggle-section="togglePanelSection"
-          @update:selected-feature-id="selectedFeatureId = $event"
+          @update:selected-feature-id="handleSelectedFeatureIdChange"
           @refresh="loadPipes"
           @focus="fitCurrentPipeView"
           @start-rename="startRename"
@@ -745,6 +745,15 @@ function cancelRename() {
 
 function togglePanelSection(key: PanelSectionKey) {
   panelSectionCollapsed.value[key] = !panelSectionCollapsed.value[key]
+}
+
+function handleSelectedFeatureIdChange(nextId: string) {
+  const normalized = String(nextId || '')
+  if (!normalized || normalized === selectedFeatureId.value) return
+  selectedFeatureId.value = normalized
+  // 切换管道时清理图层选中态，避免旧选中影响新管道操作
+  editorGraph.clearSelection()
+  mindmapEditor.clearSelection()
 }
 
 function handleMenuInsert() {

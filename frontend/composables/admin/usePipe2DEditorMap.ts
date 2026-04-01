@@ -731,8 +731,10 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
       hideContextMenu()
       hoverLengthHint.value.visible = false
       exitDrawMode()
-      // 用新加载的 draftLines 重新推断图结构
-      editorGraph.initFromLines(options.draftLines.value)
+      // 直接基于当前 feature geometry 初始化图，避免切换时读取到旧 draftLines
+      const feature = options.selectedFeature.value
+      const linesFromFeature = feature ? geometryToLines(feature.geometry) : []
+      editorGraph.initFromLines(linesFromFeature)
       renderDraftGraphics()
       fitCurrentPipeView()
     },

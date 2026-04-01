@@ -126,7 +126,7 @@
           :is-dirty="isDirty"
           @collapse-panel="panelCollapsed = true"
           @toggle-section="togglePanelSection"
-          @update:selected-feature-id="selectedFeatureId = $event"
+          @update:selected-feature-id="handleSelectedFeatureIdChange"
           @refresh="loadPipes"
           @focus="fitCurrentPipeView"
           @start-rename="startRename"
@@ -286,7 +286,6 @@ const {
   mapView,
   mapReady,
   activeLineIndex,
-  selectedPoint,
   mapCursorClass,
   isDirty,
   canUndo,
@@ -541,8 +540,10 @@ const displayPipeName = computed(() => {
 })
 
 const selectedPointLabel = computed(() => {
-  if (!selectedPoint.value) return '无'
-  return `L${selectedPoint.value.lineIndex + 1}-P${selectedPoint.value.pointIndex + 1}`
+  const sel = editorGraph.selected.value
+  if (!sel) return '无'
+  if (sel.kind === 'node') return `节点 ${sel.nodeId}`
+  return `管段 ${sel.edgeId}`
 })
 
 const selectedFeatureTypeTag = computed(() => {
@@ -744,6 +745,15 @@ function cancelRename() {
 
 function togglePanelSection(key: PanelSectionKey) {
   panelSectionCollapsed.value[key] = !panelSectionCollapsed.value[key]
+}
+
+function handleSelectedFeatureIdChange(nextId: string) {
+  const normalized = String(nextId || '')
+  if (!normalized || normalized === selectedFeatureId.value) return
+  selectedFeatureId.value = normalized
+  // 切换管道时清理图层选中态，避免旧选中影响新管道操作
+  editorGraph.clearSelection()
+  mindmapEditor.clearSelection()
 }
 
 function handleMenuInsert() {

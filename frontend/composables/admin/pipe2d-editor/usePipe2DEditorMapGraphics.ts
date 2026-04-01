@@ -12,7 +12,6 @@ import {
   resolvePipeBaseColor,
   toLineFromGraphic,
   toLonLat,
-  type PipePointMeta,
 } from './pipe2d-editor-map-shared'
 
 // 节点类型颜色映射
@@ -42,10 +41,9 @@ type UsePipe2DEditorMapGraphicsOptions = {
   selectedFeature: ComputedRef<GeoJsonFeature | null>
   draftLines: Ref<Lines>
   activeLineIndex: Ref<number>
-  selectedPoint: Ref<PipePointMeta | null>
   hoveredLineIndex: Ref<number | null>
   setSkipDraftLinesWatch: (next: boolean) => void
-  dragging: Ref<PipePointMeta | null>
+  draggingNodeId: Ref<string | null>
   setCameraControlsEnabled: (enabled: boolean) => void
   clearDragReleaseFallback: () => void
   installDragReleaseFallback: () => void
@@ -66,7 +64,6 @@ type UsePipe2DEditorMapGraphicsOptions = {
 export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOptions) {
   const lineGraphicMap = new Map<number, any>()
   const currentLineEntities: Cesium.Entity[] = []
-  const currentPointEntities: Cesium.Entity[] = []
   let layerEventsBound = false
   let dragEditHistoryPushed = false
   let dragEditStartLines: Lines | null = null
@@ -111,11 +108,7 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
     for (const entity of currentLineEntities) {
       viewer.entities.remove(entity)
     }
-    for (const entity of currentPointEntities) {
-      viewer.entities.remove(entity)
-    }
     currentLineEntities.length = 0
-    currentPointEntities.length = 0
     clearGraphEntities()
   }
 
@@ -169,35 +162,34 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
       const isHovered = mindmapHoveredId === node.id
       const isSelected = isTraditionalSelected || isMindmapSelected
 
-      // 根据状态调整视觉效果
-      const pixelSize = isSelected ? 16 : (isHovered ? 13 : 10)
-      const outlineWidth = isSelected ? 4 : (isHovered ? 3 : 2)
-      const alpha = isSelected ? 1.0 : (isHovered ? 0.9 : 0.85)
+      // 小圆点样式（和 Lines 点一致）
+      const visibleSize = isSelected ? 11 : 10
+      const outlineWidth = isSelected ? 2 : 1.5
+      const outlineColor = isSelected
+        ? Cesium.Color.fromCssColorString('#fbbf24')  // 选中时金色轮廓
+        : Cesium.Color.fromCssColorString('#e2e8f0')
 
-      // 选中时添加光晕效果
-      if (isSelected) {
-        const halo = viewer.entities.add({
-          position: options.toCartesian([node.lon, node.lat]),
-          point: {
-            pixelSize: 24,
-            color: Cesium.Color.fromCssColorString(color).withAlpha(0.3),
-            disableDepthTestDistance: Number.POSITIVE_INFINITY,
-          },
-          properties: {
-            graphNodeId: node.id,
-            isHalo: true,
-          },
-        })
-        currentGraphNodeEntities.push(halo)
-      }
+      // 透明点击区域（扩大点击范围）
+      const hitArea = viewer.entities.add({
+        position: options.toCartesian([node.lon, node.lat]),
+        point: {
+          pixelSize: isSelected ? 20 : 18,
+          color: Cesium.Color.fromCssColorString('#ffffff').withAlpha(0.01),
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        },
+        properties: {
+          graphNodeId: node.id,
+        },
+      })
+      currentGraphNodeEntities.push(hitArea)
 
       // 主节点圆点
       const circle = viewer.entities.add({
         position: options.toCartesian([node.lon, node.lat]),
         point: {
-          pixelSize,
-          color: Cesium.Color.fromCssColorString(color).withAlpha(alpha),
-          outlineColor: isSelected ? Cesium.Color.fromCssColorString('#fbbf24') : Cesium.Color.WHITE,
+          pixelSize: visibleSize,
+          color: Cesium.Color.fromCssColorString(color),
+          outlineColor,
           outlineWidth,
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
         },
@@ -207,99 +199,29 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
       })
       currentGraphNodeEntities.push(circle)
 
-      // 节点标签
-      const label = node.attributes.label || NODE_TYPE_LABELS[node.type] || NODE_TYPE_LABELS.default
-      const text = viewer.entities.add({
-        position: options.toCartesian([node.lon, node.lat]),
-        label: {
-          text: label,
-          font: isSelected ? '14px sans-serif' : '12px sans-serif',
-          fillColor: Cesium.Color.WHITE,
-          outlineColor: Cesium.Color.BLACK,
-          outlineWidth: 2,
-          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-          pixelOffset: new Cesium.Cartesian2(0, isSelected ? -22 : -18),
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-          scale: isSelected ? 1.1 : 1.0,
-        },
-        properties: {
-          graphNodeId: node.id,
-        },
-      })
-      currentGraphNodeEntities.push(text)
-
-      // 多选时显示选中数量标记
-      if (isMindmapSelected && mindmapSelectedIds.size > 1) {
-        const badge = viewer.entities.add({
+      // 节点标签（仅在选中或有自定义标签时显示）
+      const hasCustomLabel = node.attributes.label && node.attributes.label !== NODE_TYPE_LABELS[node.type]
+      if (isSelected || hasCustomLabel) {
+        const label = node.attributes.label || NODE_TYPE_LABELS[node.type] || NODE_TYPE_LABELS.default
+        const text = viewer.entities.add({
           position: options.toCartesian([node.lon, node.lat]),
           label: {
-            text: '✓',
-            font: '10px sans-serif',
-            fillColor: Cesium.Color.fromCssColorString('#10b981'),
-            backgroundColor: Cesium.Color.WHITE,
-            backgroundPadding: new Cesium.Cartesian2(3, 2),
-            showBackground: true,
-            pixelOffset: new Cesium.Cartesian2(12, -12),
+            text: label,
+            font: '12px sans-serif',
+            fillColor: Cesium.Color.WHITE,
+            outlineColor: Cesium.Color.BLACK,
+            outlineWidth: 2,
+            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+            pixelOffset: new Cesium.Cartesian2(0, -14),
             disableDepthTestDistance: Number.POSITIVE_INFINITY,
           },
           properties: {
             graphNodeId: node.id,
-            isBadge: true,
           },
         })
-        currentGraphNodeEntities.push(badge)
-      }
-
-      // 连接点渲染（悬停或选中时显示）
-      if (isSelected || isHovered) {
-        const connectionPointDistance = 20 // 连接点距离节点中心的像素距离
-        const directions: Array<{ name: 'top' | 'right' | 'bottom' | 'left'; offset: [number, number] }> = [
-          { name: 'top', offset: [0, -connectionPointDistance] },
-          { name: 'right', offset: [connectionPointDistance, 0] },
-          { name: 'bottom', offset: [0, connectionPointDistance] },
-          { name: 'left', offset: [-connectionPointDistance, 0] },
-        ]
-
-        for (const dir of directions) {
-          const connectionPoint = viewer.entities.add({
-            position: options.toCartesian([node.lon, node.lat]),
-            billboard: {
-              image: createConnectionPointCanvas(),
-              width: 12,
-              height: 12,
-              pixelOffset: new Cesium.Cartesian2(dir.offset[0], dir.offset[1]),
-              disableDepthTestDistance: Number.POSITIVE_INFINITY,
-            },
-            properties: {
-              graphNodeId: node.id,
-              isConnectionPoint: true,
-              direction: dir.name,
-            },
-          })
-          currentGraphNodeEntities.push(connectionPoint)
-        }
+        currentGraphNodeEntities.push(text)
       }
     }
-  }
-
-  // 创建连接点的 Canvas 图像
-  function createConnectionPointCanvas(): HTMLCanvasElement {
-    const canvas = document.createElement('canvas')
-    canvas.width = 12
-    canvas.height = 12
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return canvas
-
-    // 绘制圆形连接点
-    ctx.fillStyle = '#6366f1'
-    ctx.strokeStyle = '#ffffff'
-    ctx.lineWidth = 1.5
-    ctx.beginPath()
-    ctx.arc(6, 6, 4, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.stroke()
-
-    return canvas
   }
 
   function renderGraphEdgeEntities() {
@@ -422,120 +344,15 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
     layerEventsBound = true
     const eventType = mars3dLib.EventType as Record<string, string>
 
+    // Mars3D 图层点击：激活对应折线
     graphicLayer.on(eventType.click, (event: any) => {
       const lineIndex = lineIndexOfGraphic(event?.graphic)
       if (lineIndex < 0) return
       options.activeLineIndex.value = lineIndex
-      const clickedPoint = event?.cartesian ? toLonLat(event.cartesian as Cesium.Cartesian3) : null
-      if (clickedPoint) {
-        const line = options.draftLines.value[lineIndex]
-        if (line?.length) {
-          const pointIndex = getNearestPointIndex(line, clickedPoint)
-          if (pointIndex >= 0) {
-            options.selectedPoint.value = { lineIndex, pointIndex }
-          }
-        }
-      }
       if (typeof graphicLayer.startEditing === 'function' && event?.graphic) {
         graphicLayer.startEditing(event.graphic)
       }
       renderDraftGraphics()
-    })
-
-    // 防抖同步处理器：使用 requestAnimationFrame 限制更新频率
-    const debouncedSyncHandler = (event: any) => {
-      pendingSyncEvent = event
-
-      if (syncRafId !== null) return  // 已有待处理的更新
-
-      syncRafId = requestAnimationFrame(() => {
-        const evt = pendingSyncEvent
-        syncRafId = null
-        pendingSyncEvent = null
-
-        if (!evt) return
-
-        const lineIndex = lineIndexOfGraphic(evt?.graphic)
-        if (lineIndex >= 0) {
-          options.activeLineIndex.value = lineIndex
-        }
-        syncDraftLinesFromLayer()
-        const currentLine = options.draftLines.value[options.activeLineIndex.value]
-        if (currentLine?.length) {
-          let pointIndex = currentLine.length - 1
-          if (evt?.cartesian) {
-            pointIndex = getNearestPointIndex(currentLine, toLonLat(evt.cartesian as Cesium.Cartesian3))
-          } else if (dragEditStartLines) {
-            const changedIndex = getChangedPointIndex(
-              dragEditStartLines[options.activeLineIndex.value],
-              currentLine,
-            )
-            if (changedIndex >= 0) pointIndex = changedIndex
-          }
-          options.selectedPoint.value = { lineIndex: options.activeLineIndex.value, pointIndex }
-        }
-      })
-    }
-
-    // 立即同步处理器：用于非拖拽操作（添加/删除点）
-    const immediateSyncHandler = (event: any) => {
-      const lineIndex = lineIndexOfGraphic(event?.graphic)
-      if (lineIndex >= 0) {
-        options.activeLineIndex.value = lineIndex
-      }
-      syncDraftLinesFromLayer()
-      const currentLine = options.draftLines.value[options.activeLineIndex.value]
-      if (currentLine?.length) {
-        let pointIndex = currentLine.length - 1
-        if (event?.cartesian) {
-          pointIndex = getNearestPointIndex(currentLine, toLonLat(event.cartesian as Cesium.Cartesian3))
-        } else if (dragEditStartLines) {
-          const changedIndex = getChangedPointIndex(
-            dragEditStartLines[options.activeLineIndex.value],
-            currentLine,
-          )
-          if (changedIndex >= 0) pointIndex = changedIndex
-        }
-        options.selectedPoint.value = { lineIndex: options.activeLineIndex.value, pointIndex }
-      }
-    }
-
-    if (eventType.editMovePoint) graphicLayer.on(eventType.editMovePoint, (event: any) => {
-      debouncedSyncHandler(event)  // 使用防抖版本
-      options.dragging.value = null
-      options.setCameraControlsEnabled(true)
-      options.clearDragReleaseFallback()
-    })
-    if (eventType.editAddPoint) graphicLayer.on(eventType.editAddPoint, immediateSyncHandler)  // 添加点立即同步
-    if (eventType.editRemovePoint) graphicLayer.on(eventType.editRemovePoint, immediateSyncHandler)  // 删除点立即同步
-    if (eventType.editStop) graphicLayer.on(eventType.editStop, () => {
-      // 取消待处理的防抖更新
-      if (syncRafId !== null) {
-        cancelAnimationFrame(syncRafId)
-        syncRafId = null
-        pendingSyncEvent = null
-      }
-      syncDraftLinesFromLayer()
-      options.dragging.value = null
-      dragEditHistoryPushed = false
-      dragEditStartLines = null
-      options.setCameraControlsEnabled(true)
-      options.clearDragReleaseFallback()
-    })
-    if (eventType.editMouseUp) graphicLayer.on(eventType.editMouseUp, () => {
-      options.dragging.value = null
-      options.setCameraControlsEnabled(true)
-      options.clearDragReleaseFallback()
-    })
-    if (eventType.editMouseDown) graphicLayer.on(eventType.editMouseDown, () => {
-      if (!dragEditHistoryPushed) {
-        options.pushHistory()
-        dragEditHistoryPushed = true
-        dragEditStartLines = cloneLines(options.draftLines.value)
-      }
-      options.dragging.value = options.selectedPoint.value || { lineIndex: options.activeLineIndex.value, pointIndex: 0 }
-      options.setCameraControlsEnabled(false)
-      options.installDragReleaseFallback()
     })
   }
 
@@ -561,9 +378,9 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
             clampToGround: true,
           },
           attr: { lineIndex },
-          hasEdit: true,
-          hasMoveEdit: true,
-          hasMidPoint: true,
+          hasEdit: false,
+          hasMoveEdit: false,
+          hasMidPoint: false,
         })
         ;(graphic as any).__pipeLineMeta = { lineIndex }
         if (graphic.entity) {
@@ -572,33 +389,6 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
         graphicLayer.addGraphic(graphic)
         lineGraphicMap.set(lineIndex, graphic)
       })
-
-      const viewer = options.getViewer()
-      if (viewer && options.selectedPoint.value) {
-        const line = options.draftLines.value[options.selectedPoint.value.lineIndex]
-        const point = line?.[options.selectedPoint.value.pointIndex]
-        if (point) {
-          const halo = viewer.entities.add({
-            position: options.toCartesian(point),
-            point: {
-              pixelSize: 18,
-              color: Cesium.Color.fromCssColorString('#6366f1').withAlpha(0.3),
-              disableDepthTestDistance: Number.POSITIVE_INFINITY,
-            },
-          })
-          const core = viewer.entities.add({
-            position: options.toCartesian(point),
-            point: {
-              pixelSize: 10,
-              color: Cesium.Color.fromCssColorString('#6366f1'),
-              outlineColor: Cesium.Color.fromCssColorString('#e2e8f0'),
-              outlineWidth: 2,
-              disableDepthTestDistance: Number.POSITIVE_INFINITY,
-            },
-          })
-          currentPointEntities.push(halo, core)
-        }
-      }
 
       startEditingActiveLine()
       renderGraphEdgeEntities()
@@ -639,59 +429,6 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
       })
       ;(lineHitEntity as any).__pipeLineMeta = { lineIndex }
       currentLineEntities.push(lineHitEntity)
-
-      line.forEach((point, pointIndex) => {
-        const active = options.selectedPoint.value?.lineIndex === lineIndex
-          && options.selectedPoint.value?.pointIndex === pointIndex
-        if (active) {
-          const haloEntity = viewer.entities.add({
-            position: options.toCartesian(point),
-            point: {
-              pixelSize: 19,
-              color: Cesium.Color.fromCssColorString('#6366f1').withAlpha(0.3),
-              disableDepthTestDistance: Number.POSITIVE_INFINITY,
-            },
-          })
-          ;(haloEntity as any).__pipePointMeta = { lineIndex, pointIndex }
-          currentPointEntities.push(haloEntity)
-        }
-        const shadowEntity = viewer.entities.add({
-          position: options.toCartesian(point),
-          point: {
-            pixelSize: active ? 13 : 12,
-            color: Cesium.Color.fromCssColorString('#1e293b').withAlpha(0.14),
-            disableDepthTestDistance: Number.POSITIVE_INFINITY,
-          },
-        })
-        ;(shadowEntity as any).__pipePointMeta = { lineIndex, pointIndex }
-        currentPointEntities.push(shadowEntity)
-
-        const pointHitEntity = viewer.entities.add({
-          position: options.toCartesian(point),
-          point: {
-            pixelSize: active ? 20 : 18,
-            color: Cesium.Color.fromCssColorString('#ffffff').withAlpha(0.01),
-            disableDepthTestDistance: Number.POSITIVE_INFINITY,
-          },
-        })
-        ;(pointHitEntity as any).__pipePointMeta = { lineIndex, pointIndex }
-        currentPointEntities.push(pointHitEntity)
-
-        const pointEntity = viewer.entities.add({
-          position: options.toCartesian(point),
-          point: {
-            pixelSize: active ? 11 : 10,
-            color: active
-              ? Cesium.Color.fromCssColorString('#6366f1')
-              : Cesium.Color.fromCssColorString('#60a5fa'),
-            outlineColor: Cesium.Color.fromCssColorString('#e2e8f0'),
-            outlineWidth: active ? 2 : 1.5,
-            disableDepthTestDistance: Number.POSITIVE_INFINITY,
-          },
-        })
-        ;(pointEntity as any).__pipePointMeta = { lineIndex, pointIndex }
-        currentPointEntities.push(pointEntity)
-      })
     })
 
     renderGraphEdgeEntities()
@@ -711,7 +448,6 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
     dragEditStartLines = null
     lineGraphicMap.clear()
     currentLineEntities.length = 0
-    currentPointEntities.length = 0
     currentGraphNodeEntities.length = 0
     currentGraphEdgeEntities.length = 0
     previewLineEntity = null

@@ -38,10 +38,10 @@ const selectedEdge = computed<PipeEdge | null>(() => {
 
 const nodeTypeOptions: { value: NodeType; label: string }[] = [
   { value: 'default', label: '普通节点' },
+  { value: 'manhole', label: '窨井' },
   { value: 'valve', label: '阀门' },
-  { value: 'manhole', label: '检查井' },
   { value: 'pump', label: '泵站' },
-  { value: 'meter', label: '计量装置' },
+  { value: 'meter', label: '测点' },
   { value: 'junction', label: 'T形接口' },
 ]
 
@@ -80,22 +80,58 @@ function onEdgeAttrChange(key: keyof EdgeAttributes, event: Event) {
       <label>标签</label>
       <input :value="selectedNode.attributes.label ?? ''" class="graph-panel__input" placeholder="节点名称" @change="onNodeAttrChange('label', $event)" />
     </div>
-    <div class="graph-panel__field">
-      <label>埋深 (m)</label>
-      <input type="number" :value="selectedNode.attributes.depth ?? ''" class="graph-panel__input" placeholder="米" step="0.1" @change="onNodeAttrChange('depth', $event)" />
-    </div>
-    <div class="graph-panel__field">
-      <label>高程 (m)</label>
-      <input type="number" :value="selectedNode.attributes.elevation ?? ''" class="graph-panel__input" placeholder="米" step="0.1" @change="onNodeAttrChange('elevation', $event)" />
-    </div>
-    <div class="graph-panel__field">
-      <label>材质</label>
-      <input :value="selectedNode.attributes.material ?? ''" class="graph-panel__input" placeholder="材质" @change="onNodeAttrChange('material', $event)" />
-    </div>
+
+    <!-- 窨井专属字段 -->
+    <template v-if="selectedNode.type === 'manhole'">
+      <div class="graph-panel__field">
+        <label>窨井类型</label>
+        <select :value="selectedNode.attributes.manholeType ?? 'inspection'" class="graph-panel__select" @change="onNodeAttrChange('manholeType', $event)">
+          <option value="inspection">检查井</option>
+          <option value="drainage">排水井</option>
+          <option value="cable">电缆井</option>
+          <option value="other">其他</option>
+        </select>
+      </div>
+      <div class="graph-panel__field">
+        <label>窨井编号</label>
+        <input :value="selectedNode.attributes.manholeNo ?? ''" class="graph-panel__input" placeholder="编号" @change="onNodeAttrChange('manholeNo', $event)" />
+      </div>
+      <div class="graph-panel__field">
+        <label>深度 (m)</label>
+        <input type="number" :value="selectedNode.attributes.depth ?? ''" class="graph-panel__input" placeholder="米" step="0.1" @change="onNodeAttrChange('depth', $event)" />
+      </div>
+      <div class="graph-panel__field">
+        <label>直径 (m)</label>
+        <input type="number" :value="selectedNode.attributes.diameter ?? ''" class="graph-panel__input" placeholder="米" step="0.1" @change="onNodeAttrChange('diameter', $event)" />
+      </div>
+      <div class="graph-panel__field">
+        <label>材质</label>
+        <input :value="selectedNode.attributes.material ?? ''" class="graph-panel__input" placeholder="混凝土/砖砌等" @change="onNodeAttrChange('material', $event)" />
+      </div>
+      <div class="graph-panel__field">
+        <label>井盖类型</label>
+        <input :value="selectedNode.attributes.coverType ?? ''" class="graph-panel__input" placeholder="铸铁/复合材料等" @change="onNodeAttrChange('coverType', $event)" />
+      </div>
+    </template>
+
+    <!-- 阀门专属字段 -->
     <template v-if="selectedNode.type === 'valve'">
       <div class="graph-panel__field">
+        <label>阀门类型</label>
+        <select :value="selectedNode.attributes.valveType ?? 'gate'" class="graph-panel__select" @change="onNodeAttrChange('valveType', $event)">
+          <option value="gate">闸阀</option>
+          <option value="ball">球阀</option>
+          <option value="butterfly">蝶阀</option>
+          <option value="check">止回阀</option>
+        </select>
+      </div>
+      <div class="graph-panel__field">
         <label>阀门编号</label>
-        <input :value="selectedNode.attributes.valveNo ?? ''" class="graph-panel__input" @change="onNodeAttrChange('valveNo', $event)" />
+        <input :value="selectedNode.attributes.valveNo ?? ''" class="graph-panel__input" placeholder="编号" @change="onNodeAttrChange('valveNo', $event)" />
+      </div>
+      <div class="graph-panel__field">
+        <label>口径 (mm)</label>
+        <input type="number" :value="selectedNode.attributes.valveSize ?? ''" class="graph-panel__input" placeholder="毫米" step="1" @change="onNodeAttrChange('valveSize', $event)" />
       </div>
       <div class="graph-panel__field">
         <label>阀门状态</label>
@@ -106,25 +142,76 @@ function onEdgeAttrChange(key: keyof EdgeAttributes, event: Event) {
         </select>
       </div>
     </template>
-    <template v-if="selectedNode.type === 'manhole'">
+
+    <!-- 泵站专属字段 -->
+    <template v-if="selectedNode.type === 'pump'">
       <div class="graph-panel__field">
-        <label>检查井编号</label>
-        <input :value="selectedNode.attributes.manholeNo ?? ''" class="graph-panel__input" @change="onNodeAttrChange('manholeNo', $event)" />
+        <label>流量 (m³/h)</label>
+        <input type="number" :value="selectedNode.attributes.pumpCapacity ?? ''" class="graph-panel__input" placeholder="立方米/小时" step="1" @change="onNodeAttrChange('pumpCapacity', $event)" />
       </div>
       <div class="graph-panel__field">
-        <label>井深 (m)</label>
-        <input type="number" :value="selectedNode.attributes.manholeDepth ?? ''" class="graph-panel__input" step="0.1" @change="onNodeAttrChange('manholeDepth', $event)" />
+        <label>功率 (kW)</label>
+        <input type="number" :value="selectedNode.attributes.pumpPower ?? ''" class="graph-panel__input" placeholder="千瓦" step="0.1" @change="onNodeAttrChange('pumpPower', $event)" />
+      </div>
+      <div class="graph-panel__field">
+        <label>扬程 (m)</label>
+        <input type="number" :value="selectedNode.attributes.pumpHead ?? ''" class="graph-panel__input" placeholder="米" step="0.1" @change="onNodeAttrChange('pumpHead', $event)" />
+      </div>
+      <div class="graph-panel__field">
+        <label>运行状态</label>
+        <select :value="selectedNode.attributes.pumpStatus ?? 'stopped'" class="graph-panel__select" @change="onNodeAttrChange('pumpStatus', $event)">
+          <option value="running">运行中</option>
+          <option value="stopped">停止</option>
+          <option value="maintenance">维护中</option>
+        </select>
       </div>
     </template>
+
+    <!-- 测点专属字段 -->
     <template v-if="selectedNode.type === 'meter'">
       <div class="graph-panel__field">
-        <label>仪表编号</label>
-        <input :value="selectedNode.attributes.meterNo ?? ''" class="graph-panel__input" @change="onNodeAttrChange('meterNo', $event)" />
+        <label>传感器类型</label>
+        <select :value="selectedNode.attributes.sensorType ?? 'pressure'" class="graph-panel__select" @change="onNodeAttrChange('sensorType', $event)">
+          <option value="pressure">压力</option>
+          <option value="flow">流量</option>
+          <option value="temperature">温度</option>
+          <option value="level">液位</option>
+        </select>
+      </div>
+      <div class="graph-panel__field">
+        <label>传感器ID</label>
+        <input :value="selectedNode.attributes.sensorId ?? ''" class="graph-panel__input" placeholder="传感器ID" @change="onNodeAttrChange('sensorId', $event)" />
+      </div>
+      <div class="graph-panel__field">
+        <label>水表编号</label>
+        <input :value="selectedNode.attributes.meterNo ?? ''" class="graph-panel__input" placeholder="水表编号" @change="onNodeAttrChange('meterNo', $event)" />
+      </div>
+      <div class="graph-panel__field">
+        <label>水表口径 (mm)</label>
+        <input type="number" :value="selectedNode.attributes.meterDiameter ?? ''" class="graph-panel__input" placeholder="毫米" step="1" @change="onNodeAttrChange('meterDiameter', $event)" />
       </div>
     </template>
+
+    <!-- 通用字段 -->
+    <div class="graph-panel__field">
+      <label>高程 (m)</label>
+      <input type="number" :value="selectedNode.attributes.elevation ?? ''" class="graph-panel__input" placeholder="米" step="0.1" @change="onNodeAttrChange('elevation', $event)" />
+    </div>
+    <div class="graph-panel__field">
+      <label>安装日期</label>
+      <input type="date" :value="selectedNode.attributes.installDate ?? ''" class="graph-panel__input" @change="onNodeAttrChange('installDate', $event)" />
+    </div>
+    <div class="graph-panel__field">
+      <label>状态</label>
+      <select :value="selectedNode.attributes.status ?? 'normal'" class="graph-panel__select" @change="onNodeAttrChange('status', $event)">
+        <option value="normal">正常</option>
+        <option value="warning">警告</option>
+        <option value="error">故障</option>
+      </select>
+    </div>
     <div class="graph-panel__field">
       <label>备注</label>
-      <input :value="selectedNode.attributes.remark ?? ''" class="graph-panel__input" placeholder="备注" @change="onNodeAttrChange('remark', $event)" />
+      <textarea :value="selectedNode.attributes.notes ?? ''" class="graph-panel__textarea" placeholder="备注信息" rows="3" @change="onNodeAttrChange('notes', $event)"></textarea>
     </div>
     <button class="graph-panel__delete" type="button" @click="emit('remove-node', selectedNode.id)">删除节点</button>
   </div>
@@ -186,7 +273,8 @@ function onEdgeAttrChange(key: keyof EdgeAttributes, event: Event) {
   color: var(--color-text-secondary, #64748b);
 }
 .graph-panel__input,
-.graph-panel__select {
+.graph-panel__select,
+.graph-panel__textarea {
   width: 100%;
   padding: 4px 6px;
   font-size: 12px;
@@ -195,11 +283,17 @@ function onEdgeAttrChange(key: keyof EdgeAttributes, event: Event) {
   background: var(--color-bg, #fff);
   color: var(--color-text, #1e293b);
   outline: none;
+  font-family: inherit;
 }
 .graph-panel__input:focus,
-.graph-panel__select:focus {
+.graph-panel__select:focus,
+.graph-panel__textarea:focus {
   border-color: #6366f1;
   box-shadow: 0 0 0 2px #6366f133;
+}
+.graph-panel__textarea {
+  resize: vertical;
+  min-height: 60px;
 }
 .graph-panel__toggle {
   width: 100%;

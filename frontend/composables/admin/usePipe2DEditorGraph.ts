@@ -115,6 +115,62 @@ export function usePipe2DEditorGraph(options: {
   }
 
   // ---------------------------------------------------------------------------
+  // 复合操作：插点（分裂边）/ 删点（合并边）
+  // ---------------------------------------------------------------------------
+
+  /**
+   * 在一条边的中间插入新节点（适用于"插点"操作）。
+   * 将原边 src→tgt 分裂为 src→new 和 new→tgt 两段，新节点自动选中。
+   */
+  function insertNodeOnEdge(edgeId: string, lon: number, lat: number): PipeNode | null {
+    const edge = graph.value.edges.find(e => e.id === edgeId)
+    if (!edge) return null
+    pushGraphHistory()
+    const newNode = createNode(nextNodeId(), lon, lat)
+    graph.value.nodes.push(newNode)
+    // 移除原边
+    graph.value.edges = graph.value.edges.filter(e => e.id !== edgeId)
+    // 创建两段新边，继承原边的属性
+    const edgeA = createEdge(nextEdgeId(), edge.sourceId, newNode.id, 'straight', [], null, { ...edge.attributes })
+    const edgeB = createEdge(nextEdgeId(), newNode.id, edge.targetId, 'straight', [], null, { ...edge.attributes })
+    graph.value.edges.push(edgeA, edgeB)
+    selected.value = { kind: 'node', nodeId: newNode.id }
+    return newNode
+  }
+
+  /**
+   * 删除节点并合并其两侧的边（适用于"删点"操作）。
+   * - 度 = 2：删节点，合并两边为一条（端点 A→B）
+   * - 度 = 1：删节点及其唯一边（删末端点）
+   * - 度 = 0 或 > 2：仅删节点及全部相关边
+   */
+  function removeNodeMergeEdge(nodeId: string) {
+    const node = graph.value.nodes.find(n => n.id === nodeId)
+    if (!node) return
+    pushGraphHistory()
+    const connectedEdges = graph.value.edges.filter(e => e.sourceId === nodeId || e.targetId === nodeId)
+    if (connectedEdges.length === 2) {
+      // 找到另外两个端节点
+      const edgeA = connectedEdges[0]
+      const edgeB = connectedEdges[1]
+      const otherA = edgeA.sourceId === nodeId ? edgeA.targetId : edgeA.sourceId
+      const otherB = edgeB.sourceId === nodeId ? edgeB.targetId : edgeB.sourceId
+      // 移除原两边
+      graph.value.edges = graph.value.edges.filter(e => e.id !== edgeA.id && e.id !== edgeB.id)
+      // 合并为一条新边
+      const merged = createEdge(nextEdgeId(), otherA, otherB, 'straight', [], null, { ...edgeA.attributes })
+      graph.value.edges.push(merged)
+    } else {
+      // 度 ≠ 2：直接删除全部相关边
+      graph.value.edges = graph.value.edges.filter(e => e.sourceId !== nodeId && e.targetId !== nodeId)
+    }
+    graph.value.nodes = graph.value.nodes.filter(n => n.id !== nodeId)
+    if (selected.value?.kind === 'node' && selected.value.nodeId === nodeId) {
+      selected.value = null
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // 节点操作
   // ---------------------------------------------------------------------------
 
@@ -278,6 +334,8 @@ export function usePipe2DEditorGraph(options: {
     removeNode,
     updateNode,
     moveNode,
+    insertNodeOnEdge,
+    removeNodeMergeEdge,
     // edges
     addEdge,
     removeEdge,

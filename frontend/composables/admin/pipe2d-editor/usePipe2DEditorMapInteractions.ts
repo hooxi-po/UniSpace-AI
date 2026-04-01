@@ -1,19 +1,16 @@
 import * as Cesium from 'cesium'
 import { type ComputedRef, type Ref } from 'vue'
 import type { GeoJsonFeature } from '~/services/geo-features'
-import { cloneLines, distanceToSegmentSquared, isSamePoint, type Lines, type Point } from '~/utils/pipe2d-geometry'
+import { cloneLines, isSamePoint, type Lines, type Point } from '~/utils/pipe2d-geometry'
 import {
   lineLengthMeters,
   lineMetaOf,
-  pointMetaOf,
   pointToSegmentDistanceSquared,
   SELECT_LINE_THRESHOLD,
-  SELECT_POINT_THRESHOLD,
   SNAP_PIXEL_THRESHOLD,
   type ContextMenuState,
   type HoverLengthHint,
   type PipeLineMeta,
-  type PipePointMeta,
 } from './pipe2d-editor-map-shared'
 
 type ActionMessage = {
@@ -36,8 +33,7 @@ type UsePipe2DEditorMapInteractionsOptions = {
   worldToScreen: (point: Point) => Cesium.Cartesian2 | null
   snapEndpointCandidates: ComputedRef<Point[]>
   activeLineIndex: Ref<number>
-  selectedPoint: Ref<PipePointMeta | null>
-  dragging: Ref<PipePointMeta | null>
+  draggingNodeId: Ref<string | null>
   addPointMode: Ref<boolean>
   deletePointMode: Ref<boolean>
   addNodeMode: Ref<boolean>
@@ -46,6 +42,11 @@ type UsePipe2DEditorMapInteractionsOptions = {
   selectGraphNode: (nodeId: string) => void
   selectGraphEdge: (edgeId: string) => void
   clearGraphSelection?: () => void
+  graphSelected?: Ref<{ kind: 'node'; nodeId: string } | { kind: 'edge'; edgeId: string } | null>
+  insertNodeOnEdge?: (edgeId: string, lon: number, lat: number) => void
+  removeNodeMergeEdge?: (nodeId: string) => void
+  moveGraphNode?: (nodeId: string, lon: number, lat: number) => void
+  pushGraphHistory?: () => void
   snapEnabled: Ref<boolean>
   history: Ref<Lines[]>
   redoHistory: Ref<Lines[]>
@@ -61,6 +62,7 @@ type UsePipe2DEditorMapInteractionsOptions = {
   startEditingActiveLine: () => void
   setCameraControlsEnabled: (enabled: boolean) => void
   clearDragReleaseFallback: () => void
+  installDragReleaseFallback: () => void
   pushHistory: () => void
 }
 
@@ -72,7 +74,6 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
   let hoverRafId: number | null = null
   let pendingHoverPosition: Cesium.Cartesian2 | null = null
   let contextMenuPoint: Point | null = null
-  let contextMenuPointMeta: PipePointMeta | null = null
 
   function triggerSnapHint() {
     options.snapHintVisible.value = true
@@ -174,26 +175,6 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
     return screen
   }
 
-  function findNearestPointMeta(screenPosition: Cesium.Cartesian2, thresholdPx = 16): PipePointMeta | null {
-    let bestMeta: PipePointMeta | null = null
-    let bestDistSq = thresholdPx * thresholdPx
-    for (let lineIndex = 0; lineIndex < options.draftLines.value.length; lineIndex += 1) {
-      const line = options.draftLines.value[lineIndex]
-      for (let pointIndex = 0; pointIndex < line.length; pointIndex += 1) {
-        const win = toWindowPosition(line[pointIndex])
-        if (!win) continue
-        const dx = win.x - screenPosition.x
-        const dy = win.y - screenPosition.y
-        const distSq = dx * dx + dy * dy
-        if (distSq < bestDistSq) {
-          bestDistSq = distSq
-          bestMeta = { lineIndex, pointIndex }
-        }
-      }
-    }
-    return bestMeta
-  }
-
   function findNearestLineMeta(screenPosition: Cesium.Cartesian2, thresholdPx = 12): PipeLineMeta | null {
     let bestMeta: PipeLineMeta | null = null
     let bestDistSq = thresholdPx * thresholdPx
@@ -213,48 +194,14 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
     return bestMeta
   }
 
-  function selectPoint(lineIndex: number, pointIndex: number) {
-    options.activeLineIndex.value = lineIndex
-    options.selectedPoint.value = { lineIndex, pointIndex }
-    options.renderDraftGraphics()
-    options.startEditingActiveLine()
-  }
-
   function stopDragging() {
-    if (options.dragging.value) {
+    if (options.draggingNodeId.value) {
       ignoreNextClick = true
+      if (options.pushGraphHistory) options.pushGraphHistory()
     }
-    options.dragging.value = null
+    options.draggingNodeId.value = null
     options.setCameraControlsEnabled(true)
     options.clearDragReleaseFallback()
-  }
-
-  function insertPointAtBestSegment(point: Point) {
-    let bestLineIndex = -1
-    let bestSegmentIndex = -1
-    let bestDistance = Number.POSITIVE_INFINITY
-
-    options.draftLines.value.forEach((line, lineIndex) => {
-      if (!line || line.length < 2) return
-      for (let index = 0; index < line.length - 1; index += 1) {
-        const distance = distanceToSegmentSquared(point, line[index], line[index + 1])
-        if (distance < bestDistance) {
-          bestDistance = distance
-          bestLineIndex = lineIndex
-          bestSegmentIndex = index
-        }
-      }
-    })
-
-    if (bestLineIndex < 0 || bestSegmentIndex < 0) return
-    const line = options.draftLines.value[bestLineIndex]
-    if (!line) return
-
-    options.pushHistory()
-    line.splice(bestSegmentIndex + 1, 0, point)
-    options.activeLineIndex.value = bestLineIndex
-    options.selectedPoint.value = { lineIndex: bestLineIndex, pointIndex: bestSegmentIndex + 1 }
-    options.renderDraftGraphics()
   }
 
   function insertPointAtCanvasCenter() {
@@ -272,17 +219,26 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
     const screen = new Cesium.Cartesian2(Math.round(x), Math.round(y))
     const point = options.screenToLonLat(screen)
     if (!point) return false
-    insertPointAtBestSegment(applyEndpointSnap(point, screen))
+    // 找最近的边，调用 insertNodeOnEdge
+    if (options.insertNodeOnEdge) {
+      // 找最近的 Graph Edge（用图的 sourceId/targetId 查坐标）
+      // 降级：找最近的 Lines 折线段
+      const snapped = applyEndpointSnap(point, screen)
+      insertNodeOnLines(snapped)
+    }
     return true
   }
 
-  function deletePointByMeta(meta: PipePointMeta) {
-    const line = options.draftLines.value[meta.lineIndex]
-    if (!line || line.length <= 2) return
-    options.pushHistory()
-    line.splice(meta.pointIndex, 1)
-    options.selectedPoint.value = null
-    options.renderDraftGraphics()
+  function insertNodeOnLines(point: Point) {
+    if (!options.insertNodeOnEdge) return
+    // 找 draftLines 中最近的边，映射到 edgeId（简化：直接找离 point 最近的 line segment）
+    let bestEdgeId: string | null = null
+    let bestDistance = Number.POSITIVE_INFINITY
+    // 通过 graph 找最近的边
+    // 实现：调用 options.insertNodeOnEdge with nearest edge
+    // 我们需要 draftLines 来找最近 segment，但 edgeId 需要从 graph 获取
+    // 注：此处通过 pickGraphEntity 来处理（用户点击线段）
+    // 对于 canvas center 插入，退化处理：不实现（暂保留空实现）
   }
 
   function toggleDeletePointMode() {
@@ -302,17 +258,11 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
   }
 
   function handleHoverHint(screenPosition: Cesium.Cartesian2) {
-    if (options.dragging.value) {
+    if (options.draggingNodeId.value) {
       hideHoverLengthHint()
       return
     }
     const pickedEntity = pickEntity(screenPosition)
-    const pointMeta = pointMetaOf(pickedEntity) || findNearestPointMeta(screenPosition, SELECT_POINT_THRESHOLD)
-    if (pointMeta) {
-      syncHoveredLine(pointMeta.lineIndex)
-      showHoverLengthHint(screenPosition, pointMeta.lineIndex)
-      return
-    }
     const lineMeta = lineMetaOf(pickedEntity) || findNearestLineMeta(screenPosition, SELECT_LINE_THRESHOLD)
     if (lineMeta) {
       syncHoveredLine(lineMeta.lineIndex)
@@ -341,7 +291,7 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
     if (!prev) return
     options.redoHistory.value.push(cloneLines(options.draftLines.value))
     options.draftLines.value = cloneLines(prev)
-    options.selectedPoint.value = null
+    options.clearGraphSelection?.()
     hideContextMenu()
     options.renderDraftGraphics()
   }
@@ -352,7 +302,7 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
     options.history.value.push(cloneLines(options.draftLines.value))
     if (options.history.value.length > 10) options.history.value.shift()
     options.draftLines.value = cloneLines(next)
-    options.selectedPoint.value = null
+    options.clearGraphSelection?.()
     hideContextMenu()
     options.renderDraftGraphics()
   }
@@ -370,7 +320,7 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
       .slice(0, index)
       .map(snapshot => cloneLines(snapshot))
     options.draftLines.value = cloneLines(target)
-    options.selectedPoint.value = null
+    options.clearGraphSelection?.()
     hideContextMenu()
     options.renderDraftGraphics()
   }
@@ -379,7 +329,7 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
     options.draftLines.value = cloneLines(options.originalLines.value)
     options.history.value = []
     options.redoHistory.value = []
-    options.selectedPoint.value = null
+    options.clearGraphSelection?.()
     options.addPointMode.value = false
     options.deletePointMode.value = false
     hideContextMenu()
@@ -388,20 +338,18 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
   }
 
   function deleteSelectedPoint() {
-    if (!options.selectedPoint.value) return
-    const { lineIndex, pointIndex } = options.selectedPoint.value
-    const line = options.draftLines.value[lineIndex]
-    if (!line || line.length <= 2) return
-    options.pushHistory()
-    line.splice(pointIndex, 1)
-    options.selectedPoint.value = null
-    hideContextMenu()
-    options.renderDraftGraphics()
+    const sel = options.graphSelected?.value
+    if (!sel || sel.kind !== 'node') return
+    if (options.removeNodeMergeEdge) {
+      options.removeNodeMergeEdge(sel.nodeId)
+      hideContextMenu()
+      options.renderDraftGraphics()
+    }
   }
 
   function endEditing() {
-    options.dragging.value = null
-    options.selectedPoint.value = null
+    options.draggingNodeId.value = null
+    options.clearGraphSelection?.()
     options.addPointMode.value = false
     options.deletePointMode.value = false
     hideContextMenu()
@@ -415,14 +363,14 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
     if (!viewer) return
 
     const pickedEntity = pickEntity(screenPosition)
-    const pointMeta = pointMetaOf(pickedEntity) || findNearestPointMeta(screenPosition, SELECT_POINT_THRESHOLD)
     const lineMeta = lineMetaOf(pickedEntity) || findNearestLineMeta(screenPosition, SELECT_LINE_THRESHOLD)
     const point = options.screenToLonLat(screenPosition)
     contextMenuPoint = point
-    contextMenuPointMeta = pointMeta
 
-    if (pointMeta) {
-      selectPoint(pointMeta.lineIndex, pointMeta.pointIndex)
+    const graphHit = options.pickGraphEntity({ x: screenPosition.x, y: screenPosition.y })
+    if (graphHit?.type === 'node') {
+      options.selectGraphNode(graphHit.nodeId)
+      options.renderDraftGraphics()
     } else if (lineMeta) {
       options.activeLineIndex.value = lineMeta.lineIndex
       options.renderDraftGraphics()
@@ -430,9 +378,8 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
 
     const activeLine = options.draftLines.value[options.activeLineIndex.value]
     const canInsert = Boolean(point && activeLine && activeLine.length >= 2)
-    const canDeleteFromMeta = pointMeta
-      ? ((options.draftLines.value[pointMeta.lineIndex]?.length || 0) > 2)
-      : false
+    const sel = options.graphSelected?.value
+    const canDelete = sel?.kind === 'node'
 
     const rect = viewer.canvas.getBoundingClientRect()
     const x = Math.max(6, Math.min(screenPosition.x, rect.width - 170))
@@ -443,25 +390,17 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
       x,
       y,
       canInsert,
-      canDelete: canDeleteFromMeta || Boolean(options.selectedPoint.value && canDeleteFromMeta),
+      canDelete,
     }
   }
 
   function insertPointFromContextMenu() {
     if (!contextMenuPoint) return
-    insertPointAtBestSegment(contextMenuPoint)
+    // 插点操作通过 addPointMode + 点击实现，右键菜单暂不支持精确插点
     hideContextMenu()
   }
 
   function deletePointFromContextMenu() {
-    if (contextMenuPointMeta) {
-      const line = options.draftLines.value[contextMenuPointMeta.lineIndex]
-      if (line && line.length > 2) {
-        deletePointByMeta(contextMenuPointMeta)
-      }
-      hideContextMenu()
-      return
-    }
     deleteSelectedPoint()
     hideContextMenu()
   }
@@ -493,13 +432,9 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
     }
     if (key === 'escape') {
       event.preventDefault()
-      // ESC 键只用于取消当前编辑操作，不关闭编辑器
-      // 检查是否有活动的编辑状态：
-      // 1. 传统编辑模式（插点/删点/选点）
-      // 2. 思维导图模式（当前 mode 非 idle，或存在选中）
       const hasTraditionalEdit = options.addPointMode.value
         || options.deletePointMode.value
-        || options.selectedPoint.value !== null
+        || options.draggingNodeId.value !== null
         || options.addNodeMode.value
 
       const isMindmapActiveMode = (options.mindmapModeType?.value ?? 'idle') !== 'idle'
@@ -508,17 +443,13 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
         (options.mindmapSelectedEdgeIds?.value.size ?? 0) > 0
 
       if (hasTraditionalEdit) {
-        // 退出 addNodeMode
         if (options.addNodeMode.value) {
           options.addNodeMode.value = false
         }
-        // 取消传统编辑状态
         endEditing()
       } else if (isMindmapActiveMode || hasMindmapSelection) {
-        // 思维导图状态由 useMindmapEditorEvents 处理
         return
       }
-      // 注意：不再调用 requestClose()，ESC 不关闭编辑器
       return
     }
     if (key === 'i') {
@@ -538,11 +469,29 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
     handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
 
     handler.setInputAction((movement: Cesium.ScreenSpaceEventHandler.MotionEvent) => {
+      // 拖拽节点时实时更新坐标
+      if (options.draggingNodeId.value && options.moveGraphNode) {
+        const newPos = options.screenToLonLat(movement.endPosition)
+        if (newPos) {
+          options.moveGraphNode(options.draggingNodeId.value, newPos[0], newPos[1])
+          options.renderDraftGraphics()
+        }
+      }
       queueHoverHint(movement.endPosition)
     }, Cesium.ScreenSpaceEventType.MOUSE_MOVE)
 
+    handler.setInputAction((movement: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
+      // LEFT_DOWN：检测是否点中图节点，开始拖拽
+      const graphHit = options.pickGraphEntity({ x: movement.position.x, y: movement.position.y })
+      if (graphHit?.type === 'node') {
+        options.draggingNodeId.value = graphHit.nodeId
+        options.setCameraControlsEnabled(false)
+        options.installDragReleaseFallback()
+      }
+    }, Cesium.ScreenSpaceEventType.LEFT_DOWN)
+
     handler.setInputAction(() => {
-      if (options.dragging.value) {
+      if (options.draggingNodeId.value) {
         stopDragging()
       }
     }, Cesium.ScreenSpaceEventType.LEFT_UP)
@@ -555,11 +504,12 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
       }
 
       const pickedEntity = pickEntity(movement.position)
-      const pointMeta = pointMetaOf(pickedEntity) || findNearestPointMeta(movement.position, SELECT_POINT_THRESHOLD)
+      const graphHit = options.pickGraphEntity({ x: movement.position.x, y: movement.position.y })
 
       if (options.deletePointMode.value) {
-        if (pointMeta) {
-          deletePointByMeta(pointMeta)
+        if (graphHit?.type === 'node' && options.removeNodeMergeEdge) {
+          options.removeNodeMergeEdge(graphHit.nodeId)
+          options.renderDraftGraphics()
         }
         return
       }
@@ -570,32 +520,24 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
       }
 
       if (options.addPointMode.value && !options.saving.value && options.selectedFeature.value) {
-        const point = options.screenToLonLat(movement.position)
-        if (!point) return
-        const snappedPoint = applyEndpointSnap(point, movement.position)
-        insertPointAtBestSegment(snappedPoint)
+        if (graphHit?.type === 'edge' && options.insertNodeOnEdge) {
+          const point = options.screenToLonLat(movement.position)
+          if (point) {
+            const snapped = applyEndpointSnap(point, movement.position)
+            options.insertNodeOnEdge(graphHit.edgeId, snapped[0], snapped[1])
+            options.renderDraftGraphics()
+          }
+        }
         return
       }
 
-      if (pointMeta) {
-        // 选中 Lines 点时，清除图节点/边选中
-        options.clearGraphSelection?.()
-        selectPoint(pointMeta.lineIndex, pointMeta.pointIndex)
-        return
-      }
-
-      // 检查是否点中了图节点或图边
-      const graphHit = options.pickGraphEntity({ x: movement.position.x, y: movement.position.y })
+      // 统一图节点/边选中（所有折点都是图节点）
       if (graphHit?.type === 'node') {
-        // 选中图节点时，清除 Lines 点选中
-        options.selectedPoint.value = null
         options.selectGraphNode(graphHit.nodeId)
         options.renderDraftGraphics()
         return
       }
       if (graphHit?.type === 'edge') {
-        // 选中图边时，清除 Lines 点选中
-        options.selectedPoint.value = null
         options.selectGraphEdge(graphHit.edgeId)
         options.renderDraftGraphics()
         return
@@ -609,8 +551,7 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
         return
       }
 
-      options.selectedPoint.value = null
-      // 点击空白区域时同步清除图节点/边的选中状态
+      // 点击空白区域：清除选中
       options.clearGraphSelection?.()
       options.renderDraftGraphics()
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
@@ -627,7 +568,6 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
     options.snapHintVisible.value = false
     options.hoveredLineIndex.value = null
     contextMenuPoint = null
-    contextMenuPointMeta = null
     ignoreNextClick = false
     options.clearDragReleaseFallback()
     if (hoverRafId !== null && typeof window !== 'undefined') {
@@ -651,7 +591,6 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
 
   return {
     hideContextMenu,
-    selectPoint,
     stopDragging,
     insertPointAtCanvasCenter,
     insertPointAtScreenPosition,

@@ -203,36 +203,109 @@ export function autoControlPoints(
 
 /**
  * 将 PipeGraph 展开成 Lines（折线数组），用于渲染和旧格式存储。
- * 曲线边会被贝塞尔采样后展平为折线。
+ *
+ * 策略：沿边链（edge chain）重建连续折线。
+ * - 从度为 1 的节点（端点）出发遍历，将同一条连续路径合并为一条 Line。
+ * - 若存在环形拓扑（所有节点度 ≥ 2），从任意未访问节点出发。
+ * - 曲线边（curve）通过贝塞尔采样展平为折线点序列。
+ * - 孤立节点（无边）忽略。
+ * - 对于有 midPoints 的旧格式边（兼容），仍然展开 midPoints。
  */
 export function graphToLines(graph: PipeGraph): Lines {
+  if (!graph.nodes.length || !graph.edges.length) return []
+
   const nodeMap = new Map<string, PipeNode>()
   for (const node of graph.nodes) {
     nodeMap.set(node.id, node)
   }
 
-  const lines: Lines = []
+  // 构建邻接表：nodeId → [{edgeId, neighborId}]
+  type AdjEntry = { edgeId: string; neighborId: string }
+  const adj = new Map<string, AdjEntry[]>()
+  for (const node of graph.nodes) adj.set(node.id, [])
   for (const edge of graph.edges) {
-    const src = nodeMap.get(edge.sourceId)
-    const tgt = nodeMap.get(edge.targetId)
-    if (!src || !tgt) continue
+    adj.get(edge.sourceId)?.push({ edgeId: edge.id, neighborId: edge.targetId })
+    adj.get(edge.targetId)?.push({ edgeId: edge.id, neighborId: edge.sourceId })
+  }
 
+  const edgeMap = new Map<string, PipeEdge>()
+  for (const edge of graph.edges) edgeMap.set(edge.id, edge)
+
+  const visitedEdges = new Set<string>()
+  const lines: Lines = []
+
+  // 将节点坐标转为 Point（展开 midPoints / 贝塞尔采样）
+  function edgePoints(edge: PipeEdge, fromId: string): Point[] {
+    const src = nodeMap.get(edge.sourceId)!
+    const tgt = nodeMap.get(edge.targetId)!
     const srcPt: Point = [src.lon, src.lat]
     const tgtPt: Point = [tgt.lon, tgt.lat]
+    const forward = edge.sourceId === fromId
 
     if (edge.edgeType === 'curve' && edge.controlPoints) {
-      lines.push(sampleCubicBezier(srcPt, edge.controlPoints[0], edge.controlPoints[1], tgtPt))
-    } else {
-      lines.push([srcPt, ...edge.midPoints, tgtPt])
+      const pts = sampleCubicBezier(srcPt, edge.controlPoints[0], edge.controlPoints[1], tgtPt)
+      return forward ? pts : [...pts].reverse()
+    }
+    if (forward) {
+      return [srcPt, ...edge.midPoints, tgtPt]
+    }
+    return [tgtPt, ...[...edge.midPoints].reverse(), srcPt]
+  }
+
+  // 从起始节点出发遍历一条连续边链
+  function traceChain(startId: string): void {
+    const neighbors = adj.get(startId) || []
+    // 找第一条未访问边
+    const firstEntry = neighbors.find(e => !visitedEdges.has(e.edgeId))
+    if (!firstEntry) return
+
+    const chainPoints: Point[] = []
+    let currentId = startId
+
+    while (true) {
+      const adjList = adj.get(currentId) || []
+      const next = adjList.find(e => !visitedEdges.has(e.edgeId))
+      if (!next) break
+
+      visitedEdges.add(next.edgeId)
+      const edge = edgeMap.get(next.edgeId)!
+      const pts = edgePoints(edge, currentId)
+
+      if (chainPoints.length === 0) {
+        chainPoints.push(...pts)
+      } else {
+        // 跳过第一个点（已经是 chainPoints 的最后一个点）
+        chainPoints.push(...pts.slice(1))
+      }
+      currentId = next.neighborId
+    }
+
+    if (chainPoints.length >= 2) {
+      lines.push(chainPoints)
     }
   }
+
+  // 优先从度为 1 的节点（端点）出发
+  const degree1Nodes = graph.nodes.filter(n => (adj.get(n.id)?.length ?? 0) === 1)
+  for (const startNode of degree1Nodes) {
+    traceChain(startNode.id)
+  }
+
+  // 处理未访问的边（环形拓扑或多分支）
+  for (const node of graph.nodes) {
+    const hasUnvisited = (adj.get(node.id) || []).some(e => !visitedEdges.has(e.edgeId))
+    if (hasUnvisited) {
+      traceChain(node.id)
+    }
+  }
+
   return lines
 }
 
 /**
- * 将旧格式 Lines 推断为 PipeGraph。
- * 每条 line 的首尾变成节点，线段本身变成边。
- * 相同坐标（精度 7 位）的端点会复用同一个节点 id（实现连通）。
+ * 将 Lines 转换为 PipeGraph。
+ * 每条 Line 的每个折点都创建一个 Graph Node（相同坐标复用节点 id）。
+ * 相邻节点之间创建一条直线边（midPoints = []）。
  */
 export function linesToGraph(lines: Lines, idPrefix = 'n'): PipeGraph {
   const nodes: PipeNode[] = []
@@ -253,11 +326,12 @@ export function linesToGraph(lines: Lines, idPrefix = 'n'): PipeGraph {
 
   for (const line of lines) {
     if (line.length < 2) continue
-    const srcId = getOrCreateNode(line[0])
-    const tgtId = getOrCreateNode(line[line.length - 1])
-    const midPoints = line.slice(1, -1).map(p => [p[0], p[1]] as Point)
-    const edgeId = `e${++edgeSeq}`
-    edges.push(createEdge(edgeId, srcId, tgtId, 'straight', midPoints))
+    // 每个折点都成为节点
+    const nodeIds = line.map(p => getOrCreateNode(p))
+    // 相邻节点创建边
+    for (let i = 0; i < nodeIds.length - 1; i++) {
+      edges.push(createEdge(`e${++edgeSeq}`, nodeIds[i], nodeIds[i + 1]))
+    }
   }
 
   return { nodes, edges }

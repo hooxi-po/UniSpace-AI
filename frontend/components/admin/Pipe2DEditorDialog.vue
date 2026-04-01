@@ -286,7 +286,6 @@ const {
   mapView,
   mapReady,
   activeLineIndex,
-  selectedPoint,
   mapCursorClass,
   isDirty,
   canUndo,
@@ -541,8 +540,10 @@ const displayPipeName = computed(() => {
 })
 
 const selectedPointLabel = computed(() => {
-  if (!selectedPoint.value) return '无'
-  return `L${selectedPoint.value.lineIndex + 1}-P${selectedPoint.value.pointIndex + 1}`
+  const sel = editorGraph.selected.value
+  if (!sel) return '无'
+  if (sel.kind === 'node') return `节点 ${sel.nodeId}`
+  return `管段 ${sel.edgeId}`
 })
 
 const selectedFeatureTypeTag = computed(() => {

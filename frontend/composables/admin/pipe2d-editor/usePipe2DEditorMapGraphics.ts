@@ -12,7 +12,6 @@ import {
   resolvePipeBaseColor,
   toLineFromGraphic,
   toLonLat,
-  type PipePointMeta,
 } from './pipe2d-editor-map-shared'
 
 // 节点类型颜色映射
@@ -42,10 +41,9 @@ type UsePipe2DEditorMapGraphicsOptions = {
   selectedFeature: ComputedRef<GeoJsonFeature | null>
   draftLines: Ref<Lines>
   activeLineIndex: Ref<number>
-  selectedPoint: Ref<PipePointMeta | null>
   hoveredLineIndex: Ref<number | null>
   setSkipDraftLinesWatch: (next: boolean) => void
-  dragging: Ref<PipePointMeta | null>
+  draggingNodeId: Ref<string | null>
   setCameraControlsEnabled: (enabled: boolean) => void
   clearDragReleaseFallback: () => void
   installDragReleaseFallback: () => void
@@ -66,7 +64,6 @@ type UsePipe2DEditorMapGraphicsOptions = {
 export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOptions) {
   const lineGraphicMap = new Map<number, any>()
   const currentLineEntities: Cesium.Entity[] = []
-  const currentPointEntities: Cesium.Entity[] = []
   let layerEventsBound = false
   let dragEditHistoryPushed = false
   let dragEditStartLines: Lines | null = null
@@ -111,11 +108,7 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
     for (const entity of currentLineEntities) {
       viewer.entities.remove(entity)
     }
-    for (const entity of currentPointEntities) {
-      viewer.entities.remove(entity)
-    }
     currentLineEntities.length = 0
-    currentPointEntities.length = 0
     clearGraphEntities()
   }
 
@@ -351,120 +344,15 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
     layerEventsBound = true
     const eventType = mars3dLib.EventType as Record<string, string>
 
+    // Mars3D 图层点击：激活对应折线
     graphicLayer.on(eventType.click, (event: any) => {
       const lineIndex = lineIndexOfGraphic(event?.graphic)
       if (lineIndex < 0) return
       options.activeLineIndex.value = lineIndex
-      const clickedPoint = event?.cartesian ? toLonLat(event.cartesian as Cesium.Cartesian3) : null
-      if (clickedPoint) {
-        const line = options.draftLines.value[lineIndex]
-        if (line?.length) {
-          const pointIndex = getNearestPointIndex(line, clickedPoint)
-          if (pointIndex >= 0) {
-            options.selectedPoint.value = { lineIndex, pointIndex }
-          }
-        }
-      }
       if (typeof graphicLayer.startEditing === 'function' && event?.graphic) {
         graphicLayer.startEditing(event.graphic)
       }
       renderDraftGraphics()
-    })
-
-    // 防抖同步处理器：使用 requestAnimationFrame 限制更新频率
-    const debouncedSyncHandler = (event: any) => {
-      pendingSyncEvent = event
-
-      if (syncRafId !== null) return  // 已有待处理的更新
-
-      syncRafId = requestAnimationFrame(() => {
-        const evt = pendingSyncEvent
-        syncRafId = null
-        pendingSyncEvent = null
-
-        if (!evt) return
-
-        const lineIndex = lineIndexOfGraphic(evt?.graphic)
-        if (lineIndex >= 0) {
-          options.activeLineIndex.value = lineIndex
-        }
-        syncDraftLinesFromLayer()
-        const currentLine = options.draftLines.value[options.activeLineIndex.value]
-        if (currentLine?.length) {
-          let pointIndex = currentLine.length - 1
-          if (evt?.cartesian) {
-            pointIndex = getNearestPointIndex(currentLine, toLonLat(evt.cartesian as Cesium.Cartesian3))
-          } else if (dragEditStartLines) {
-            const changedIndex = getChangedPointIndex(
-              dragEditStartLines[options.activeLineIndex.value],
-              currentLine,
-            )
-            if (changedIndex >= 0) pointIndex = changedIndex
-          }
-          options.selectedPoint.value = { lineIndex: options.activeLineIndex.value, pointIndex }
-        }
-      })
-    }
-
-    // 立即同步处理器：用于非拖拽操作（添加/删除点）
-    const immediateSyncHandler = (event: any) => {
-      const lineIndex = lineIndexOfGraphic(event?.graphic)
-      if (lineIndex >= 0) {
-        options.activeLineIndex.value = lineIndex
-      }
-      syncDraftLinesFromLayer()
-      const currentLine = options.draftLines.value[options.activeLineIndex.value]
-      if (currentLine?.length) {
-        let pointIndex = currentLine.length - 1
-        if (event?.cartesian) {
-          pointIndex = getNearestPointIndex(currentLine, toLonLat(event.cartesian as Cesium.Cartesian3))
-        } else if (dragEditStartLines) {
-          const changedIndex = getChangedPointIndex(
-            dragEditStartLines[options.activeLineIndex.value],
-            currentLine,
-          )
-          if (changedIndex >= 0) pointIndex = changedIndex
-        }
-        options.selectedPoint.value = { lineIndex: options.activeLineIndex.value, pointIndex }
-      }
-    }
-
-    if (eventType.editMovePoint) graphicLayer.on(eventType.editMovePoint, (event: any) => {
-      debouncedSyncHandler(event)  // 使用防抖版本
-      options.dragging.value = null
-      options.setCameraControlsEnabled(true)
-      options.clearDragReleaseFallback()
-    })
-    if (eventType.editAddPoint) graphicLayer.on(eventType.editAddPoint, immediateSyncHandler)  // 添加点立即同步
-    if (eventType.editRemovePoint) graphicLayer.on(eventType.editRemovePoint, immediateSyncHandler)  // 删除点立即同步
-    if (eventType.editStop) graphicLayer.on(eventType.editStop, () => {
-      // 取消待处理的防抖更新
-      if (syncRafId !== null) {
-        cancelAnimationFrame(syncRafId)
-        syncRafId = null
-        pendingSyncEvent = null
-      }
-      syncDraftLinesFromLayer()
-      options.dragging.value = null
-      dragEditHistoryPushed = false
-      dragEditStartLines = null
-      options.setCameraControlsEnabled(true)
-      options.clearDragReleaseFallback()
-    })
-    if (eventType.editMouseUp) graphicLayer.on(eventType.editMouseUp, () => {
-      options.dragging.value = null
-      options.setCameraControlsEnabled(true)
-      options.clearDragReleaseFallback()
-    })
-    if (eventType.editMouseDown) graphicLayer.on(eventType.editMouseDown, () => {
-      if (!dragEditHistoryPushed) {
-        options.pushHistory()
-        dragEditHistoryPushed = true
-        dragEditStartLines = cloneLines(options.draftLines.value)
-      }
-      options.dragging.value = options.selectedPoint.value || { lineIndex: options.activeLineIndex.value, pointIndex: 0 }
-      options.setCameraControlsEnabled(false)
-      options.installDragReleaseFallback()
     })
   }
 
@@ -490,9 +378,9 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
             clampToGround: true,
           },
           attr: { lineIndex },
-          hasEdit: true,
-          hasMoveEdit: true,
-          hasMidPoint: true,
+          hasEdit: false,
+          hasMoveEdit: false,
+          hasMidPoint: false,
         })
         ;(graphic as any).__pipeLineMeta = { lineIndex }
         if (graphic.entity) {
@@ -501,33 +389,6 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
         graphicLayer.addGraphic(graphic)
         lineGraphicMap.set(lineIndex, graphic)
       })
-
-      const viewer = options.getViewer()
-      if (viewer && options.selectedPoint.value) {
-        const line = options.draftLines.value[options.selectedPoint.value.lineIndex]
-        const point = line?.[options.selectedPoint.value.pointIndex]
-        if (point) {
-          const halo = viewer.entities.add({
-            position: options.toCartesian(point),
-            point: {
-              pixelSize: 18,
-              color: Cesium.Color.fromCssColorString('#6366f1').withAlpha(0.3),
-              disableDepthTestDistance: Number.POSITIVE_INFINITY,
-            },
-          })
-          const core = viewer.entities.add({
-            position: options.toCartesian(point),
-            point: {
-              pixelSize: 10,
-              color: Cesium.Color.fromCssColorString('#6366f1'),
-              outlineColor: Cesium.Color.fromCssColorString('#e2e8f0'),
-              outlineWidth: 2,
-              disableDepthTestDistance: Number.POSITIVE_INFINITY,
-            },
-          })
-          currentPointEntities.push(halo, core)
-        }
-      }
 
       startEditingActiveLine()
       renderGraphEdgeEntities()
@@ -568,59 +429,6 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
       })
       ;(lineHitEntity as any).__pipeLineMeta = { lineIndex }
       currentLineEntities.push(lineHitEntity)
-
-      line.forEach((point, pointIndex) => {
-        const active = options.selectedPoint.value?.lineIndex === lineIndex
-          && options.selectedPoint.value?.pointIndex === pointIndex
-        if (active) {
-          const haloEntity = viewer.entities.add({
-            position: options.toCartesian(point),
-            point: {
-              pixelSize: 19,
-              color: Cesium.Color.fromCssColorString('#6366f1').withAlpha(0.3),
-              disableDepthTestDistance: Number.POSITIVE_INFINITY,
-            },
-          })
-          ;(haloEntity as any).__pipePointMeta = { lineIndex, pointIndex }
-          currentPointEntities.push(haloEntity)
-        }
-        const shadowEntity = viewer.entities.add({
-          position: options.toCartesian(point),
-          point: {
-            pixelSize: active ? 13 : 12,
-            color: Cesium.Color.fromCssColorString('#1e293b').withAlpha(0.14),
-            disableDepthTestDistance: Number.POSITIVE_INFINITY,
-          },
-        })
-        ;(shadowEntity as any).__pipePointMeta = { lineIndex, pointIndex }
-        currentPointEntities.push(shadowEntity)
-
-        const pointHitEntity = viewer.entities.add({
-          position: options.toCartesian(point),
-          point: {
-            pixelSize: active ? 20 : 18,
-            color: Cesium.Color.fromCssColorString('#ffffff').withAlpha(0.01),
-            disableDepthTestDistance: Number.POSITIVE_INFINITY,
-          },
-        })
-        ;(pointHitEntity as any).__pipePointMeta = { lineIndex, pointIndex }
-        currentPointEntities.push(pointHitEntity)
-
-        const pointEntity = viewer.entities.add({
-          position: options.toCartesian(point),
-          point: {
-            pixelSize: active ? 11 : 10,
-            color: active
-              ? Cesium.Color.fromCssColorString('#6366f1')
-              : Cesium.Color.fromCssColorString('#60a5fa'),
-            outlineColor: Cesium.Color.fromCssColorString('#e2e8f0'),
-            outlineWidth: active ? 2 : 1.5,
-            disableDepthTestDistance: Number.POSITIVE_INFINITY,
-          },
-        })
-        ;(pointEntity as any).__pipePointMeta = { lineIndex, pointIndex }
-        currentPointEntities.push(pointEntity)
-      })
     })
 
     renderGraphEdgeEntities()
@@ -640,7 +448,6 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
     dragEditStartLines = null
     lineGraphicMap.clear()
     currentLineEntities.length = 0
-    currentPointEntities.length = 0
     currentGraphNodeEntities.length = 0
     currentGraphEdgeEntities.length = 0
     previewLineEntity = null

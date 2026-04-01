@@ -21,7 +21,6 @@ import {
   type EditorSceneMode,
   type HistoryItem,
   type HoverLengthHint,
-  type PipePointMeta,
   zoomToHeight,
 } from '~/composables/admin/pipe2d-editor/pipe2d-editor-map-shared'
 import type { GeoJsonFeature } from '~/services/geo-features'
@@ -67,8 +66,7 @@ type UsePipe2DEditorMapOptions = {
 export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
   const mapView = ref<PipeEditorMapView>({ ...DEFAULT_VIEW })
   const activeLineIndex = ref(0)
-  const selectedPoint = ref<PipePointMeta | null>(null)
-  const dragging = ref<PipePointMeta | null>(null)
+  const draggingNodeId = ref<string | null>(null)
   const addPointMode = ref(false)
   const addNodeMode = ref(false)
   const snapEnabled = ref(true)
@@ -147,9 +145,9 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
   })
 
   const canDeletePoint = computed(() => {
-    if (!selectedPoint.value) return false
-    const line = options.draftLines.value[selectedPoint.value.lineIndex]
-    return Array.isArray(line) && line.length > 2
+    const sel = editorGraph.selected.value
+    if (!sel || sel.kind !== 'node') return false
+    return editorGraph.graph.value.nodes.some(n => n.id === sel.nodeId)
   })
 
   const canRedo = computed(() => redoHistory.value.length > 0)
@@ -165,7 +163,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
   })
 
   const mapCursorClass = computed(() => {
-    if (dragging.value) return 'canvas--editing'
+    if (draggingNodeId.value) return 'canvas--editing'
     return 'canvas--idle'
   })
 
@@ -287,7 +285,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     if (typeof window === 'undefined') return
     clearDragReleaseFallback()
     dragReleaseFallback = () => {
-      dragging.value = null
+      draggingNodeId.value = null
       setCameraControlsEnabled(true)
       clearDragReleaseFallback()
     }
@@ -312,12 +310,11 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
       selectedFeature: options.selectedFeature,
       draftLines: options.draftLines,
       activeLineIndex,
-      selectedPoint,
       hoveredLineIndex,
       setSkipDraftLinesWatch: (next) => {
         skipDraftLinesWatch = next
       },
-      dragging,
+      draggingNodeId,
       setCameraControlsEnabled,
       clearDragReleaseFallback,
       installDragReleaseFallback,
@@ -368,8 +365,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     worldToScreen,
     snapEndpointCandidates,
     activeLineIndex,
-    selectedPoint,
-    dragging,
+    draggingNodeId,
     addPointMode,
     deletePointMode,
     addNodeMode,
@@ -410,6 +406,11 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
         options.mindmapSelectedEdgeIds?.value.clear()
       }
     },
+    graphSelected: editorGraph.selected,
+    insertNodeOnEdge: editorGraph.insertNodeOnEdge,
+    removeNodeMergeEdge: editorGraph.removeNodeMergeEdge,
+    moveGraphNode: editorGraph.moveNode,
+    pushGraphHistory: editorGraph.pushGraphHistory,
     snapEnabled,
     history,
     redoHistory,
@@ -421,6 +422,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     startEditingActiveLine,
     setCameraControlsEnabled,
     clearDragReleaseFallback,
+    installDragReleaseFallback,
     pushHistory,
     // 传递思维导图状态（用于 ESC 键处理）
     mindmapSelectedNodeIds: options.mindmapSelectedNodeIds,
@@ -719,7 +721,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
   watch(
     () => options.selectedFeature.value?.id,
     () => {
-      selectedPoint.value = null
+      draggingNodeId.value = null
       hoveredLineIndex.value = null
       activeLineIndex.value = 0
       history.value = []
@@ -770,7 +772,6 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     mapView,
     mapReady,
     activeLineIndex,
-    selectedPoint,
     addPointMode,
     addNodeMode,
     snapEnabled,

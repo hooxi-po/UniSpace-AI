@@ -149,6 +149,80 @@ export function cloneGraph(graph: PipeGraph): PipeGraph {
   }
 }
 
+/**
+ * 兼容旧图结构：将 straight 边上的 midPoints 拆分为“相邻节点之间的多条边”。
+ * 这样每一段都可独立选中/删除，而不是只能选中首尾节点之间的整条边。
+ */
+export function normalizeLegacyMidPointEdges(graph: PipeGraph): PipeGraph {
+  const next = cloneGraph(graph)
+  if (!next.edges.some(e => e.edgeType === 'straight' && e.midPoints.length > 0)) {
+    return next
+  }
+
+  const nodeIds = new Set(next.nodes.map(n => n.id))
+  const edgeIds = new Set(next.edges.map(e => e.id))
+
+  const pointKey = (p: Point) => `${p[0].toFixed(8)},${p[1].toFixed(8)}`
+  const nodeByKey = new Map<string, PipeNode>()
+  for (const n of next.nodes) {
+    nodeByKey.set(pointKey([n.lon, n.lat]), n)
+  }
+
+  function createUniqueId(prefix: string, used: Set<string>) {
+    let seq = 1
+    let id = `${prefix}_${seq}`
+    while (used.has(id)) {
+      seq += 1
+      id = `${prefix}_${seq}`
+    }
+    used.add(id)
+    return id
+  }
+
+  function ensureNode(point: Point): PipeNode {
+    const key = pointKey(point)
+    const existed = nodeByKey.get(key)
+    if (existed) return existed
+    const node = createNode(createUniqueId('node', nodeIds), point[0], point[1], 'default', {})
+    next.nodes.push(node)
+    nodeByKey.set(key, node)
+    return node
+  }
+
+  const rebuiltEdges: PipeEdge[] = []
+  for (const edge of next.edges) {
+    if (edge.edgeType !== 'straight' || edge.midPoints.length === 0) {
+      rebuiltEdges.push(edge)
+      continue
+    }
+
+    const chainNodeIds: string[] = [edge.sourceId]
+    for (const p of edge.midPoints) {
+      const node = ensureNode([p[0], p[1]])
+      chainNodeIds.push(node.id)
+    }
+    chainNodeIds.push(edge.targetId)
+
+    for (let i = 0; i < chainNodeIds.length - 1; i += 1) {
+      const sourceId = chainNodeIds[i]
+      const targetId = chainNodeIds[i + 1]
+      if (sourceId === targetId) continue
+      rebuiltEdges.push(createEdge(
+        createUniqueId('edge', edgeIds),
+        sourceId,
+        targetId,
+        'straight',
+        [],
+        null,
+        { ...edge.attributes },
+      ))
+    }
+  }
+
+  next.edges = rebuiltEdges
+  return next
+}
+
 // ---------------------------------------------------------------------------
 // 贝塞尔曲线采样
 // ---------------------------------------------------------------------------
@@ -336,4 +410,3 @@ export function linesToGraph(lines: Lines, idPrefix = 'n'): PipeGraph {
 
   return { nodes, edges }
 }
-

@@ -269,6 +269,21 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
       const color = isSelected ? '#6366f1' : (isHovered ? '#818cf8' : '#94a3b8')
       const alpha = isSelected ? 1.0 : (isHovered ? 0.9 : 0.8)
 
+      // 透明命中层：提升边选中的拾取成功率
+      const hitArea = viewer.entities.add({
+        polyline: {
+          positions: positions.map(options.toCartesian),
+          width: Math.max(width + 14, 18),
+          material: Cesium.Color.WHITE.withAlpha(0.001),
+          clampToGround: true,
+        },
+        properties: {
+          graphEdgeId: edge.id,
+          isHitArea: true,
+        },
+      })
+      currentGraphEdgeEntities.push(hitArea)
+
       // 选中时添加底层光晕
       if (isSelected) {
         const haloPolyline = viewer.entities.add({

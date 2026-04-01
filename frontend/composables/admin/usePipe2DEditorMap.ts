@@ -226,42 +226,45 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     | null {
     if (!viewer) return null
 
-    // 使用 Cesium 的拾取功能
-    const pickedObject = viewer.scene.pick(new Cesium.Cartesian2(screenPosition.x, screenPosition.y))
-    if (!pickedObject || !pickedObject.id) return null
+    const screen = new Cesium.Cartesian2(screenPosition.x, screenPosition.y)
+    const picks = viewer.scene.drillPick(screen, 12) || []
 
-    // 检查是否是我们的图形对象
-    const entity = pickedObject.id
-    if (!entity.properties) return null
-
-    // 检查是否是连接点（优先级最高）
-    if (entity.properties.isConnectionPoint && entity.properties.isConnectionPoint.getValue()) {
-      return {
-        type: 'connectionPoint',
-        nodeId: entity.properties.graphNodeId.getValue(),
-        direction: entity.properties.direction.getValue(),
-      }
+    function readProperty(props: any, key: string) {
+      const value = props?.[key]
+      if (!value) return null
+      return typeof value.getValue === 'function' ? value.getValue() : value
     }
 
-    // 检查是否是节点
-    if (entity.properties.graphNodeId && !entity.properties.isHalo && !entity.properties.isBadge) {
-      const nodeId = typeof entity.properties.graphNodeId.getValue === 'function'
-        ? entity.properties.graphNodeId.getValue()
-        : entity.properties.graphNodeId
-      return {
-        type: 'node',
-        nodeId,
-      }
-    }
+    for (const picked of picks) {
+      const entity = (picked as any)?.id
+      const props = entity?.properties
+      if (!props) continue
 
-    // 检查是否是边
-    if (entity.properties.graphEdgeId && !entity.properties.isHalo) {
-      const edgeId = typeof entity.properties.graphEdgeId.getValue === 'function'
-        ? entity.properties.graphEdgeId.getValue()
-        : entity.properties.graphEdgeId
-      return {
-        type: 'edge',
-        edgeId,
+      const isConnectionPoint = Boolean(readProperty(props, 'isConnectionPoint'))
+      if (isConnectionPoint) {
+        return {
+          type: 'connectionPoint',
+          nodeId: String(readProperty(props, 'graphNodeId') || ''),
+          direction: readProperty(props, 'direction'),
+        }
+      }
+
+      const edgeId = readProperty(props, 'graphEdgeId')
+      const isHalo = Boolean(readProperty(props, 'isHalo'))
+      if (edgeId && !isHalo) {
+        return {
+          type: 'edge',
+          edgeId: String(edgeId),
+        }
+      }
+
+      const nodeId = readProperty(props, 'graphNodeId')
+      const isBadge = Boolean(readProperty(props, 'isBadge'))
+      if (nodeId && !isHalo && !isBadge) {
+        return {
+          type: 'node',
+          nodeId: String(nodeId),
+        }
       }
     }
 
@@ -409,6 +412,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     graphSelected: editorGraph.selected,
     insertNodeOnEdge: editorGraph.insertNodeOnEdge,
     removeNodeMergeEdge: editorGraph.removeNodeMergeEdge,
+    removeGraphEdge: editorGraph.removeEdge,
     moveGraphNode: editorGraph.moveNode,
     pushGraphHistory: editorGraph.pushGraphHistory,
     snapEnabled,

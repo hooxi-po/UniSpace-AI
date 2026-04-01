@@ -205,7 +205,7 @@ import { useMindmapEditorEvents } from '~/composables/admin/useMindmapEditorEven
 import { geoFeatureService, type GeoJsonFeature } from '~/services/geo-features'
 import { twinService } from '~/services/twin'
 import { type Lines } from '~/utils/pipe2d-geometry'
-import { type EdgeAttributes, type NodeAttributes, type NodeType } from '~/utils/pipe2d-graph'
+import { normalizeLegacyMidPointEdges, type EdgeAttributes, type NodeAttributes, type NodeType } from '~/utils/pipe2d-graph'
 
 const props = defineProps<{
   open: boolean
@@ -474,7 +474,7 @@ const {
   fitCurrentPipeView,
   graph: editorGraph.graph,
   restoreGraph: (g) => {
-    editorGraph.graph.value = g
+    editorGraph.graph.value = normalizeLegacyMidPointEdges(g)
     editorGraph.selected.value = null
   },
 })

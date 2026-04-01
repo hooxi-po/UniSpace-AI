@@ -45,6 +45,7 @@ type UsePipe2DEditorMapInteractionsOptions = {
   graphSelected?: Ref<{ kind: 'node'; nodeId: string } | { kind: 'edge'; edgeId: string } | null>
   insertNodeOnEdge?: (edgeId: string, lon: number, lat: number) => void
   removeNodeMergeEdge?: (nodeId: string) => void
+  removeGraphEdge?: (edgeId: string) => void
   moveGraphNode?: (nodeId: string, lon: number, lat: number) => void
   pushGraphHistory?: () => void
   snapEnabled: Ref<boolean>
@@ -339,9 +340,15 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
 
   function deleteSelectedPoint() {
     const sel = options.graphSelected?.value
-    if (!sel || sel.kind !== 'node') return
-    if (options.removeNodeMergeEdge) {
+    if (!sel) return
+    if (sel.kind === 'node' && options.removeNodeMergeEdge) {
       options.removeNodeMergeEdge(sel.nodeId)
+      hideContextMenu()
+      options.renderDraftGraphics()
+      return
+    }
+    if (sel.kind === 'edge' && options.removeGraphEdge) {
+      options.removeGraphEdge(sel.edgeId)
       hideContextMenu()
       options.renderDraftGraphics()
     }
@@ -371,6 +378,9 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
     if (graphHit?.type === 'node') {
       options.selectGraphNode(graphHit.nodeId)
       options.renderDraftGraphics()
+    } else if (graphHit?.type === 'edge') {
+      options.selectGraphEdge(graphHit.edgeId)
+      options.renderDraftGraphics()
     } else if (lineMeta) {
       options.activeLineIndex.value = lineMeta.lineIndex
       options.renderDraftGraphics()
@@ -379,7 +389,7 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
     const activeLine = options.draftLines.value[options.activeLineIndex.value]
     const canInsert = Boolean(point && activeLine && activeLine.length >= 2)
     const sel = options.graphSelected?.value
-    const canDelete = sel?.kind === 'node'
+    const canDelete = sel?.kind === 'node' || sel?.kind === 'edge'
 
     const rect = viewer.canvas.getBoundingClientRect()
     const x = Math.max(6, Math.min(screenPosition.x, rect.width - 170))

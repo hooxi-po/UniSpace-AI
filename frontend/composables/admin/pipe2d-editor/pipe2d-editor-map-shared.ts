@@ -1,6 +1,6 @@
 import * as Cesium from 'cesium'
 import type { GeoJsonFeature } from '~/services/geo-features'
-import { PIPE_LAYER_COLOR_HEX, classifyRoadToPipeLayer } from '~/utils/pipe-classifier'
+import { PIPE_LAYER_COLOR_HEX, resolvePipeLayerFromProps } from '~/utils/pipe-classifier'
 import { cloneLines, type Line, type Lines, type PipeEditorMapView, type Point } from '~/utils/pipe2d-geometry'
 
 export type PipeLineMeta = {
@@ -245,8 +245,8 @@ export function resolvePipeBaseColor(feature: GeoJsonFeature | null) {
 
   if (/(fire|消防)/.test(medium)) return '#f87171'
 
-  const pipeLayer = classifyRoadToPipeLayer(properties, String(feature?.id || 'pipe'))
-  return PIPE_LAYER_COLOR_HEX[pipeLayer]
+  const pipeLayer = resolvePipeLayerFromProps(properties)
+  return pipeLayer ? PIPE_LAYER_COLOR_HEX[pipeLayer] : '#6366f1'
 }
 
 export function resetLines(target: { draft: Lines; original: Lines }) {

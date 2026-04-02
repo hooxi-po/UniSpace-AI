@@ -38,12 +38,11 @@ function selectedEdgePulse() {
   return (Math.sin(Date.now() / 220) + 1) / 2
 }
 
-const PIPE_EDITOR_LINE_HEIGHT = 20
-const PIPE_EDITOR_HALO_HEIGHT = 21
-
-function toRaisedCartesian(point: Point, height = PIPE_EDITOR_LINE_HEIGHT) {
-  return Cesium.Cartesian3.fromDegrees(point[0], point[1], height)
+function toSurfaceCartesian(point: Point) {
+  return Cesium.Cartesian3.fromDegrees(point[0], point[1], 0)
 }
+
+const GROUND_POLYLINE_ARC_TYPE = Cesium.ArcType.GEODESIC
 
 function createSolidPolylineMaterial(color: string, alpha = 1) {
   const base = Cesium.Color.fromCssColorString(color).withAlpha(alpha)
@@ -302,7 +301,7 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
       if (isSelected) {
         const haloPolyline = viewer.entities.add({
           polyline: {
-            positions: positions.map(point => toRaisedCartesian(point, PIPE_EDITOR_HALO_HEIGHT)),
+            positions: positions.map(toSurfaceCartesian),
             width: new Cesium.CallbackProperty(() => 12 + selectedEdgePulse() * 5, false),
             material: new Cesium.ColorMaterialProperty(
               new Cesium.CallbackProperty(() => {
@@ -310,8 +309,8 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
                 return Cesium.Color.fromCssColorString('#22d3ee').withAlpha(alphaPulse)
               }, false),
             ),
-            arcType: Cesium.ArcType.NONE,
-            clampToGround: false,
+            arcType: GROUND_POLYLINE_ARC_TYPE,
+            clampToGround: true,
           },
           properties: {
             graphEdgeId: edge.id,
@@ -324,18 +323,15 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
       // 主边线
       const polyline = viewer.entities.add({
         polyline: {
-          positions: positions.map(point => toRaisedCartesian(point)),
+          positions: positions.map(toSurfaceCartesian),
           width: isSelected
             ? new Cesium.CallbackProperty(() => 6.2 + selectedEdgePulse() * 1.2, false)
             : width,
           material: isSelected
             ? createSelectedPolylineMaterial(color, alpha)
             : createSolidPolylineMaterial(color, alpha),
-          depthFailMaterial: isSelected
-            ? createSelectedPolylineMaterial(color, alpha)
-            : createSolidPolylineMaterial(color, alpha),
-          arcType: Cesium.ArcType.NONE,
-          clampToGround: false,
+          arcType: GROUND_POLYLINE_ARC_TYPE,
+          clampToGround: true,
         },
         properties: {
           graphEdgeId: edge.id,
@@ -366,16 +362,16 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
     previewLineEntity = viewer.entities.add({
       polyline: {
         positions: [
-          toRaisedCartesian([srcNode.lon, srcNode.lat]),
-          toRaisedCartesian(target),
+          toSurfaceCartesian([srcNode.lon, srcNode.lat]),
+          toSurfaceCartesian(target),
         ],
         width: 2,
         material: new Cesium.PolylineDashMaterialProperty({
           color: Cesium.Color.fromCssColorString('#6366f1').withAlpha(0.6),
           dashLength: 8,
         }),
-        arcType: Cesium.ArcType.NONE,
-        clampToGround: false,
+        arcType: GROUND_POLYLINE_ARC_TYPE,
+        clampToGround: true,
       },
     })
   }
@@ -421,17 +417,14 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
           const activeLine = lineIndex === options.activeLineIndex.value
           const hoveredLine = options.hoveredLineIndex.value === lineIndex
           const graphic = new mars3dLib.graphic.PolylineEntity({
-            positions: line.map((point) => [point[0], point[1], PIPE_EDITOR_LINE_HEIGHT]),
+            positions: line.map((point) => [point[0], point[1], 0]),
             style: {
               width: activeLine || hoveredLine ? 6 : 5,
               color: activeLine || hoveredLine ? '#22d3ee' : baseColor,
               opacity: 1,
               outline: false,
-              depthFail: true,
-              depthFailColor: activeLine || hoveredLine ? '#22d3ee' : baseColor,
-              depthFailOpacity: 1,
-              arcType: Cesium.ArcType.NONE,
-              clampToGround: false,
+              arcType: GROUND_POLYLINE_ARC_TYPE,
+              clampToGround: true,
             },
             attr: { lineIndex },
             hasEdit: false,
@@ -463,14 +456,11 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
         const hoveredLine = options.hoveredLineIndex.value === lineIndex
         const lineEntity = viewer.entities.add({
           polyline: {
-            positions: line.map(point => toRaisedCartesian(point)),
+            positions: line.map(toSurfaceCartesian),
             width: activeLine || hoveredLine ? 6 : 5,
-            arcType: Cesium.ArcType.NONE,
-            clampToGround: false,
+            arcType: GROUND_POLYLINE_ARC_TYPE,
+            clampToGround: true,
             material: activeLine || hoveredLine
-              ? createSelectedPolylineMaterial('#22d3ee', 1)
-              : createSolidPolylineMaterial(baseColor, 1),
-            depthFailMaterial: activeLine || hoveredLine
               ? createSelectedPolylineMaterial('#22d3ee', 1)
               : createSolidPolylineMaterial(baseColor, 1),
           },

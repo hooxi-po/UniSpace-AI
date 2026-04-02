@@ -22,9 +22,9 @@ export function normalizeRoadClass(highway: unknown) {
 
 export function classifyPipeMediumToLayer(raw: unknown) {
   const medium = normalizeRoadClass(raw)
-  if (/(supply|water|给水|供水)/.test(medium)) return 'water' as const
-  if (/(drain|drainage|排水|rain|storm)/.test(medium)) return 'drain' as const
   if (/(sewage|污水|waste)/.test(medium)) return 'sewage' as const
+  if (/(drain|drainage|排水|rain|storm)/.test(medium)) return 'drain' as const
+  if (/(supply|water|给水|供水)/.test(medium)) return 'water' as const
   return null
 }
 
@@ -41,10 +41,7 @@ function pickDeterministicFallback(seedSource: string): PipeLayerName {
   return PIPE_LAYER_NAMES[seed % PIPE_LAYER_NAMES.length]
 }
 
-export function classifyRoadToPipeLayer(
-  props: Record<string, unknown>,
-  seedSource: string
-): PipeLayerName {
+export function resolvePipeLayerFromProps(props: Record<string, unknown>) {
   const explicitLayer = classifyPipeMediumToLayer(
     props.pipelineMedium
     || props.pipeType
@@ -57,7 +54,14 @@ export function classifyRoadToPipeLayer(
   )
   if (explicitLayer) return explicitLayer
 
-  const mapped = classifyHighwayToPipeLayer(props.highway)
+  return classifyHighwayToPipeLayer(props.highway)
+}
+
+export function classifyRoadToPipeLayer(
+  props: Record<string, unknown>,
+  seedSource: string
+): PipeLayerName {
+  const mapped = resolvePipeLayerFromProps(props)
   if (mapped) return mapped
   return pickDeterministicFallback(seedSource)
 }

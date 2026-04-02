@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ChevronDown, ChevronRight, House, PanelRightClose } from 'lucide-vue-next'
-import { computed } from 'vue'
 import type { SelectedElement } from '~/composables/admin/usePipe2DEditorGraph'
 import type { EdgeAttributes, NodeAttributes, NodeType, PipeGraph } from '~/utils/pipe2d-graph'
 import Pipe2DEditorGraphPanel from './Pipe2DEditorGraphPanel.vue'

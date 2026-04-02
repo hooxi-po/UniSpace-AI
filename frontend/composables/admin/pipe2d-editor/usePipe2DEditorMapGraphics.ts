@@ -38,8 +38,28 @@ function selectedEdgePulse() {
   return (Math.sin(Date.now() / 220) + 1) / 2
 }
 
-function toRaisedCartesian(point: Point, height = 0.8) {
+const PIPE_EDITOR_LINE_HEIGHT = 20
+const PIPE_EDITOR_HALO_HEIGHT = 21
+
+function toRaisedCartesian(point: Point, height = PIPE_EDITOR_LINE_HEIGHT) {
   return Cesium.Cartesian3.fromDegrees(point[0], point[1], height)
+}
+
+function createSolidPolylineMaterial(color: string, alpha = 1) {
+  const base = Cesium.Color.fromCssColorString(color).withAlpha(alpha)
+  return new Cesium.PolylineOutlineMaterialProperty({
+    color: base,
+    outlineColor: base,
+    outlineWidth: 0,
+  })
+}
+
+function createSelectedPolylineMaterial(color: string, alpha = 1) {
+  return new Cesium.PolylineOutlineMaterialProperty({
+    color: Cesium.Color.fromCssColorString(color).withAlpha(alpha),
+    outlineColor: Cesium.Color.fromCssColorString('#0f172a').withAlpha(0.9),
+    outlineWidth: 1.2,
+  })
 }
 
 type UsePipe2DEditorMapGraphicsOptions = {
@@ -282,7 +302,7 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
       if (isSelected) {
         const haloPolyline = viewer.entities.add({
           polyline: {
-            positions: positions.map(point => toRaisedCartesian(point, 1.2)),
+            positions: positions.map(point => toRaisedCartesian(point, PIPE_EDITOR_HALO_HEIGHT)),
             width: new Cesium.CallbackProperty(() => 12 + selectedEdgePulse() * 5, false),
             material: new Cesium.ColorMaterialProperty(
               new Cesium.CallbackProperty(() => {
@@ -290,6 +310,7 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
                 return Cesium.Color.fromCssColorString('#22d3ee').withAlpha(alphaPulse)
               }, false),
             ),
+            arcType: Cesium.ArcType.NONE,
             clampToGround: false,
           },
           properties: {
@@ -303,17 +324,17 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
       // 主边线
       const polyline = viewer.entities.add({
         polyline: {
-          positions: positions.map(point => toRaisedCartesian(point, 0.8)),
+          positions: positions.map(point => toRaisedCartesian(point)),
           width: isSelected
             ? new Cesium.CallbackProperty(() => 6.2 + selectedEdgePulse() * 1.2, false)
             : width,
           material: isSelected
-            ? new Cesium.PolylineGlowMaterialProperty({
-              glowPower: 0.22,
-              taperPower: 0.9,
-                color: Cesium.Color.fromCssColorString(color).withAlpha(alpha),
-              })
-            : Cesium.Color.fromCssColorString(color).withAlpha(alpha),
+            ? createSelectedPolylineMaterial(color, alpha)
+            : createSolidPolylineMaterial(color, alpha),
+          depthFailMaterial: isSelected
+            ? createSelectedPolylineMaterial(color, alpha)
+            : createSolidPolylineMaterial(color, alpha),
+          arcType: Cesium.ArcType.NONE,
           clampToGround: false,
         },
         properties: {
@@ -344,13 +365,17 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
     if (previewLineEntity) viewer.entities.remove(previewLineEntity)
     previewLineEntity = viewer.entities.add({
       polyline: {
-        positions: [options.toCartesian([srcNode.lon, srcNode.lat]), options.toCartesian(target)],
+        positions: [
+          toRaisedCartesian([srcNode.lon, srcNode.lat]),
+          toRaisedCartesian(target),
+        ],
         width: 2,
         material: new Cesium.PolylineDashMaterialProperty({
           color: Cesium.Color.fromCssColorString('#6366f1').withAlpha(0.6),
           dashLength: 8,
         }),
-        clampToGround: true,
+        arcType: Cesium.ArcType.NONE,
+        clampToGround: false,
       },
     })
   }
@@ -396,11 +421,16 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
           const activeLine = lineIndex === options.activeLineIndex.value
           const hoveredLine = options.hoveredLineIndex.value === lineIndex
           const graphic = new mars3dLib.graphic.PolylineEntity({
-            positions: line.map((point) => [point[0], point[1], 0.8]),
+            positions: line.map((point) => [point[0], point[1], PIPE_EDITOR_LINE_HEIGHT]),
             style: {
-              width: activeLine || hoveredLine ? 5 : 4,
+              width: activeLine || hoveredLine ? 6 : 5,
               color: activeLine || hoveredLine ? '#22d3ee' : baseColor,
               opacity: 1,
+              outline: false,
+              depthFail: true,
+              depthFailColor: activeLine || hoveredLine ? '#22d3ee' : baseColor,
+              depthFailOpacity: 1,
+              arcType: Cesium.ArcType.NONE,
               clampToGround: false,
             },
             attr: { lineIndex },
@@ -433,30 +463,20 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
         const hoveredLine = options.hoveredLineIndex.value === lineIndex
         const lineEntity = viewer.entities.add({
           polyline: {
-            positions: line.map(point => toRaisedCartesian(point, 0.8)),
-            width: activeLine || hoveredLine ? 5 : 4,
+            positions: line.map(point => toRaisedCartesian(point)),
+            width: activeLine || hoveredLine ? 6 : 5,
+            arcType: Cesium.ArcType.NONE,
             clampToGround: false,
             material: activeLine || hoveredLine
-              ? new Cesium.PolylineGlowMaterialProperty({
-                glowPower: activeLine ? 0.24 : 0.16,
-                color: Cesium.Color.fromCssColorString('#22d3ee').withAlpha(1),
-              })
-              : Cesium.Color.fromCssColorString(baseColor).withAlpha(1),
+              ? createSelectedPolylineMaterial('#22d3ee', 1)
+              : createSolidPolylineMaterial(baseColor, 1),
+            depthFailMaterial: activeLine || hoveredLine
+              ? createSelectedPolylineMaterial('#22d3ee', 1)
+              : createSolidPolylineMaterial(baseColor, 1),
           },
         })
         ;(lineEntity as any).__pipeLineMeta = { lineIndex }
         currentLineEntities.push(lineEntity)
-
-        const lineHitEntity = viewer.entities.add({
-          polyline: {
-            positions: line.map(options.toCartesian),
-            width: activeLine || hoveredLine ? 14 : 12,
-            clampToGround: true,
-            material: Cesium.Color.TRANSPARENT,
-          },
-        })
-        ;(lineHitEntity as any).__pipeLineMeta = { lineIndex }
-        currentLineEntities.push(lineHitEntity)
       })
     }
 

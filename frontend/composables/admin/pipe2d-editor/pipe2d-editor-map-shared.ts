@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium'
 import type { GeoJsonFeature } from '~/services/geo-features'
+import { PIPE_LAYER_COLOR_HEX, classifyRoadToPipeLayer } from '~/utils/pipe-classifier'
 import { cloneLines, type Line, type Lines, type PipeEditorMapView, type Point } from '~/utils/pipe2d-geometry'
 
 export type PipeLineMeta = {
@@ -232,6 +233,8 @@ export function resolvePipeBaseColor(feature: GeoJsonFeature | null) {
   const properties = (feature?.properties || {}) as Record<string, unknown>
   const medium = String(
     properties.pipelineMedium
+    || properties.pipeType
+    || properties.pipeLayer
     || properties.medium
     || properties.media
     || properties.type
@@ -240,11 +243,10 @@ export function resolvePipeBaseColor(feature: GeoJsonFeature | null) {
     || '',
   ).toLowerCase()
 
-  if (/(supply|water|给水|供水)/.test(medium)) return '#60a5fa'
-  if (/(drain|排水|rain|storm)/.test(medium)) return '#34d399'
-  if (/(sewage|污水|waste)/.test(medium)) return '#34d399'
   if (/(fire|消防)/.test(medium)) return '#f87171'
-  return '#6366f1'
+
+  const pipeLayer = classifyRoadToPipeLayer(properties, String(feature?.id || 'pipe'))
+  return PIPE_LAYER_COLOR_HEX[pipeLayer]
 }
 
 export function resetLines(target: { draft: Lines; original: Lines }) {

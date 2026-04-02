@@ -4,7 +4,7 @@ import { usePipe2DEditorMapGraphics } from '~/composables/admin/pipe2d-editor/us
 import { usePipe2DEditorMapInteractions } from '~/composables/admin/pipe2d-editor/usePipe2DEditorMapInteractions'
 import { usePipe2DEditorDrawMode, type DrawMode } from '~/composables/admin/pipe2d-editor/usePipe2DEditorDrawMode'
 import { usePipe2DEditorGraph, type SelectedElement } from '~/composables/admin/usePipe2DEditorGraph'
-import type { EdgeType, NodeType } from '~/utils/pipe2d-graph'
+import { sampleCubicBezier, type EdgeType, type NodeType } from '~/utils/pipe2d-graph'
 import {
   buildHistoryItems,
   clamp,
@@ -15,6 +15,7 @@ import {
   lineLengthMeters,
   MAX_ZOOM,
   MIN_ZOOM,
+  pointToSegmentDistanceSquared,
   sumLength,
   toLonLat,
   type ContextMenuState,
@@ -271,6 +272,43 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     return null
   }
 
+  function findNearestGraphEdge(screenPosition: { x: number; y: number }) {
+    const thresholdPx = 14
+    const pointer = new Cesium.Cartesian2(screenPosition.x, screenPosition.y)
+    let bestEdgeId: string | null = null
+    let bestDistanceSq = thresholdPx * thresholdPx
+
+    for (const edge of editorGraph.graph.value.edges) {
+      const srcNode = editorGraph.graph.value.nodes.find(node => node.id === edge.sourceId)
+      const tgtNode = editorGraph.graph.value.nodes.find(node => node.id === edge.targetId)
+      if (!srcNode || !tgtNode) continue
+
+      const worldPoints = edge.edgeType === 'curve' && edge.controlPoints?.length === 2
+        ? sampleCubicBezier(
+          [srcNode.lon, srcNode.lat],
+          edge.controlPoints[0],
+          edge.controlPoints[1],
+          [tgtNode.lon, tgtNode.lat],
+          24,
+        )
+        : [[srcNode.lon, srcNode.lat], [tgtNode.lon, tgtNode.lat]] as Point[]
+
+      const projectedPoints = worldPoints
+        .map(point => worldToScreen(point))
+        .filter((point): point is Cesium.Cartesian2 => Boolean(point))
+
+      for (let index = 0; index < projectedPoints.length - 1; index += 1) {
+        const distanceSq = pointToSegmentDistanceSquared(pointer, projectedPoints[index], projectedPoints[index + 1])
+        if (distanceSq < bestDistanceSq) {
+          bestDistanceSq = distanceSq
+          bestEdgeId = edge.id
+        }
+      }
+    }
+
+    return bestEdgeId
+  }
+
   function pushHistory() {
     history.value.push(cloneLines(options.draftLines.value))
     if (history.value.length > 10) history.value.shift()
@@ -375,9 +413,10 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     placeGraphNodeAtScreen,
     pickGraphEntity: (pos) => {
       const result = pickEntity(pos)
-      if (!result) return null
-      if (result.type === 'node') return { type: 'node' as const, nodeId: result.nodeId }
-      if (result.type === 'edge') return { type: 'edge' as const, edgeId: result.edgeId }
+      if (result?.type === 'node') return { type: 'node' as const, nodeId: result.nodeId }
+      if (result?.type === 'edge') return { type: 'edge' as const, edgeId: result.edgeId }
+      const nearestEdgeId = findNearestGraphEdge(pos)
+      if (nearestEdgeId) return { type: 'edge' as const, edgeId: nearestEdgeId }
       return null
     },
     selectGraphNode: (nodeId: string) => {

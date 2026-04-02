@@ -123,11 +123,11 @@ function formatDateTime(value: string) {
   <aside class="right-panel">
     <div class="right-panel__head">
       <div class="panel-header">
-        <div class="title">
-          管道 <span class="id">{{ selectedPipeIdText }}</span>
+        <div class="title" :title="displayPipeName">{{ displayPipeName }}</div>
+        <div class="right-panel__sub">
+          <span class="tag">{{ selectedFeatureTypeTag }}</span>
+          <span class="id">ID {{ selectedPipeIdText }}</span>
         </div>
-        <span class="tag">{{ selectedFeatureTypeTag }}</span>
-        <div v-if="selectedFeature" class="right-panel__sub">{{ displayPipeName }}</div>
       </div>
       <button class="icon-btn" type="button" title="收起面板" @click="emit('collapse-panel')">
         <PanelRightClose :size="16" />

@@ -244,7 +244,7 @@ export function resolvePipeBaseColor(feature: GeoJsonFeature | null) {
   if (/(drain|排水|rain|storm)/.test(medium)) return '#34d399'
   if (/(sewage|污水|waste)/.test(medium)) return '#34d399'
   if (/(fire|消防)/.test(medium)) return '#f87171'
-  return '#64748b'
+  return '#6366f1'
 }
 
 export function resetLines(target: { draft: Lines; original: Lines }) {

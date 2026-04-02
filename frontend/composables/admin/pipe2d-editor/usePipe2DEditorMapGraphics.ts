@@ -273,8 +273,9 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
       }
 
       // 根据状态调整视觉效果
+      const baseEdgeColor = resolvePipeBaseColor(options.selectedFeature.value)
       const width = isSelected ? 7 : (isHovered ? 5 : 4)
-      const color = isSelected ? '#06b6d4' : (isHovered ? '#22d3ee' : '#334155')
+      const color = isSelected ? '#06b6d4' : (isHovered ? '#22d3ee' : baseEdgeColor)
       const alpha = isSelected ? 1.0 : (isHovered ? 1.0 : 1.0)
 
       // 选中时添加底层光晕
@@ -381,7 +382,7 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
     dragEditHistoryPushed = false
     dragEditStartLines = null
     clearGraphics()
-    const baseColor = '#334155'
+    const baseColor = resolvePipeBaseColor(options.selectedFeature.value)
     const graphicLayer = options.getGraphicLayer()
     const mars3dLib = options.getMars3dLib()
     const hasGraphOverlay = Boolean(

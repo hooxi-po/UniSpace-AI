@@ -231,7 +231,8 @@ export function createContextMenuState(): ContextMenuState {
 export function resolvePipeBaseColor(feature: GeoJsonFeature | null) {
   const properties = (feature?.properties || {}) as Record<string, unknown>
   const medium = String(
-    properties.medium
+    properties.pipelineMedium
+    || properties.medium
     || properties.media
     || properties.type
     || properties.category

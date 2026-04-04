@@ -49,6 +49,14 @@ export function usePipe2DEditorData(options: UsePipe2DEditorDataOptions) {
   const telemetryPreview = computed(() => telemetryList.value.slice(0, 5))
   const auditPreview = computed(() => auditLogs.value.slice(0, 5))
 
+  function clearInsights() {
+    insightError.value = null
+    drilldown.value = null
+    traceResult.value = null
+    telemetryList.value = []
+    auditLogs.value = []
+  }
+
   async function loadPipes(): Promise<boolean> {
     loading.value = true
     loadError.value = null
@@ -89,11 +97,7 @@ export function usePipe2DEditorData(options: UsePipe2DEditorDataOptions) {
   }
 
   async function loadInsights(featureId: string) {
-    insightError.value = null
-    drilldown.value = null
-    traceResult.value = null
-    telemetryList.value = []
-    auditLogs.value = []
+    clearInsights()
 
     const [drilldownResult, traceResultDown, telemetryResult, auditResult] = await Promise.allSettled([
       twinService.drilldown(options.backendBaseUrl.value, featureId),
@@ -211,6 +215,7 @@ export function usePipe2DEditorData(options: UsePipe2DEditorDataOptions) {
     telemetryPreview,
     auditPreview,
     loadPipes,
+    clearInsights,
     loadInsights,
     saveGeometry,
   }

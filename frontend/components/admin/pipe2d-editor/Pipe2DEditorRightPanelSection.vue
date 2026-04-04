@@ -64,6 +64,7 @@ const props = defineProps<{
   totalPoints: number
   segmentCount: number
   totalLengthText: string
+  globalSegmentCount: number
   activeLineLengthText: string
   activeLineIndex: number
   selectedPointLabel: string
@@ -117,16 +118,9 @@ const selectedGraphEdge = computed(() => {
   return graph.edges.find(edge => edge.id === selected.edgeId) ?? null
 })
 
-const selectedNodeIsRealtime = computed(() => {
-  const type = selectedGraphNode.value?.type
-  return type === 'meter' || type === 'valve' || type === 'pump'
-})
-
 const showRelationPanel = computed(() => Boolean(props.selectedFeature) && !selectedGraphEdge.value)
 const showRealtimePanel = computed(() => {
-  if (!props.selectedFeature || selectedGraphEdge.value) return false
-  if (!selectedGraphNode.value) return true
-  return selectedNodeIsRealtime.value
+  return Boolean(props.selectedFeature) && !selectedGraphEdge.value
 })
 const showTimelinePanel = computed(() => Boolean(props.selectedFeature) && !selectedGraphEdge.value)
 
@@ -346,14 +340,24 @@ function handleRemoveEdge(edgeId: string) {
         <component :is="panelSectionCollapsed.runtime ? ChevronRight : ChevronDown" :size="16" />
       </button>
       <div v-show="!panelSectionCollapsed.runtime" class="panel-section-body">
-        <div v-if="selectedGraphEdge" class="panel-note">已选中管段，右侧仅保留与当前编辑最相关的运行信息。</div>
-        <div class="panel-meta"><span>节点总数</span><strong>{{ totalPoints }}</strong></div>
-        <div class="panel-meta"><span>管段总数</span><strong>{{ segmentCount }}</strong></div>
-        <div class="panel-meta"><span>总长度</span><strong>{{ totalLengthText }}</strong></div>
-        <div class="panel-meta"><span>当前线段</span><strong>{{ activeLineLengthText }}</strong></div>
-        <div class="panel-meta"><span>活动线索引</span><strong>{{ activeLineIndex + 1 }}</strong></div>
-        <div class="panel-meta"><span>选中节点</span><strong>{{ selectedPointLabel }}</strong></div>
-        <div class="panel-meta"><span>视图缩放</span><strong>Z{{ zoomLevel }}</strong></div>
+        <template v-if="selectedFeature">
+          <div v-if="selectedGraphEdge" class="panel-note">已选中管段，右侧仅保留与当前编辑最相关的运行信息。</div>
+          <div class="panel-meta"><span>节点总数</span><strong>{{ totalPoints }}</strong></div>
+          <div class="panel-meta"><span>管段总数</span><strong>{{ segmentCount }}</strong></div>
+          <div class="panel-meta"><span>总长度</span><strong>{{ totalLengthText }}</strong></div>
+          <div class="panel-meta"><span>当前线段</span><strong>{{ activeLineLengthText }}</strong></div>
+          <div class="panel-meta"><span>活动线索引</span><strong>{{ activeLineIndex + 1 }}</strong></div>
+          <div class="panel-meta"><span>选中节点</span><strong>{{ selectedPointLabel }}</strong></div>
+          <div class="panel-meta"><span>视图缩放</span><strong>Z{{ zoomLevel }}</strong></div>
+        </template>
+        <template v-else>
+          <div class="panel-note">当前为管网总览模式，运行信息切换为全局统计。</div>
+          <div class="panel-meta"><span>管线总数</span><strong>{{ globalPipeCount }}</strong></div>
+          <div class="panel-meta"><span>节点总数</span><strong>{{ globalNodeCount }}</strong></div>
+          <div class="panel-meta"><span>管段总数</span><strong>{{ globalSegmentCount }}</strong></div>
+          <div class="panel-meta"><span>总长度</span><strong>{{ globalTotalLengthText }}</strong></div>
+          <div class="panel-meta"><span>视图缩放</span><strong>Z{{ zoomLevel }}</strong></div>
+        </template>
       </div>
     </section>
   </aside>

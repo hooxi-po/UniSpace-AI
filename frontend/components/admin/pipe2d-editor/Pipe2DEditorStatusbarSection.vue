@@ -2,8 +2,10 @@
 defineProps<{
   totalPoints: number
   segmentCount: number
-  linkedBuildingCount: number
+  tertiaryLabel: string
+  tertiaryValue: number
   alertCount: number
+  showAlertCount: boolean
   lastSyncText: string
   activeToolLabel: string
 }>()
@@ -16,9 +18,9 @@ defineProps<{
       <span class="status-sep">|</span>
       <span class="status-mono">管段 {{ segmentCount }}</span>
       <span class="status-sep">|</span>
-      <span class="status-mono">楼栋 {{ linkedBuildingCount }}</span>
+      <span class="status-mono">{{ tertiaryLabel }} {{ tertiaryValue }}</span>
     </div>
-    <div class="status-group">
+    <div v-if="showAlertCount" class="status-group">
       <span class="status-alert"><i /><span class="status-mono">{{ alertCount }}</span></span>
     </div>
     <div class="status-group status-group--right">

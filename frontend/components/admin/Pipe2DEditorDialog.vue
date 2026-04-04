@@ -122,6 +122,7 @@
           :total-points="totalPoints"
           :segment-count="segmentCount"
           :total-length-text="formatMeters(totalLengthMeters)"
+          :global-segment-count="globalSegmentCount"
           :active-line-length-text="formatMeters(activeLineLengthMeters)"
           :active-line-index="activeLineIndex"
           :selected-point-label="selectedPointLabel"
@@ -169,10 +170,12 @@
       </div>
 
       <Pipe2DEditorStatusbarSection
-        :total-points="totalPoints"
-        :segment-count="segmentCount"
-        :linked-building-count="linkedBuildingCount"
+        :total-points="statusbarPointCount"
+        :segment-count="statusbarSegmentCount"
+        :tertiary-label="statusbarTertiaryLabel"
+        :tertiary-value="statusbarTertiaryValue"
         :alert-count="alertCount"
+        :show-alert-count="statusbarShowAlertCount"
         :last-sync-text="lastSyncText"
         :active-tool-label="activeToolLabel"
       />
@@ -451,6 +454,7 @@ const {
   auditLogs,
   insightError,
   loadPipes,
+  clearInsights,
   loadInsights,
   saveGeometry: persistGeometry,
 } = usePipe2DEditorData({
@@ -579,6 +583,7 @@ const saveStatusClass = computed(() => {
 })
 
 const alertCount = computed(() => telemetryList.value.filter(item => String(item.quality || '').toLowerCase() !== 'good').length)
+const isOverviewMode = computed(() => !selectedFeature.value)
 const globalPipeCount = computed(() => pipes.value.length)
 const globalNodeCount = computed(() => {
   const keys = new Set<string>()
@@ -592,10 +597,22 @@ const globalNodeCount = computed(() => {
   }
   return keys.size
 })
+const globalSegmentCount = computed(() => {
+  return pipes.value.reduce((sum, feature) => {
+    const featureSegments = geometryToLines(feature.geometry)
+      .reduce((lineSum, line) => lineSum + Math.max(0, line.length - 1), 0)
+    return sum + featureSegments
+  }, 0)
+})
 const globalTotalLengthText = computed(() => {
   const totalLength = pipes.value.reduce((sum, feature) => sum + sumLength(geometryToLines(feature.geometry)), 0)
   return formatMeters(totalLength)
 })
+const statusbarPointCount = computed(() => isOverviewMode.value ? globalNodeCount.value : totalPoints.value)
+const statusbarSegmentCount = computed(() => isOverviewMode.value ? globalSegmentCount.value : segmentCount.value)
+const statusbarTertiaryLabel = computed(() => isOverviewMode.value ? '管线' : '楼栋')
+const statusbarTertiaryValue = computed(() => isOverviewMode.value ? globalPipeCount.value : linkedBuildingCount.value)
+const statusbarShowAlertCount = computed(() => !isOverviewMode.value)
 const lastSyncText = computed(() => {
   if (!lastSyncTime.value) return '未同步'
   const year = lastSyncTime.value.getFullYear()
@@ -790,8 +807,13 @@ async function applySelectedFeatureId(nextId: string, shouldFocus = false) {
     overviewPinned.value = !normalized
     selectedFeatureId.value = normalized
     renaming.value = false
-    editorGraph.clearSelection()
     mindmapEditor.clearSelection()
+    if (!normalized) {
+      editorGraph.initFromLines([])
+      clearInsights()
+    } else {
+      editorGraph.clearSelection()
+    }
   }
   if (shouldFocus && normalized) {
     await nextTick()
@@ -921,7 +943,10 @@ watch(
 watch(
   [() => props.open, selectedFeatureId],
   ([opened, featureId]) => {
-    if (!opened || !featureId) return
+    if (!opened || !featureId) {
+      clearInsights()
+      return
+    }
     void loadInsights(featureId)
   },
   { immediate: true },

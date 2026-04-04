@@ -1,7 +1,8 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { ChevronDown, ChevronRight, House, PanelRightClose } from 'lucide-vue-next'
 import type { SelectedElement } from '~/composables/admin/usePipe2DEditorGraph'
-import type { EdgeAttributes, NodeAttributes, NodeType, PipeGraph } from '~/utils/pipe2d-graph'
+import type { EdgeAttributes, NodeAttributes, NodeType, PipeGraph, PipeNode } from '~/utils/pipe2d-graph'
 import Pipe2DEditorGraphPanel from './Pipe2DEditorGraphPanel.vue'
 
 type PanelSectionKey = 'basic' | 'relation' | 'control' | 'realtime' | 'timeline' | 'runtime'
@@ -68,9 +69,11 @@ const props = defineProps<{
   selectedPointLabel: string
   zoomLevel: number
   isDirty: boolean
-  // 图结构属性面板（可选）
+  globalPipeCount: number
+  globalNodeCount: number
+  globalTotalLengthText: string
   graph?: PipeGraph | null
-  graphSelected?: SelectedElement
+  graphSelected?: SelectedElement | null
 }>()
 
 const emit = defineEmits<{
@@ -92,7 +95,6 @@ const emit = defineEmits<{
   (e: 'update:relation-active-names', value: string[]): void
   (e: 'reset-draft'): void
   (e: 'save-geometry'): void
-  // 图结构操作
   (e: 'update-node', nodeId: string, attrs: NodeAttributes): void
   (e: 'update-node-type', nodeId: string, type: NodeType): void
   (e: 'update-edge', edgeId: string, attrs: EdgeAttributes): void
@@ -101,13 +103,40 @@ const emit = defineEmits<{
   (e: 'remove-edge', edgeId: string): void
 }>()
 
+const selectedGraphNode = computed<PipeNode | null>(() => {
+  const selected = props.graphSelected
+  const graph = props.graph
+  if (!selected || !graph || selected.kind !== 'node') return null
+  return graph.nodes.find(node => node.id === selected.nodeId) ?? null
+})
+
+const selectedGraphEdge = computed(() => {
+  const selected = props.graphSelected
+  const graph = props.graph
+  if (!selected || !graph || selected.kind !== 'edge') return null
+  return graph.edges.find(edge => edge.id === selected.edgeId) ?? null
+})
+
+const selectedNodeIsRealtime = computed(() => {
+  const type = selectedGraphNode.value?.type
+  return type === 'meter' || type === 'valve' || type === 'pump'
+})
+
+const showRelationPanel = computed(() => Boolean(props.selectedFeature) && !selectedGraphEdge.value)
+const showRealtimePanel = computed(() => {
+  if (!props.selectedFeature || selectedGraphEdge.value) return false
+  if (!selectedGraphNode.value) return true
+  return selectedNodeIsRealtime.value
+})
+const showTimelinePanel = computed(() => Boolean(props.selectedFeature) && !selectedGraphEdge.value)
+
 function onSelectFeature(event: Event) {
   emit('update:selected-feature-id', (event.target as HTMLSelectElement).value)
 }
 
 function pipeOptionLabel(feature: PipeFeature) {
-  const p = feature.properties || {}
-  const name = String(p.name || p.ref || feature.id)
+  const properties = feature.properties || {}
+  const name = String(properties.name || properties.ref || feature.id)
   return `${String(feature.id)} · ${name}`
 }
 
@@ -115,6 +144,30 @@ function formatDateTime(value: string) {
   const ts = new Date(value)
   if (Number.isNaN(ts.getTime())) return value || '-'
   return `${ts.getFullYear()}-${String(ts.getMonth() + 1).padStart(2, '0')}-${String(ts.getDate()).padStart(2, '0')} ${String(ts.getHours()).padStart(2, '0')}:${String(ts.getMinutes()).padStart(2, '0')}`
+}
+
+function handleUpdateNode(nodeId: string, attrs: NodeAttributes) {
+  emit('update-node', nodeId, attrs)
+}
+
+function handleUpdateNodeType(nodeId: string, type: NodeType) {
+  emit('update-node-type', nodeId, type)
+}
+
+function handleUpdateEdge(edgeId: string, attrs: EdgeAttributes) {
+  emit('update-edge', edgeId, attrs)
+}
+
+function handleToggleEdgeCurve(edgeId: string) {
+  emit('toggle-edge-curve', edgeId)
+}
+
+function handleRemoveNode(nodeId: string) {
+  emit('remove-node', nodeId)
+}
+
+function handleRemoveEdge(edgeId: string) {
+  emit('remove-edge', edgeId)
 }
 </script>
 
@@ -133,17 +186,16 @@ function formatDateTime(value: string) {
       </button>
     </div>
 
-    <!-- 图结构节点/管段属性面板 -->
     <Pipe2DEditorGraphPanel
       v-if="graph && graphSelected"
       :graph="graph"
       :selected="graphSelected"
-      @update-node="(id, attrs) => emit('update-node', id, attrs)"
-      @update-node-type="(id, type) => emit('update-node-type', id, type)"
-      @update-edge="(id, attrs) => emit('update-edge', id, attrs)"
-      @toggle-edge-curve="(id) => emit('toggle-edge-curve', id)"
-      @remove-node="(id) => emit('remove-node', id)"
-      @remove-edge="(id) => emit('remove-edge', id)"
+      @update-node="handleUpdateNode"
+      @update-node-type="handleUpdateNodeType"
+      @update-edge="handleUpdateEdge"
+      @toggle-edge-curve="handleToggleEdgeCurve"
+      @remove-node="handleRemoveNode"
+      @remove-edge="handleRemoveEdge"
     />
 
     <section class="panel-card">
@@ -153,6 +205,7 @@ function formatDateTime(value: string) {
       </button>
       <div v-show="!panelSectionCollapsed.basic" class="panel-section-body">
         <select :value="selectedFeatureId" class="pipe-select" :disabled="loading || !pipes.length" @change="onSelectFeature">
+          <option value="">全部管线 / 总览</option>
           <option v-for="item in pipes" :key="String(item.id)" :value="String(item.id)">
             {{ pipeOptionLabel(item) }}
           </option>
@@ -161,37 +214,61 @@ function formatDateTime(value: string) {
           <button class="btn btn--sm" type="button" :disabled="loading" @click="emit('refresh')">刷新</button>
           <button class="btn btn--sm" type="button" :disabled="saving || !selectedFeature" @click="emit('focus')">聚焦</button>
         </div>
-        <div class="panel-field">
-          <label>管道名称</label>
-          <button
-            v-if="!renaming"
-            class="name-btn"
-            type="button"
-            :disabled="!selectedFeature"
-            @click="emit('start-rename')"
-          >
-            {{ displayPipeName }}
-          </button>
-          <input
-            v-else
-            :value="renameDraft"
-            class="name-input"
-            maxlength="64"
-            :disabled="renamingSaving"
-            autofocus
-            @input="emit('update:rename-draft', ($event.target as HTMLInputElement).value.trim())"
-            @blur="emit('commit-rename')"
-            @keydown.enter.prevent="emit('commit-rename')"
-            @keydown.esc.prevent="emit('cancel-rename')"
-          >
-        </div>
-        <div class="panel-meta"><span>编号</span><strong>{{ selectedFeature ? String(selectedFeature.id) : '-' }}</strong></div>
-        <div class="panel-meta"><span>几何</span><strong>{{ selectedFeature?.geometry?.type || '-' }}</strong></div>
-        <div class="panel-meta"><span>草稿</span><strong>{{ draftStatusText }}</strong></div>
+
+        <template v-if="selectedFeature">
+          <div class="panel-field">
+            <label>管道名称</label>
+            <button
+              v-if="!renaming"
+              class="name-btn"
+              type="button"
+              :disabled="!selectedFeature"
+              @click="emit('start-rename')"
+            >
+              {{ displayPipeName }}
+            </button>
+            <input
+              v-else
+              :value="renameDraft"
+              class="name-input"
+              maxlength="64"
+              :disabled="renamingSaving"
+              autofocus
+              @input="emit('update:rename-draft', ($event.target as HTMLInputElement).value.trim())"
+              @blur="emit('commit-rename')"
+              @keydown.enter.prevent="emit('commit-rename')"
+              @keydown.esc.prevent="emit('cancel-rename')"
+            >
+          </div>
+          <div class="panel-meta"><span>编号</span><strong>{{ String(selectedFeature.id) }}</strong></div>
+          <div class="panel-meta"><span>几何</span><strong>{{ selectedFeature.geometry?.type || '-' }}</strong></div>
+          <div class="panel-meta"><span>草稿</span><strong>{{ draftStatusText }}</strong></div>
+        </template>
+
+        <template v-else>
+          <div class="panel-summary">
+            <div class="panel-summary__title">全局统计</div>
+            <div class="panel-summary__grid">
+              <div class="panel-summary__item">
+                <span>管线总数</span>
+                <strong>{{ globalPipeCount }}</strong>
+              </div>
+              <div class="panel-summary__item">
+                <span>节点总数</span>
+                <strong>{{ globalNodeCount }}</strong>
+              </div>
+              <div class="panel-summary__item panel-summary__item--wide">
+                <span>总长度</span>
+                <strong>{{ globalTotalLengthText }}</strong>
+              </div>
+            </div>
+          </div>
+          <div class="inline-empty inline-empty--compact">从顶部搜索或下拉框选择具体管线后开始编辑</div>
+        </template>
       </div>
     </section>
 
-    <section class="panel-card">
+    <section v-if="showRelationPanel" class="panel-card">
       <button class="panel-collapse-toggle" type="button" @click="emit('toggle-section', 'relation')">
         <span>关联关系</span>
         <component :is="panelSectionCollapsed.relation ? ChevronRight : ChevronDown" :size="16" />
@@ -212,7 +289,7 @@ function formatDateTime(value: string) {
       </div>
     </section>
 
-    <section class="panel-card">
+    <section v-if="showRealtimePanel" class="panel-card">
       <button class="panel-collapse-toggle" type="button" @click="emit('toggle-section', 'realtime')">
         <span>实时数据</span>
         <component :is="panelSectionCollapsed.realtime ? ChevronRight : ChevronDown" :size="16" />
@@ -244,7 +321,7 @@ function formatDateTime(value: string) {
       </div>
     </section>
 
-    <section class="panel-card">
+    <section v-if="showTimelinePanel" class="panel-card">
       <button class="panel-collapse-toggle" type="button" @click="emit('toggle-section', 'timeline')">
         <span>运维记录</span>
         <component :is="panelSectionCollapsed.timeline ? ChevronRight : ChevronDown" :size="16" />
@@ -269,6 +346,7 @@ function formatDateTime(value: string) {
         <component :is="panelSectionCollapsed.runtime ? ChevronRight : ChevronDown" :size="16" />
       </button>
       <div v-show="!panelSectionCollapsed.runtime" class="panel-section-body">
+        <div v-if="selectedGraphEdge" class="panel-note">已选中管段，右侧仅保留与当前编辑最相关的运行信息。</div>
         <div class="panel-meta"><span>节点总数</span><strong>{{ totalPoints }}</strong></div>
         <div class="panel-meta"><span>管段总数</span><strong>{{ segmentCount }}</strong></div>
         <div class="panel-meta"><span>总长度</span><strong>{{ totalLengthText }}</strong></div>

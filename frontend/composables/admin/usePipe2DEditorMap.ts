@@ -183,6 +183,10 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     return buildFittedView(lines, FITTED_VIEW_OPTIONS)
   }
 
+  function collectOverviewLines() {
+    return options.pipes.value.flatMap(feature => geometryToLines(feature.geometry))
+  }
+
   function toCartesian(point: Point) {
     return Cesium.Cartesian3.fromDegrees(point[0], point[1], 0)
   }
@@ -348,6 +352,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
       getViewer: () => viewer,
       getGraphicLayer: () => graphicLayer,
       getMars3dLib: () => mars3dLib,
+      pipes: options.pipes,
       selectedFeature: options.selectedFeature,
       draftLines: options.draftLines,
       activeLineIndex,
@@ -548,8 +553,11 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
   }
 
   function fitCurrentPipeView() {
-    if (!options.draftLines.value.length) return
-    const fitted = createFittedView(options.draftLines.value)
+    const targetLines = options.draftLines.value.length
+      ? options.draftLines.value
+      : collectOverviewLines()
+    if (!targetLines.length) return
+    const fitted = createFittedView(targetLines)
     mapView.value = { ...fitted }
     if (!viewer) return
 

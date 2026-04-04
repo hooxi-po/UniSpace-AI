@@ -3,7 +3,7 @@ import { watch, type ComputedRef, type Ref } from 'vue'
 import type { GeoJsonFeature } from '~/services/geo-features'
 import type { PipeGraph } from '~/utils/pipe2d-graph'
 import { autoControlPoints, graphToLines, sampleCubicBezier } from '~/utils/pipe2d-graph'
-import { cloneLines, type Lines, type Point } from '~/utils/pipe2d-geometry'
+import { cloneLines, geometryToLines, type Lines, type Point } from '~/utils/pipe2d-geometry'
 import type { SelectedElement } from '~/composables/admin/usePipe2DEditorGraph'
 import {
   getChangedPointIndex,
@@ -65,6 +65,7 @@ type UsePipe2DEditorMapGraphicsOptions = {
   getViewer: () => Cesium.Viewer | null
   getGraphicLayer: () => any | null
   getMars3dLib: () => any | null
+  pipes: Ref<GeoJsonFeature[]>
   selectedFeature: ComputedRef<GeoJsonFeature | null>
   draftLines: Ref<Lines>
   activeLineIndex: Ref<number>
@@ -412,34 +413,59 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
 
     if (graphicLayer && mars3dLib) {
       if (!hasGraphOverlay) {
-        options.draftLines.value.forEach((line, lineIndex) => {
-          if (line.length < 2) return
-          const activeLine = lineIndex === options.activeLineIndex.value
-          const hoveredLine = options.hoveredLineIndex.value === lineIndex
-          const graphic = new mars3dLib.graphic.PolylineEntity({
-            positions: line.map((point) => [point[0], point[1], 0]),
-            style: {
-              width: activeLine || hoveredLine ? 6 : 5,
-              color: activeLine || hoveredLine ? '#22d3ee' : baseColor,
-              opacity: 1,
-              outline: false,
-              arcType: GROUND_POLYLINE_ARC_TYPE,
-              clampToGround: true,
-            },
-            attr: { lineIndex },
-            hasEdit: false,
-            hasMoveEdit: false,
-            hasMidPoint: false,
+        if (options.selectedFeature.value) {
+          options.draftLines.value.forEach((line, lineIndex) => {
+            if (line.length < 2) return
+            const activeLine = lineIndex === options.activeLineIndex.value
+            const hoveredLine = options.hoveredLineIndex.value === lineIndex
+            const graphic = new mars3dLib.graphic.PolylineEntity({
+              positions: line.map((point) => [point[0], point[1], 0]),
+              style: {
+                width: activeLine || hoveredLine ? 6 : 5,
+                color: activeLine || hoveredLine ? '#22d3ee' : baseColor,
+                opacity: 1,
+                outline: false,
+                arcType: GROUND_POLYLINE_ARC_TYPE,
+                clampToGround: true,
+              },
+              attr: { lineIndex },
+              hasEdit: false,
+              hasMoveEdit: false,
+              hasMidPoint: false,
+            })
+            ;(graphic as any).__pipeLineMeta = { lineIndex }
+            if (graphic.entity) {
+              ;(graphic.entity as any).__pipeLineMeta = { lineIndex }
+            }
+            graphicLayer.addGraphic(graphic)
+            lineGraphicMap.set(lineIndex, graphic)
           })
-          ;(graphic as any).__pipeLineMeta = { lineIndex }
-          if (graphic.entity) {
-            ;(graphic.entity as any).__pipeLineMeta = { lineIndex }
-          }
-          graphicLayer.addGraphic(graphic)
-          lineGraphicMap.set(lineIndex, graphic)
-        })
 
-        startEditingActiveLine()
+          startEditingActiveLine()
+        } else {
+          options.pipes.value.forEach((feature) => {
+            const overviewColor = resolvePipeBaseColor(feature)
+            const lines = geometryToLines(feature.geometry)
+            for (const line of lines) {
+              if (line.length < 2) continue
+              const graphic = new mars3dLib.graphic.PolylineEntity({
+                positions: line.map((point) => [point[0], point[1], 0]),
+                style: {
+                  width: 4,
+                  color: overviewColor,
+                  opacity: 0.92,
+                  outline: false,
+                  arcType: GROUND_POLYLINE_ARC_TYPE,
+                  clampToGround: true,
+                },
+                hasEdit: false,
+                hasMoveEdit: false,
+                hasMidPoint: false,
+              })
+              graphicLayer.addGraphic(graphic)
+            }
+          })
+        }
       }
       renderGraphEdgeEntities()
       renderGraphNodeEntities()
@@ -450,24 +476,44 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
     if (!viewer) return
 
     if (!hasGraphOverlay) {
-      options.draftLines.value.forEach((line, lineIndex) => {
-        if (line.length < 2) return
-        const activeLine = lineIndex === options.activeLineIndex.value
-        const hoveredLine = options.hoveredLineIndex.value === lineIndex
-        const lineEntity = viewer.entities.add({
-          polyline: {
-            positions: line.map(toSurfaceCartesian),
-            width: activeLine || hoveredLine ? 6 : 5,
-            arcType: GROUND_POLYLINE_ARC_TYPE,
-            clampToGround: true,
-            material: activeLine || hoveredLine
-              ? createSelectedPolylineMaterial('#22d3ee', 1)
-              : createSolidPolylineMaterial(baseColor, 1),
-          },
+      if (options.selectedFeature.value) {
+        options.draftLines.value.forEach((line, lineIndex) => {
+          if (line.length < 2) return
+          const activeLine = lineIndex === options.activeLineIndex.value
+          const hoveredLine = options.hoveredLineIndex.value === lineIndex
+          const lineEntity = viewer.entities.add({
+            polyline: {
+              positions: line.map(toSurfaceCartesian),
+              width: activeLine || hoveredLine ? 6 : 5,
+              arcType: GROUND_POLYLINE_ARC_TYPE,
+              clampToGround: true,
+              material: activeLine || hoveredLine
+                ? createSelectedPolylineMaterial('#22d3ee', 1)
+                : createSolidPolylineMaterial(baseColor, 1),
+            },
+          })
+          ;(lineEntity as any).__pipeLineMeta = { lineIndex }
+          currentLineEntities.push(lineEntity)
         })
-        ;(lineEntity as any).__pipeLineMeta = { lineIndex }
-        currentLineEntities.push(lineEntity)
-      })
+      } else {
+        options.pipes.value.forEach((feature) => {
+          const overviewColor = resolvePipeBaseColor(feature)
+          const lines = geometryToLines(feature.geometry)
+          for (const line of lines) {
+            if (line.length < 2) continue
+            const lineEntity = viewer.entities.add({
+              polyline: {
+                positions: line.map(toSurfaceCartesian),
+                width: 4,
+                arcType: GROUND_POLYLINE_ARC_TYPE,
+                clampToGround: true,
+                material: createSolidPolylineMaterial(overviewColor, 0.92),
+              },
+            })
+            currentLineEntities.push(lineEntity)
+          }
+        })
+      }
     }
 
     renderGraphEdgeEntities()

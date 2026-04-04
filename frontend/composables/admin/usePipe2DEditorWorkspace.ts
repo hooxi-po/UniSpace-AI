@@ -110,37 +110,48 @@ export function usePipe2DEditorWorkspace(options: UsePipe2DEditorWorkspaceOption
     options.actionMessage.value = { type: 'ok', text: `${feature} 将在下一阶段接入` }
   }
 
+  function ensurePipeSelectedForEditing(actionLabel: string) {
+    if (options.selectedFeature.value) return true
+    activeTool.value = 'select'
+    setEditModes(false, false, false)
+    options.actionMessage.value = { type: 'error', text: `请先选择一条管道，再${actionLabel}` }
+    return false
+  }
+
   function activateTool(tool: ToolKey) {
     activeTool.value = tool
     if (tool === 'select') {
       setEditModes(false, false, false)
-      return
+      return true
     }
     if (tool === 'addNode') {
+      if (!ensurePipeSelectedForEditing('创建节点')) return false
       setEditModes(false, false, true)
-      return
+      return true
     }
     if (tool === 'addPipe') {
+      if (!ensurePipeSelectedForEditing('添加管线')) return false
       setEditModes(true, false, false)
-      return
+      return true
     }
     if (tool === 'bindAsset') {
       setEditModes(false, false, false)
       showPlanned('房产绑定')
-      return
+      return true
     }
     if (tool === 'annotate') {
       setEditModes(false, false, false)
       showPlanned('运维批注')
-      return
+      return true
     }
     if (tool === 'layer') {
       setEditModes(false, false, false)
       showPlanned('图层过滤')
-      return
+      return true
     }
     setEditModes(false, false)
     showPlanned('数据导入')
+    return true
   }
 
   function selectTool(tool: ToolKey) {
@@ -157,7 +168,7 @@ export function usePipe2DEditorWorkspace(options: UsePipe2DEditorWorkspaceOption
 
   function tryDropToolToCanvas(tool: ToolKey, clientX: number, clientY: number) {
     if (!isPointInCanvas(clientX, clientY)) return
-    activateTool(tool)
+    if (!activateTool(tool)) return
     if (tool !== 'addNode' && tool !== 'addPipe') return
     const canvas = options.mapContainerRef.value
     if (!canvas) return
@@ -354,6 +365,23 @@ export function usePipe2DEditorWorkspace(options: UsePipe2DEditorWorkspaceOption
       resetToolbarDragState()
     },
     { immediate: true },
+  )
+
+  watch(
+    options.selectedFeature,
+    (feature) => {
+      if (feature) return
+      if (
+        activeTool.value === 'addNode'
+        || activeTool.value === 'addPipe'
+        || options.addNodeMode.value
+        || options.addPointMode.value
+        || options.deletePointMode.value
+      ) {
+        activeTool.value = 'select'
+        setEditModes(false, false, false)
+      }
+    },
   )
 
   onMounted(() => {

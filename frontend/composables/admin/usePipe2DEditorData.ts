@@ -49,7 +49,15 @@ export function usePipe2DEditorData(options: UsePipe2DEditorDataOptions) {
   const telemetryPreview = computed(() => telemetryList.value.slice(0, 5))
   const auditPreview = computed(() => auditLogs.value.slice(0, 5))
 
-  async function loadPipes() {
+  function clearInsights() {
+    insightError.value = null
+    drilldown.value = null
+    traceResult.value = null
+    telemetryList.value = []
+    auditLogs.value = []
+  }
+
+  async function loadPipes(): Promise<boolean> {
     loading.value = true
     loadError.value = null
     options.actionMessage.value = null
@@ -67,31 +75,29 @@ export function usePipe2DEditorData(options: UsePipe2DEditorDataOptions) {
       const preferredId = options.initialFeatureId.value
       const hasPreferred = preferredId
         && options.pipes.value.some(item => String(item.id) === preferredId)
+      const currentSelectedId = String(options.selectedFeatureId.value || '')
+      const hasCurrentSelection = currentSelectedId
+        && options.pipes.value.some(item => String(item.id) === currentSelectedId)
       if (hasPreferred) {
         options.selectedFeatureId.value = String(preferredId)
-      } else if (
-        !options.selectedFeatureId.value
-        || !options.pipes.value.some(item => String(item.id) === options.selectedFeatureId.value)
-      ) {
+      } else if (currentSelectedId && !hasCurrentSelection) {
         options.selectedFeatureId.value = options.pipes.value.length
           ? String(options.pipes.value[0].id)
           : ''
       }
+      return true
     } catch (err: unknown) {
       loadError.value = getErrorMessage(err, '加载管道列表失败')
       options.pipes.value = []
       options.selectedFeatureId.value = ''
+      return false
     } finally {
       loading.value = false
     }
   }
 
   async function loadInsights(featureId: string) {
-    insightError.value = null
-    drilldown.value = null
-    traceResult.value = null
-    telemetryList.value = []
-    auditLogs.value = []
+    clearInsights()
 
     const [drilldownResult, traceResultDown, telemetryResult, auditResult] = await Promise.allSettled([
       twinService.drilldown(options.backendBaseUrl.value, featureId),
@@ -209,6 +215,7 @@ export function usePipe2DEditorData(options: UsePipe2DEditorDataOptions) {
     telemetryPreview,
     auditPreview,
     loadPipes,
+    clearInsights,
     loadInsights,
     saveGeometry,
   }

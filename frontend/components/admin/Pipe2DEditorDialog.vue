@@ -17,6 +17,8 @@
         :scene-mode="sceneMode"
         :view-mode="viewMode"
         :view-mode-options="viewModeOptions"
+        :pipes="pipes"
+        :selected-feature-id="selectedFeatureId"
         @start-edit-project-title="startEditProjectTitle"
         @update:project-title-draft="projectTitleDraft = $event"
         @commit-project-title="commitProjectTitle"
@@ -30,6 +32,7 @@
         @beautify="showPlanned('一键美化布局')"
         @share="showPlanned('分享')"
         @save-geometry="saveGeometry"
+        @search-select="handleTopbarSearchSelect"
         @close="requestDialogClose"
       />
 
@@ -52,7 +55,7 @@
           :active-tool-hint="combinedToolHint"
           :loading="loading"
           :load-error="loadError"
-          :selected-feature-exists="Boolean(selectedFeature)"
+          :selected-feature-exists="Boolean(selectedFeature) || pipes.length > 0"
           :map-error="mapError"
           :snap-hint-visible="snapHintVisible"
           :hover-length-hint="hoverLengthHint"
@@ -119,15 +122,19 @@
           :total-points="totalPoints"
           :segment-count="segmentCount"
           :total-length-text="formatMeters(totalLengthMeters)"
+          :global-segment-count="globalSegmentCount"
           :active-line-length-text="formatMeters(activeLineLengthMeters)"
           :active-line-index="activeLineIndex"
           :selected-point-label="selectedPointLabel"
           :zoom-level="mapView.zoom"
           :is-dirty="isDirty"
+          :global-pipe-count="globalPipeCount"
+          :global-node-count="globalNodeCount"
+          :global-total-length-text="globalTotalLengthText"
           @collapse-panel="panelCollapsed = true"
           @toggle-section="togglePanelSection"
           @update:selected-feature-id="handleSelectedFeatureIdChange"
-          @refresh="loadPipes"
+          @refresh="handleRefreshPipes"
           @focus="fitCurrentPipeView"
           @start-rename="startRename"
           @update:rename-draft="renameDraft = $event"
@@ -163,12 +170,14 @@
       </div>
 
       <Pipe2DEditorStatusbarSection
-        :total-points="totalPoints"
-        :segment-count="segmentCount"
-        :linked-building-count="linkedBuildingCount"
+        :total-points="statusbarPointCount"
+        :segment-count="statusbarSegmentCount"
+        :tertiary-label="statusbarTertiaryLabel"
+        :tertiary-value="statusbarTertiaryValue"
         :alert-count="alertCount"
-        :fps-text="fpsText"
-        :load-progress-text="loadProgressText"
+        :show-alert-count="statusbarShowAlertCount"
+        :last-sync-text="lastSyncText"
+        :active-tool-label="activeToolLabel"
       />
 
       <Pipe2DEditorShortcutHelp
@@ -196,6 +205,7 @@ import Pipe2DEditorStageSection from '~/components/admin/pipe2d-editor/Pipe2DEdi
 import Pipe2DEditorStatusbarSection from '~/components/admin/pipe2d-editor/Pipe2DEditorStatusbarSection.vue'
 import Pipe2DEditorToolbarSection from '~/components/admin/pipe2d-editor/Pipe2DEditorToolbarSection.vue'
 import Pipe2DEditorTopbarSection from '~/components/admin/pipe2d-editor/Pipe2DEditorTopbarSection.vue'
+import { sumLength } from '~/composables/admin/pipe2d-editor/pipe2d-editor-map-shared'
 import { usePipe2DEditorData } from '~/composables/admin/usePipe2DEditorData'
 import { usePipe2DEditorDrafts } from '~/composables/admin/usePipe2DEditorDrafts'
 import { usePipe2DEditorMap } from '~/composables/admin/usePipe2DEditorMap'
@@ -204,7 +214,7 @@ import { useMindmapEditor } from '~/composables/admin/useMindmapEditor'
 import { useMindmapEditorEvents } from '~/composables/admin/useMindmapEditorEvents'
 import { geoFeatureService, type GeoJsonFeature } from '~/services/geo-features'
 import { twinService } from '~/services/twin'
-import { type Lines } from '~/utils/pipe2d-geometry'
+import { geometryToLines, type Lines } from '~/utils/pipe2d-geometry'
 import { normalizeLegacyMidPointEdges, type EdgeAttributes, type NodeAttributes, type NodeType } from '~/utils/pipe2d-graph'
 
 const props = defineProps<{
@@ -227,6 +237,8 @@ const mapContainerRef = ref<HTMLDivElement | null>(null)
 const saving = ref(false)
 const actionMessage = ref<EditorMessage | null>(null)
 const saveSuccessVisible = ref(false)
+const lastSyncTime = ref<Date | null>(null)
+const overviewPinned = ref(false)
 
 const pipes = ref<GeoJsonFeature[]>([])
 const selectedFeatureId = ref('')
@@ -442,6 +454,7 @@ const {
   auditLogs,
   insightError,
   loadPipes,
+  clearInsights,
   loadInsights,
   saveGeometry: persistGeometry,
 } = usePipe2DEditorData({
@@ -534,7 +547,7 @@ function handleRedo() {
 }
 
 const displayPipeName = computed(() => {
-  if (!selectedFeature.value) return '未选择管道'
+  if (!selectedFeature.value) return '管网总览'
   const properties = selectedFeature.value.properties || {}
   return String(properties.name || properties.ref || selectedFeature.value.id)
 })
@@ -547,6 +560,7 @@ const selectedPointLabel = computed(() => {
 })
 
 const selectedFeatureTypeTag = computed(() => {
+  if (!selectedFeature.value) return '全局'
   const geometryType = selectedFeature.value?.geometry?.type || ''
   if (geometryType === 'LineString' || geometryType === 'MultiLineString') return '管网线'
   return '管网节点'
@@ -568,9 +582,47 @@ const saveStatusClass = computed(() => {
   return 'save-chip--saved'
 })
 
-const loadProgressText = computed(() => (loading.value ? '载入中' : '100%'))
-const fpsText = computed(() => (sceneMode.value === '3d' ? '58' : '60'))
 const alertCount = computed(() => telemetryList.value.filter(item => String(item.quality || '').toLowerCase() !== 'good').length)
+const isOverviewMode = computed(() => !selectedFeature.value)
+const globalPipeCount = computed(() => pipes.value.length)
+const globalNodeCount = computed(() => {
+  const keys = new Set<string>()
+  for (const feature of pipes.value) {
+    const lines = geometryToLines(feature.geometry)
+    for (const line of lines) {
+      for (const point of line) {
+        keys.add(`${point[0].toFixed(8)},${point[1].toFixed(8)}`)
+      }
+    }
+  }
+  return keys.size
+})
+const globalSegmentCount = computed(() => {
+  return pipes.value.reduce((sum, feature) => {
+    const featureSegments = geometryToLines(feature.geometry)
+      .reduce((lineSum, line) => lineSum + Math.max(0, line.length - 1), 0)
+    return sum + featureSegments
+  }, 0)
+})
+const globalTotalLengthText = computed(() => {
+  const totalLength = pipes.value.reduce((sum, feature) => sum + sumLength(geometryToLines(feature.geometry)), 0)
+  return formatMeters(totalLength)
+})
+const statusbarPointCount = computed(() => isOverviewMode.value ? globalNodeCount.value : totalPoints.value)
+const statusbarSegmentCount = computed(() => isOverviewMode.value ? globalSegmentCount.value : segmentCount.value)
+const statusbarTertiaryLabel = computed(() => isOverviewMode.value ? '管线' : '楼栋')
+const statusbarTertiaryValue = computed(() => isOverviewMode.value ? globalPipeCount.value : linkedBuildingCount.value)
+const statusbarShowAlertCount = computed(() => !isOverviewMode.value)
+const lastSyncText = computed(() => {
+  if (!lastSyncTime.value) return '未同步'
+  const year = lastSyncTime.value.getFullYear()
+  const month = String(lastSyncTime.value.getMonth() + 1).padStart(2, '0')
+  const day = String(lastSyncTime.value.getDate()).padStart(2, '0')
+  const hours = String(lastSyncTime.value.getHours()).padStart(2, '0')
+  const minutes = String(lastSyncTime.value.getMinutes()).padStart(2, '0')
+  const seconds = String(lastSyncTime.value.getSeconds()).padStart(2, '0')
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
+})
 
 const linkedBuildingCount = computed(() => {
   return Array.isArray(drilldown.value?.linkedBuildings) ? drilldown.value.linkedBuildings.length : 0
@@ -747,13 +799,46 @@ function togglePanelSection(key: PanelSectionKey) {
   panelSectionCollapsed.value[key] = !panelSectionCollapsed.value[key]
 }
 
-function handleSelectedFeatureIdChange(nextId: string) {
+async function applySelectedFeatureId(nextId: string, shouldFocus = false) {
   const normalized = String(nextId || '')
-  if (!normalized || normalized === selectedFeatureId.value) return
-  selectedFeatureId.value = normalized
-  // 切换管道时清理图层选中态，避免旧选中影响新管道操作
-  editorGraph.clearSelection()
-  mindmapEditor.clearSelection()
+  if (normalized && !pipes.value.some(item => String(item.id) === normalized)) return
+  const changed = normalized !== selectedFeatureId.value
+  if (changed) {
+    overviewPinned.value = !normalized
+    selectedFeatureId.value = normalized
+    renaming.value = false
+    mindmapEditor.clearSelection()
+    if (!normalized) {
+      editorGraph.initFromLines([])
+      clearInsights()
+    } else {
+      editorGraph.clearSelection()
+    }
+  }
+  if (shouldFocus && normalized) {
+    await nextTick()
+    fitCurrentPipeView()
+  }
+}
+
+function handleSelectedFeatureIdChange(nextId: string) {
+  void applySelectedFeatureId(nextId)
+}
+
+function handleTopbarSearchSelect(nextId: string) {
+  void applySelectedFeatureId(nextId, true)
+}
+
+async function handleRefreshPipes() {
+  const shouldRestoreOverview = overviewPinned.value
+  const ok = await loadPipes()
+  if (ok) {
+    if (shouldRestoreOverview && selectedFeatureId.value) {
+      await applySelectedFeatureId('')
+    }
+    lastSyncTime.value = new Date()
+  }
+  return ok
 }
 
 function handleMenuInsert() {
@@ -785,6 +870,7 @@ async function saveGeometry() {
   await persistGeometry()
   if (!featureId) return false
   if (actionMessage.value?.type === 'ok') {
+    lastSyncTime.value = new Date()
     clearLocalDraft(featureId)
     setDraftStatus('已保存到服务端')
     saveSuccessVisible.value = true
@@ -811,6 +897,7 @@ watch(
     if (!open) {
       hasInitiallyRendered.value = false
       renaming.value = false
+      overviewPinned.value = false
       saveSuccessVisible.value = false
       clearSaveCloseTimer()
       stopDraftTimers()
@@ -818,7 +905,7 @@ watch(
       mindmapEvents.unbindEvents()
       return
     }
-    loadPipes()
+    void handleRefreshPipes()
     mindmapEvents.bindEvents()
   },
   { immediate: true },
@@ -829,7 +916,7 @@ watch(
   (id) => {
     if (!props.open || !id) return
     if (pipes.value.some(item => String(item.id) === id)) {
-      selectedFeatureId.value = id
+      void applySelectedFeatureId(id)
     }
   },
 )
@@ -843,7 +930,7 @@ watch(
   [mapReady, pipes, selectedFeature],
   ([ready, pipesList, feature]) => {
     if (hasInitiallyRendered.value) return
-    if (!props.open || !ready || !pipesList.length || !feature) return
+    if (!props.open || !ready || !pipesList.length) return
     // 地图已准备好，且有数据，调用 fitCurrentPipeView 确保显示
     nextTick(() => {
       fitCurrentPipeView()
@@ -856,7 +943,10 @@ watch(
 watch(
   [() => props.open, selectedFeatureId],
   ([opened, featureId]) => {
-    if (!opened || !featureId) return
+    if (!opened || !featureId) {
+      clearInsights()
+      return
+    }
     void loadInsights(featureId)
   },
   { immediate: true },

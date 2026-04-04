@@ -183,6 +183,10 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     return buildFittedView(lines, FITTED_VIEW_OPTIONS)
   }
 
+  function collectOverviewLines() {
+    return options.pipes.value.flatMap(feature => geometryToLines(feature.geometry))
+  }
+
   function toCartesian(point: Point) {
     return Cesium.Cartesian3.fromDegrees(point[0], point[1], 0)
   }
@@ -348,6 +352,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
       getViewer: () => viewer,
       getGraphicLayer: () => graphicLayer,
       getMars3dLib: () => mars3dLib,
+      pipes: options.pipes,
       selectedFeature: options.selectedFeature,
       draftLines: options.draftLines,
       activeLineIndex,
@@ -502,6 +507,10 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
 
 
   function placeGraphNodeAtScreen(x: number, y: number): boolean {
+    if (!options.selectedFeature.value || options.saving.value) {
+      options.actionMessage.value = { type: 'error', text: '请先选择一条管道再创建节点' }
+      return false
+    }
     const screen = new Cesium.Cartesian2(Math.round(x), Math.round(y))
     const point = screenToLonLat(screen)
     if (!point) return false
@@ -548,8 +557,13 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
   }
 
   function fitCurrentPipeView() {
-    if (!options.draftLines.value.length) return
-    const fitted = createFittedView(options.draftLines.value)
+    const targetLines = options.selectedFeature.value
+      ? (options.draftLines.value.length
+        ? options.draftLines.value
+        : geometryToLines(options.selectedFeature.value.geometry))
+      : collectOverviewLines()
+    if (!targetLines.length) return
+    const fitted = createFittedView(targetLines)
     mapView.value = { ...fitted }
     if (!viewer) return
 
@@ -778,6 +792,15 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
       const feature = options.selectedFeature.value
       const linesFromFeature = feature ? geometryToLines(feature.geometry) : []
       editorGraph.initFromLines(linesFromFeature)
+      renderDraftGraphics()
+      fitCurrentPipeView()
+    },
+  )
+
+  watch(
+    () => options.pipes.value,
+    () => {
+      if (!options.open.value || !mapReady.value || options.selectedFeature.value) return
       renderDraftGraphics()
       fitCurrentPipeView()
     },

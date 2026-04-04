@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { ChevronDown, ChevronRight, House, PanelRightClose } from 'lucide-vue-next'
 import type { SelectedElement } from '~/composables/admin/usePipe2DEditorGraph'
-import type { EdgeAttributes, NodeAttributes, NodeType, PipeGraph, PipeNode } from '~/utils/pipe2d-graph'
+import type { EdgeAttributes, NodeAttributes, NodeType, PipeGraph } from '~/utils/pipe2d-graph'
 import Pipe2DEditorGraphPanel from './Pipe2DEditorGraphPanel.vue'
 
 type PanelSectionKey = 'basic' | 'relation' | 'control' | 'realtime' | 'timeline' | 'runtime'
@@ -104,13 +104,6 @@ const emit = defineEmits<{
   (e: 'remove-edge', edgeId: string): void
 }>()
 
-const selectedGraphNode = computed<PipeNode | null>(() => {
-  const selected = props.graphSelected
-  const graph = props.graph
-  if (!selected || !graph || selected.kind !== 'node') return null
-  return graph.nodes.find(node => node.id === selected.nodeId) ?? null
-})
-
 const selectedGraphEdge = computed(() => {
   const selected = props.graphSelected
   const graph = props.graph
@@ -118,11 +111,7 @@ const selectedGraphEdge = computed(() => {
   return graph.edges.find(edge => edge.id === selected.edgeId) ?? null
 })
 
-const showRelationPanel = computed(() => Boolean(props.selectedFeature) && !selectedGraphEdge.value)
-const showRealtimePanel = computed(() => {
-  return Boolean(props.selectedFeature) && !selectedGraphEdge.value
-})
-const showTimelinePanel = computed(() => Boolean(props.selectedFeature) && !selectedGraphEdge.value)
+const showPipeInsightPanels = computed(() => Boolean(props.selectedFeature) && !selectedGraphEdge.value)
 
 function onSelectFeature(event: Event) {
   emit('update:selected-feature-id', (event.target as HTMLSelectElement).value)
@@ -262,7 +251,7 @@ function handleRemoveEdge(edgeId: string) {
       </div>
     </section>
 
-    <section v-if="showRelationPanel" class="panel-card">
+    <section v-if="showPipeInsightPanels" class="panel-card">
       <button class="panel-collapse-toggle" type="button" @click="emit('toggle-section', 'relation')">
         <span>关联关系</span>
         <component :is="panelSectionCollapsed.relation ? ChevronRight : ChevronDown" :size="16" />
@@ -283,7 +272,7 @@ function handleRemoveEdge(edgeId: string) {
       </div>
     </section>
 
-    <section v-if="showRealtimePanel" class="panel-card">
+    <section v-if="showPipeInsightPanels" class="panel-card">
       <button class="panel-collapse-toggle" type="button" @click="emit('toggle-section', 'realtime')">
         <span>实时数据</span>
         <component :is="panelSectionCollapsed.realtime ? ChevronRight : ChevronDown" :size="16" />
@@ -315,7 +304,7 @@ function handleRemoveEdge(edgeId: string) {
       </div>
     </section>
 
-    <section v-if="showTimelinePanel" class="panel-card">
+    <section v-if="showPipeInsightPanels" class="panel-card">
       <button class="panel-collapse-toggle" type="button" @click="emit('toggle-section', 'timeline')">
         <span>运维记录</span>
         <component :is="panelSectionCollapsed.timeline ? ChevronRight : ChevronDown" :size="16" />

@@ -16,6 +16,7 @@
   "dependencies": {
     "@google/genai": "^1.37.0",
     "cesium": "^1.137.0",
+    "echarts": "^6.0.0",
     "lucide-vue-next": "^0.460.0",
     "mars3d": "^3.10.7",
     "nuxt": "^3.15.3",

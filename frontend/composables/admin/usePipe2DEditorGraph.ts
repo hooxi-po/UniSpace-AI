@@ -9,7 +9,7 @@
  * - draftLines 由 graphToLines() 派生（computed），saveGeometry 仍走 Lines 路径（兼容旧后端）。
  */
 
-import { computed, ref, watch, type Ref } from 'vue'
+import { computed, ref, type Ref } from 'vue'
 import {
   autoControlPoints,
   cloneGraph,
@@ -37,6 +37,11 @@ export type SelectedElement =
   | { kind: 'edge'; edgeId: string }
   | null
 
+type GraphMutationHelpers = {
+  nextNodeId: () => string
+  nextEdgeId: () => string
+}
+
 // ---------------------------------------------------------------------------
 // Composable
 // ---------------------------------------------------------------------------
@@ -59,14 +64,9 @@ export function usePipe2DEditorGraph(options: {
   // draftLines（折线格式）由图派生，供旧渲染层使用
   const draftLines = computed<Lines>(() => graphToLines(graph.value))
 
-  // 同步 graph 变更回传入的 draftLines（确保保存时使用最新几何）
-  watch(graph, (newGraph) => {
-    const lines = graphToLines(newGraph)
-    // 只有在实际变化时才更新，避免循环触发
-    if (JSON.stringify(lines) !== JSON.stringify(options.draftLines.value)) {
-      options.draftLines.value = lines
-    }
-  }, { deep: true })
+  function syncDraftLinesFromGraph() {
+    options.draftLines.value = graphToLines(graph.value)
+  }
 
   // ---------------------------------------------------------------------------
   // 初始化：从旧 Lines 格式推断图结构
@@ -81,6 +81,7 @@ export function usePipe2DEditorGraph(options: {
     selected.value = null
     graphHistory.value = []
     graphRedoHistory.value = []
+    syncDraftLinesFromGraph()
   }
 
   // 首次初始化
@@ -98,12 +99,24 @@ export function usePipe2DEditorGraph(options: {
     graphRedoHistory.value = []
   }
 
+  function applyGraphMutation(
+    mutate: (graph: PipeGraph, helpers: GraphMutationHelpers) => SelectedElement | void,
+  ) {
+    pushGraphHistory()
+    const nextSelected = mutate(graph.value, { nextNodeId, nextEdgeId })
+    if (nextSelected !== undefined) {
+      selected.value = nextSelected
+    }
+    syncDraftLinesFromGraph()
+  }
+
   function undoGraph() {
     const prev = graphHistory.value.pop()
     if (!prev) return
     graphRedoHistory.value.push(cloneGraph(graph.value))
     graph.value = prev
     selected.value = null
+    syncDraftLinesFromGraph()
   }
 
   function redoGraph() {
@@ -112,6 +125,7 @@ export function usePipe2DEditorGraph(options: {
     graphHistory.value.push(cloneGraph(graph.value))
     graph.value = next
     selected.value = null
+    syncDraftLinesFromGraph()
   }
 
   // ---------------------------------------------------------------------------
@@ -121,6 +135,7 @@ export function usePipe2DEditorGraph(options: {
   /**
    * 在一条边的中间插入新节点（适用于"插点"操作）。
    * 将原边 src→tgt 分裂为 src→new 和 new→tgt 两段，新节点自动选中。
+   * 曲线边拆分后两段自动重新计算控制点。
    */
   function insertNodeOnEdge(edgeId: string, lon: number, lat: number): PipeNode | null {
     const edge = graph.value.edges.find(e => e.id === edgeId)
@@ -130,11 +145,20 @@ export function usePipe2DEditorGraph(options: {
     graph.value.nodes.push(newNode)
     // 移除原边
     graph.value.edges = graph.value.edges.filter(e => e.id !== edgeId)
-    // 创建两段新边，继承原边的属性
-    const edgeA = createEdge(nextEdgeId(), edge.sourceId, newNode.id, 'straight', [], null, { ...edge.attributes })
-    const edgeB = createEdge(nextEdgeId(), newNode.id, edge.targetId, 'straight', [], null, { ...edge.attributes })
+    // 保留原始边的 edgeType，曲线边拆分后重新计算控制点
+    const srcNode = graph.value.nodes.find(n => n.id === edge.sourceId)
+    const tgtNode = graph.value.nodes.find(n => n.id === edge.targetId)
+    const cpA = edge.edgeType === 'curve' && srcNode
+      ? autoControlPoints([srcNode.lon, srcNode.lat], [lon, lat])
+      : null
+    const cpB = edge.edgeType === 'curve' && tgtNode
+      ? autoControlPoints([lon, lat], [tgtNode.lon, tgtNode.lat])
+      : null
+    const edgeA = createEdge(nextEdgeId(), edge.sourceId, newNode.id, edge.edgeType, [], cpA, { ...edge.attributes })
+    const edgeB = createEdge(nextEdgeId(), newNode.id, edge.targetId, edge.edgeType, [], cpB, { ...edge.attributes })
     graph.value.edges.push(edgeA, edgeB)
     selected.value = { kind: 'node', nodeId: newNode.id }
+    syncDraftLinesFromGraph()
     return newNode
   }
 
@@ -157,8 +181,14 @@ export function usePipe2DEditorGraph(options: {
       const otherB = edgeB.sourceId === nodeId ? edgeB.targetId : edgeB.sourceId
       // 移除原两边
       graph.value.edges = graph.value.edges.filter(e => e.id !== edgeA.id && e.id !== edgeB.id)
-      // 合并为一条新边
-      const merged = createEdge(nextEdgeId(), otherA, otherB, 'straight', [], null, { ...edgeA.attributes })
+      // 合并为一条新边，保留边类型（如果任一边是曲线，则保留曲线类型）
+      const mergedType = edgeA.edgeType === 'curve' || edgeB.edgeType === 'curve' ? 'curve' : 'straight'
+      const nodeA = graph.value.nodes.find(n => n.id === otherA)
+      const nodeB = graph.value.nodes.find(n => n.id === otherB)
+      const mergedCp = mergedType === 'curve' && nodeA && nodeB
+        ? autoControlPoints([nodeA.lon, nodeA.lat], [nodeB.lon, nodeB.lat])
+        : null
+      const merged = createEdge(nextEdgeId(), otherA, otherB, mergedType, [], mergedCp, { ...edgeA.attributes })
       graph.value.edges.push(merged)
     } else {
       // 度 ≠ 2：直接删除全部相关边
@@ -168,6 +198,7 @@ export function usePipe2DEditorGraph(options: {
     if (selected.value?.kind === 'node' && selected.value.nodeId === nodeId) {
       selected.value = null
     }
+    syncDraftLinesFromGraph()
   }
 
   // ---------------------------------------------------------------------------
@@ -179,6 +210,7 @@ export function usePipe2DEditorGraph(options: {
     const node = createNode(nextNodeId(), lon, lat, type, attributes)
     graph.value.nodes.push(node)
     selected.value = { kind: 'node', nodeId: node.id }
+    syncDraftLinesFromGraph()
     return node
   }
 
@@ -192,6 +224,29 @@ export function usePipe2DEditorGraph(options: {
     if (selected.value?.kind === 'node' && selected.value.nodeId === nodeId) {
       selected.value = null
     }
+    syncDraftLinesFromGraph()
+  }
+
+  /**
+   * 批量删除节点和边（原子操作，只 push 一次 history）。
+   * 用于思维导图编辑器的多选删除。
+   */
+  function removeBatch(nodeIds: string[], edgeIds: string[]) {
+    if (!nodeIds.length && !edgeIds.length) return
+    pushGraphHistory()
+    const nodeSet = new Set(nodeIds)
+    const edgeSet = new Set(edgeIds)
+    graph.value.nodes = graph.value.nodes.filter(n => !nodeSet.has(n.id))
+    graph.value.edges = graph.value.edges.filter(
+      e => !edgeSet.has(e.id) && !nodeSet.has(e.sourceId) && !nodeSet.has(e.targetId),
+    )
+    if (selected.value?.kind === 'node' && nodeSet.has(selected.value.nodeId)) {
+      selected.value = null
+    }
+    if (selected.value?.kind === 'edge' && edgeSet.has(selected.value.edgeId)) {
+      selected.value = null
+    }
+    syncDraftLinesFromGraph()
   }
 
   function updateNode(nodeId: string, patch: Partial<Omit<PipeNode, 'id'>>) {
@@ -200,6 +255,9 @@ export function usePipe2DEditorGraph(options: {
     pushGraphHistory()
     Object.assign(node, patch)
     if (patch.attributes) node.attributes = { ...node.attributes, ...patch.attributes }
+    if ('lon' in patch || 'lat' in patch) {
+      syncDraftLinesFromGraph()
+    }
   }
 
   function moveNode(nodeId: string, lon: number, lat: number) {
@@ -216,6 +274,7 @@ export function usePipe2DEditorGraph(options: {
       if (!src || !tgt) continue
       edge.controlPoints = autoControlPoints([src.lon, src.lat], [tgt.lon, tgt.lat])
     }
+    syncDraftLinesFromGraph()
   }
 
   // ---------------------------------------------------------------------------
@@ -240,6 +299,7 @@ export function usePipe2DEditorGraph(options: {
     const edge = createEdge(nextEdgeId(), sourceId, targetId, edgeType, [], controlPoints, attributes)
     graph.value.edges.push(edge)
     selected.value = { kind: 'edge', edgeId: edge.id }
+    syncDraftLinesFromGraph()
     return edge
   }
 
@@ -249,6 +309,7 @@ export function usePipe2DEditorGraph(options: {
     if (selected.value?.kind === 'edge' && selected.value.edgeId === edgeId) {
       selected.value = null
     }
+    syncDraftLinesFromGraph()
   }
 
   function updateEdge(edgeId: string, patch: Partial<Omit<PipeEdge, 'id'>>) {
@@ -257,6 +318,15 @@ export function usePipe2DEditorGraph(options: {
     pushGraphHistory()
     Object.assign(edge, patch)
     if (patch.attributes) edge.attributes = { ...edge.attributes, ...patch.attributes }
+    if (
+      'sourceId' in patch
+      || 'targetId' in patch
+      || 'edgeType' in patch
+      || 'midPoints' in patch
+      || 'controlPoints' in patch
+    ) {
+      syncDraftLinesFromGraph()
+    }
   }
 
   function toggleEdgeCurve(edgeId: string) {
@@ -274,6 +344,7 @@ export function usePipe2DEditorGraph(options: {
       edge.edgeType = 'straight'
       edge.controlPoints = null
     }
+    syncDraftLinesFromGraph()
   }
 
   // ---------------------------------------------------------------------------
@@ -327,11 +398,13 @@ export function usePipe2DEditorGraph(options: {
     initFromLines,
     // history
     pushGraphHistory,
+    applyGraphMutation,
     undoGraph,
     redoGraph,
     // nodes
     addNode,
     removeNode,
+    removeBatch,
     updateNode,
     moveNode,
     insertNodeOnEdge,
@@ -347,4 +420,3 @@ export function usePipe2DEditorGraph(options: {
     clearSelection,
   }
 }
-

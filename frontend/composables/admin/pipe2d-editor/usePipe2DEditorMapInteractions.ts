@@ -37,8 +37,10 @@ type UsePipe2DEditorMapInteractionsOptions = {
   addPointMode: Ref<boolean>
   deletePointMode: Ref<boolean>
   addNodeMode: Ref<boolean>
+  quickReportMode?: Ref<boolean>
   placeGraphNodeAtScreen: (x: number, y: number) => boolean
   pickGraphEntity: (screenPosition: { x: number; y: number }) => { type: 'node'; nodeId: string } | { type: 'edge'; edgeId: string } | null
+  findNearestGraphEdge?: (screenPosition: { x: number; y: number }, thresholdPx?: number) => string | null
   selectGraphNode: (nodeId: string) => void
   selectGraphEdge: (edgeId: string) => void
   clearGraphSelection?: () => void
@@ -48,6 +50,7 @@ type UsePipe2DEditorMapInteractionsOptions = {
   removeGraphEdge?: (edgeId: string) => void
   moveGraphNode?: (nodeId: string, lon: number, lat: number) => void
   pushGraphHistory?: () => void
+  restoreGraphFromLines?: (lines: Lines) => void
   snapEnabled: Ref<boolean>
   history: Ref<Lines[]>
   redoHistory: Ref<Lines[]>
@@ -65,6 +68,7 @@ type UsePipe2DEditorMapInteractionsOptions = {
   clearDragReleaseFallback: () => void
   installDragReleaseFallback: () => void
   pushHistory: () => void
+  startQuickReport?: (payload: { lon: number; lat: number; nodeId?: string | null; edgeId?: string | null }) => void
 }
 
 export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapInteractionsOptions) {
@@ -220,26 +224,24 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
     const screen = new Cesium.Cartesian2(Math.round(x), Math.round(y))
     const point = options.screenToLonLat(screen)
     if (!point) return false
-    // 找最近的边，调用 insertNodeOnEdge
-    if (options.insertNodeOnEdge) {
-      // 找最近的 Graph Edge（用图的 sourceId/targetId 查坐标）
-      // 降级：找最近的 Lines 折线段
-      const snapped = applyEndpointSnap(point, screen)
-      insertNodeOnLines(snapped)
-    }
-    return true
-  }
 
-  function insertNodeOnLines(point: Point) {
-    if (!options.insertNodeOnEdge) return
-    // 找 draftLines 中最近的边，映射到 edgeId（简化：直接找离 point 最近的 line segment）
-    let bestEdgeId: string | null = null
-    let bestDistance = Number.POSITIVE_INFINITY
-    // 通过 graph 找最近的边
-    // 实现：调用 options.insertNodeOnEdge with nearest edge
-    // 我们需要 draftLines 来找最近 segment，但 edgeId 需要从 graph 获取
-    // 注：此处通过 pickGraphEntity 来处理（用户点击线段）
-    // 对于 canvas center 插入，退化处理：不实现（暂保留空实现）
+    if (options.insertNodeOnEdge) {
+      const snapped = applyEndpointSnap(point, screen)
+      // 先尝试通过 pickGraphEntity 精确拾取
+      const graphHit = options.pickGraphEntity({ x: screen.x, y: screen.y })
+      if (graphHit?.type === 'edge') {
+        options.insertNodeOnEdge(graphHit.edgeId, snapped[0], snapped[1])
+        options.renderDraftGraphics()
+        return true
+      }
+      const nearestEdgeId = options.findNearestGraphEdge?.({ x: screen.x, y: screen.y }, 20)
+      if (nearestEdgeId) {
+        options.insertNodeOnEdge(nearestEdgeId, snapped[0], snapped[1])
+        options.renderDraftGraphics()
+        return true
+      }
+    }
+    return false
   }
 
   function toggleDeletePointMode() {
@@ -287,11 +289,17 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
     })
   }
 
+  function restoreDraftLines(lines: Lines) {
+    const nextLines = cloneLines(lines)
+    options.draftLines.value = nextLines
+    options.restoreGraphFromLines?.(nextLines)
+  }
+
   function undoLast() {
     const prev = options.history.value.pop()
     if (!prev) return
     options.redoHistory.value.push(cloneLines(options.draftLines.value))
-    options.draftLines.value = cloneLines(prev)
+    restoreDraftLines(prev)
     options.clearGraphSelection?.()
     hideContextMenu()
     options.renderDraftGraphics()
@@ -302,7 +310,7 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
     if (!next) return
     options.history.value.push(cloneLines(options.draftLines.value))
     if (options.history.value.length > 10) options.history.value.shift()
-    options.draftLines.value = cloneLines(next)
+    restoreDraftLines(next)
     options.clearGraphSelection?.()
     hideContextMenu()
     options.renderDraftGraphics()
@@ -320,14 +328,14 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
     options.history.value = options.history.value
       .slice(0, index)
       .map(snapshot => cloneLines(snapshot))
-    options.draftLines.value = cloneLines(target)
+    restoreDraftLines(target)
     options.clearGraphSelection?.()
     hideContextMenu()
     options.renderDraftGraphics()
   }
 
   function resetDraft() {
-    options.draftLines.value = cloneLines(options.originalLines.value)
+    restoreDraftLines(options.originalLines.value)
     options.history.value = []
     options.redoHistory.value = []
     options.clearGraphSelection?.()
@@ -359,6 +367,9 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
     options.clearGraphSelection?.()
     options.addPointMode.value = false
     options.deletePointMode.value = false
+    if (options.quickReportMode) {
+      options.quickReportMode.value = false
+    }
     hideContextMenu()
     hideHoverLengthHint()
     options.setCameraControlsEnabled(true)
@@ -390,6 +401,7 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
     const canInsert = Boolean(point && activeLine && activeLine.length >= 2)
     const sel = options.graphSelected?.value
     const canDelete = sel?.kind === 'node' || sel?.kind === 'edge'
+    const canCopy = sel?.kind === 'node' || sel?.kind === 'edge'
 
     const rect = viewer.canvas.getBoundingClientRect()
     const x = Math.max(6, Math.min(screenPosition.x, rect.width - 170))
@@ -401,6 +413,7 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
       y,
       canInsert,
       canDelete,
+      canCopy,
     }
   }
 
@@ -446,6 +459,7 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
         || options.deletePointMode.value
         || options.draggingNodeId.value !== null
         || options.addNodeMode.value
+        || options.quickReportMode?.value === true
 
       const isMindmapActiveMode = (options.mindmapModeType?.value ?? 'idle') !== 'idle'
       const hasMindmapSelection =
@@ -526,6 +540,26 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
 
       if (options.addNodeMode.value && !options.saving.value && options.selectedFeature.value) {
         options.placeGraphNodeAtScreen(movement.position.x, movement.position.y)
+        return
+      }
+
+      if (options.quickReportMode?.value && !options.saving.value && options.selectedFeature.value) {
+        const point = options.screenToLonLat(movement.position)
+        if (!point) return
+        if (graphHit?.type === 'node') {
+          options.selectGraphNode(graphHit.nodeId)
+        } else if (graphHit?.type === 'edge') {
+          options.selectGraphEdge(graphHit.edgeId)
+        } else {
+          options.clearGraphSelection?.()
+        }
+        options.renderDraftGraphics()
+        options.startQuickReport?.({
+          lon: point[0],
+          lat: point[1],
+          nodeId: graphHit?.type === 'node' ? graphHit.nodeId : null,
+          edgeId: graphHit?.type === 'edge' ? graphHit.edgeId : null,
+        })
         return
       }
 

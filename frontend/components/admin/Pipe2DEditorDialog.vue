@@ -31,6 +31,7 @@
         @toggle-scene-mode="toggleSceneModeByPanel"
         @beautify="showPlanned('一键美化布局')"
         @share="showPlanned('分享')"
+        @validate-topology="handleValidateTopology"
         @save-geometry="saveGeometry"
         @search-select="handleTopbarSearchSelect"
         @close="requestDialogClose"
@@ -184,6 +185,23 @@
         :visible="shortcutHelpVisible"
         @close="shortcutHelpVisible = false"
       />
+
+      <Pipe2DEditorSaveConfirmModal
+        :visible="saveConfirmVisible"
+        :diff="pendingSaveDiff"
+        :submitting="saving"
+        @close="closeSaveConfirm"
+        @confirm="confirmSaveGeometry"
+      />
+
+      <Pipe2DEditorQuickReportModal
+        :visible="quickReportVisible"
+        :pipe-name="displayPipeName"
+        :location-text="quickReportLocationText"
+        :submitting="quickReportSubmitting"
+        @close="closeQuickReport"
+        @submit="submitQuickReport"
+      />
     </div>
   </div>
 </template>
@@ -200,6 +218,9 @@ import {
   type PanelSectionKey,
 } from '~/components/admin/pipe2d-editor/pipe2d-editor-config'
 import Pipe2DEditorRightPanelSection from '~/components/admin/pipe2d-editor/Pipe2DEditorRightPanelSection.vue'
+import Pipe2DEditorQuickReportModal from '~/components/admin/pipe2d-editor/Pipe2DEditorQuickReportModal.vue'
+import type { QuickReportDraft } from '~/components/admin/pipe2d-editor/Pipe2DEditorQuickReportModal.vue'
+import Pipe2DEditorSaveConfirmModal from '~/components/admin/pipe2d-editor/Pipe2DEditorSaveConfirmModal.vue'
 import Pipe2DEditorShortcutHelp from '~/components/admin/pipe2d-editor/Pipe2DEditorShortcutHelp.vue'
 import Pipe2DEditorStageSection from '~/components/admin/pipe2d-editor/Pipe2DEditorStageSection.vue'
 import Pipe2DEditorStatusbarSection from '~/components/admin/pipe2d-editor/Pipe2DEditorStatusbarSection.vue'
@@ -213,9 +234,11 @@ import { usePipe2DEditorWorkspace } from '~/composables/admin/usePipe2DEditorWor
 import { useMindmapEditor } from '~/composables/admin/useMindmapEditor'
 import { useMindmapEditorEvents } from '~/composables/admin/useMindmapEditorEvents'
 import { geoFeatureService, type GeoJsonFeature } from '~/services/geo-features'
+import { pipelineOpsService } from '~/services/pipeline-ops'
 import { twinService } from '~/services/twin'
 import { geometryToLines, type Lines } from '~/utils/pipe2d-geometry'
-import { normalizeLegacyMidPointEdges, type EdgeAttributes, type NodeAttributes, type NodeType } from '~/utils/pipe2d-graph'
+import { cloneGraph, createEmptyGraph, diffGraphs, linesToGraph, normalizeLegacyMidPointEdges, type EdgeAttributes, type GraphDiff, type NodeAttributes, type NodeType, type PipeGraph } from '~/utils/pipe2d-graph'
+import { validateTopology, type ValidationIssue } from '~/utils/pipe2d-topology-validation'
 
 const props = defineProps<{
   open: boolean
@@ -239,6 +262,14 @@ const actionMessage = ref<EditorMessage | null>(null)
 const saveSuccessVisible = ref(false)
 const lastSyncTime = ref<Date | null>(null)
 const overviewPinned = ref(false)
+const savedGraphBaseline = ref<PipeGraph>(createEmptyGraph())
+const quickReportMode = ref(false)
+const quickReportVisible = ref(false)
+const quickReportSubmitting = ref(false)
+const pendingQuickReportLocation = ref<{ lon: number; lat: number; nodeId?: string | null; edgeId?: string | null } | null>(null)
+const saveConfirmVisible = ref(false)
+const pendingSaveDiff = ref<GraphDiff | null>(null)
+const validationResults = ref<ValidationIssue[]>([])
 
 const pipes = ref<GeoJsonFeature[]>([])
 const selectedFeatureId = ref('')
@@ -348,6 +379,17 @@ const {
   originalLines,
   saving,
   actionMessage,
+  quickReportMode,
+  validationResults,
+  startQuickReport: ({ lon, lat, nodeId, edgeId }) => {
+    if (!selectedFeature.value) {
+      actionMessage.value = { type: 'error', text: '请先选择一条管线，再进行故障上报' }
+      return
+    }
+    pendingQuickReportLocation.value = { lon, lat, nodeId: nodeId || null, edgeId: edgeId || null }
+    quickReportVisible.value = true
+    quickReportMode.value = false
+  },
   requestClose: requestDialogClose,
   // 传递思维导图状态引用
   mindmapSelectedNodeIds,
@@ -432,6 +474,7 @@ const {
   addPointMode,
   addNodeMode,
   deletePointMode,
+  quickReportMode,
   sceneMode,
   undergroundSliceEnabled,
   actionMessage,
@@ -471,10 +514,148 @@ const {
   emitSaved: (id) => emit('saved', id),
 })
 
+function hasMeaningfulGraphValue(value: unknown): boolean {
+  if (value === null || value === undefined) return false
+  if (typeof value === 'string') return value.trim().length > 0
+  if (Array.isArray(value)) return value.some(hasMeaningfulGraphValue)
+  if (typeof value === 'object') {
+    return Object.values(value as Record<string, unknown>).some(hasMeaningfulGraphValue)
+  }
+  return true
+}
+
+function buildSavedGraphBaseline(lines: Lines, referenceGraph: PipeGraph): PipeGraph {
+  const rawBaseline = linesToGraph(lines, 'n')
+  if (!rawBaseline.nodes.length || !referenceGraph.nodes.length) {
+    return rawBaseline
+  }
+
+  const coordKey = (lon: number, lat: number) => `${lon.toFixed(7)},${lat.toFixed(7)}`
+  const referenceNodesById = new Map(referenceGraph.nodes.map(node => [node.id, node]))
+  const referenceConnectedNodeIds = new Set<string>()
+  for (const edge of referenceGraph.edges) {
+    referenceConnectedNodeIds.add(edge.sourceId)
+    referenceConnectedNodeIds.add(edge.targetId)
+  }
+
+  const referenceNodesByCoord = new Map<string, string[]>()
+  for (const node of referenceGraph.nodes) {
+    const key = coordKey(node.lon, node.lat)
+    const bucket = referenceNodesByCoord.get(key) || []
+    bucket.push(node.id)
+    referenceNodesByCoord.set(key, bucket)
+  }
+  for (const [key, nodeIds] of referenceNodesByCoord) {
+    nodeIds.sort((a, b) => {
+      const aConnected = referenceConnectedNodeIds.has(a) ? 0 : 1
+      const bConnected = referenceConnectedNodeIds.has(b) ? 0 : 1
+      return aConnected - bConnected
+    })
+    referenceNodesByCoord.set(key, nodeIds)
+  }
+
+  const referenceEdgesByCoord = new Map<string, string[]>()
+  for (const edge of referenceGraph.edges) {
+    const src = referenceNodesById.get(edge.sourceId)
+    const tgt = referenceNodesById.get(edge.targetId)
+    if (!src || !tgt) continue
+    const key = [coordKey(src.lon, src.lat), coordKey(tgt.lon, tgt.lat)].sort().join('::')
+    const bucket = referenceEdgesByCoord.get(key) || []
+    bucket.push(edge.id)
+    referenceEdgesByCoord.set(key, bucket)
+  }
+
+  const rawNodesById = new Map(rawBaseline.nodes.map(node => [node.id, node]))
+  const rawNodeIdToStableId = new Map<string, string>()
+  const rawEdgeIdToStableId = new Map<string, string>()
+  const usedReferenceNodeIds = new Set<string>()
+  const usedReferenceEdgeIds = new Set<string>()
+
+  for (const edge of rawBaseline.edges) {
+    const rawSource = rawNodesById.get(edge.sourceId)
+    const rawTarget = rawNodesById.get(edge.targetId)
+    if (!rawSource || !rawTarget) continue
+
+    const rawSourceKey = coordKey(rawSource.lon, rawSource.lat)
+    const rawTargetKey = coordKey(rawTarget.lon, rawTarget.lat)
+    const edgeKey = [rawSourceKey, rawTargetKey].sort().join('::')
+    const candidateEdgeId = (referenceEdgesByCoord.get(edgeKey) || [])
+      .find(id => !usedReferenceEdgeIds.has(id))
+    if (!candidateEdgeId) continue
+
+    const referenceEdge = referenceGraph.edges.find(item => item.id === candidateEdgeId)
+    const referenceSource = referenceEdge ? referenceNodesById.get(referenceEdge.sourceId) : null
+    const referenceTarget = referenceEdge ? referenceNodesById.get(referenceEdge.targetId) : null
+    if (!referenceEdge || !referenceSource || !referenceTarget) continue
+
+    const referenceSourceKey = coordKey(referenceSource.lon, referenceSource.lat)
+    const referenceTargetKey = coordKey(referenceTarget.lon, referenceTarget.lat)
+    if (rawSourceKey === referenceSourceKey && rawTargetKey === referenceTargetKey) {
+      rawNodeIdToStableId.set(edge.sourceId, referenceEdge.sourceId)
+      rawNodeIdToStableId.set(edge.targetId, referenceEdge.targetId)
+    } else if (rawSourceKey === referenceTargetKey && rawTargetKey === referenceSourceKey) {
+      rawNodeIdToStableId.set(edge.sourceId, referenceEdge.targetId)
+      rawNodeIdToStableId.set(edge.targetId, referenceEdge.sourceId)
+    } else {
+      continue
+    }
+
+    usedReferenceNodeIds.add(rawNodeIdToStableId.get(edge.sourceId)!)
+    usedReferenceNodeIds.add(rawNodeIdToStableId.get(edge.targetId)!)
+    usedReferenceEdgeIds.add(referenceEdge.id)
+    rawEdgeIdToStableId.set(edge.id, referenceEdge.id)
+  }
+
+  for (const node of rawBaseline.nodes) {
+    if (rawNodeIdToStableId.has(node.id)) continue
+    const nodeKey = coordKey(node.lon, node.lat)
+    const candidateNodeId = (referenceNodesByCoord.get(nodeKey) || [])
+      .find(id => !usedReferenceNodeIds.has(id))
+    if (!candidateNodeId) continue
+    rawNodeIdToStableId.set(node.id, candidateNodeId)
+    usedReferenceNodeIds.add(candidateNodeId)
+  }
+
+  return {
+    nodes: rawBaseline.nodes.map(node => ({
+      ...node,
+      id: rawNodeIdToStableId.get(node.id) || node.id,
+    })),
+    edges: rawBaseline.edges.map(edge => {
+      const stableId = rawEdgeIdToStableId.get(edge.id) || edge.id
+      const referenceEdge = referenceGraph.edges.find(item => item.id === stableId)
+      const stableSourceId = rawNodeIdToStableId.get(edge.sourceId) || edge.sourceId
+      const stableTargetId = rawNodeIdToStableId.get(edge.targetId) || edge.targetId
+      return {
+        ...edge,
+        id: stableId,
+        sourceId: referenceEdge?.sourceId || stableSourceId,
+        targetId: referenceEdge?.targetId || stableTargetId,
+      }
+    }),
+  }
+}
+
+const hasGraphDraftChanges = computed(() => {
+  if (!selectedFeature.value) return false
+  return editorGraph.graph.value.nodes.some(node => {
+    return node.type !== 'default' || hasMeaningfulGraphValue(node.attributes)
+  }) || editorGraph.graph.value.edges.some(edge => {
+    return edge.edgeType !== 'straight'
+      || edge.controlPoints !== null
+      || hasMeaningfulGraphValue(edge.attributes)
+  })
+})
+
+const topologyDiff = computed(() => {
+  return diffGraphs(savedGraphBaseline.value, editorGraph.graph.value)
+})
+
 const {
   draftStatusText,
   draftRestoredToastVisible,
   clearLocalDraft,
+  persistLocalDraft,
   setDraftStatus,
   stopDraftTimers,
 } = usePipe2DEditorDrafts({
@@ -483,6 +664,7 @@ const {
   draftLines,
   originalLines,
   isDirty,
+  hasDraftChanges: computed(() => isDirty.value || hasGraphDraftChanges.value),
   saving,
   fitCurrentPipeView,
   graph: editorGraph.graph,
@@ -705,6 +887,22 @@ const telemetryLatestText = computed(() => {
 const selectedPipeIdText = computed(() => (selectedFeature.value ? String(selectedFeature.value.id) : '--'))
 const editorGraphValue = computed(() => editorGraph.graph.value)
 const editorGraphSelected = computed(() => editorGraph.selected.value)
+const quickReportLocationText = computed(() => {
+  const point = pendingQuickReportLocation.value
+  if (!point) return '待选择位置'
+  return `经纬度 ${point.lon.toFixed(6)}, ${point.lat.toFixed(6)}`
+})
+
+function clearValidationResults() {
+  validationResults.value = []
+}
+
+function quickReportFaultLabel(faultType: QuickReportDraft['faultType']) {
+  if (faultType === 'leak') return '漏水'
+  if (faultType === 'burst') return '破裂'
+  if (faultType === 'blockage') return '堵塞'
+  return '故障'
+}
 
 function formatMeters(meters: number) {
   if (!Number.isFinite(meters)) return '0 m'
@@ -831,6 +1029,7 @@ function handleTopbarSearchSelect(nextId: string) {
 
 async function handleRefreshPipes() {
   const shouldRestoreOverview = overviewPinned.value
+  clearValidationResults()
   const ok = await loadPipes()
   if (ok) {
     if (shouldRestoreOverview && selectedFeatureId.value) {
@@ -852,7 +1051,12 @@ function handleMenuDelete() {
 
 function handleMenuCopy() {
   hideContextMenu()
-  showPlanned('复制')
+  if (!mindmapEditor.hasSelection.value) {
+    actionMessage.value = { type: 'error', text: '当前仅支持复制已选中的拓扑节点或管段' }
+    return
+  }
+  mindmapEditor.duplicateSelected()
+  actionMessage.value = { type: 'ok', text: '已复制选中的拓扑元素' }
 }
 
 function handleMenuBindAsset() {
@@ -865,27 +1069,150 @@ function handleMenuTrace() {
   showPlanned('查看链路')
 }
 
-async function saveGeometry() {
+function closeSaveConfirm() {
+  if (saving.value) return
+  saveConfirmVisible.value = false
+  pendingSaveDiff.value = null
+}
+
+function handleValidateTopology() {
+  if (!selectedFeature.value) {
+    actionMessage.value = { type: 'error', text: '请先选择一条管线，再执行拓扑校验' }
+    return
+  }
+  const issues = validateTopology(editorGraph.graph.value)
+  validationResults.value = issues
+  if (!issues.length) {
+    actionMessage.value = { type: 'ok', text: '拓扑校验通过，未发现孤立节点、自环或重复边' }
+    return
+  }
+  const warningCount = issues.filter(issue => issue.severity === 'warning').length
+  const errorCount = issues.filter(issue => issue.severity === 'error').length
+  const parts = [`共 ${issues.length} 项`]
+  if (warningCount) parts.push(`警告 ${warningCount}`)
+  if (errorCount) parts.push(`错误 ${errorCount}`)
+  actionMessage.value = { type: 'error', text: `拓扑校验完成：${parts.join('，')}` }
+}
+
+function closeQuickReport() {
+  if (quickReportSubmitting.value) return
+  quickReportVisible.value = false
+  pendingQuickReportLocation.value = null
+  if (activeTool.value === 'reportFault') {
+    quickReportMode.value = true
+  }
+}
+
+async function submitQuickReport(payload: QuickReportDraft) {
+  if (!selectedFeature.value || !pendingQuickReportLocation.value) return
+
+  quickReportSubmitting.value = true
+  const target = pendingQuickReportLocation.value
+  try {
+    const result = await pipelineOpsService.quickReport({
+      featureId: String(selectedFeature.value.id),
+      lng: target.lon,
+      lat: target.lat,
+      faultType: payload.faultType,
+      severity: payload.severity,
+      note: payload.note,
+      reportedBy: 'admin-2d-editor',
+    })
+
+    let targetNodeId: string | null = null
+    if (target.nodeId && editorGraph.graph.value.nodes.some(node => node.id === target.nodeId)) {
+      targetNodeId = target.nodeId
+    } else if (target.edgeId) {
+      targetNodeId = editorGraph.addNode(target.lon, target.lat, 'default', {}).id
+    } else {
+      targetNodeId = editorGraph.addNode(target.lon, target.lat, 'default', {}).id
+    }
+
+    if (targetNodeId) {
+      const currentNode = editorGraph.graph.value.nodes.find(node => node.id === targetNodeId)
+      editorGraph.updateNode(targetNodeId, {
+        attributes: {
+          ...(currentNode?.attributes || {}),
+          label: currentNode?.attributes.label || `${quickReportFaultLabel(payload.faultType)}点`,
+          status: 'error',
+          faultType: payload.faultType,
+          severity: payload.severity,
+          notes: payload.note || currentNode?.attributes.notes,
+        },
+      })
+    }
+
+    quickReportVisible.value = false
+    pendingQuickReportLocation.value = null
+    if (activeTool.value === 'reportFault') {
+      quickReportMode.value = true
+    }
+    actionMessage.value = {
+      type: 'ok',
+      text: `故障工单已创建：${result.workorder.id}`,
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '快捷故障上报失败'
+    actionMessage.value = { type: 'error', text: message || '快捷故障上报失败' }
+  } finally {
+    quickReportSubmitting.value = false
+  }
+}
+
+async function saveGeometryNow() {
   const featureId = selectedFeature.value ? String(selectedFeature.value.id) : ''
   await persistGeometry()
   if (!featureId) return false
   if (actionMessage.value?.type === 'ok') {
     lastSyncTime.value = new Date()
-    clearLocalDraft(featureId)
-    setDraftStatus('已保存到服务端')
+    savedGraphBaseline.value = cloneGraph(editorGraph.graph.value)
+    if (hasGraphDraftChanges.value) {
+      persistLocalDraft(true)
+      setDraftStatus('图结构草稿已暂存')
+    } else {
+      clearLocalDraft(featureId)
+      setDraftStatus('已保存到服务端')
+    }
     saveSuccessVisible.value = true
     clearSaveCloseTimer()
     saveCloseTimer = setTimeout(() => {
       saveSuccessVisible.value = false
       saveCloseTimer = null
     }, 620)
+    clearValidationResults()
     return true
   }
   return false
 }
 
+function saveGeometry() {
+  if (!selectedFeature.value) {
+    actionMessage.value = { type: 'error', text: '请先选择一条管线，再保存修改' }
+    return
+  }
+  if (!topologyDiff.value.hasChanges && isDirty.value) {
+    void saveGeometryNow()
+    return
+  }
+  if (!topologyDiff.value.hasChanges) {
+    actionMessage.value = { type: 'ok', text: '当前没有需要保存的拓扑变更' }
+    return
+  }
+  pendingSaveDiff.value = topologyDiff.value
+  saveConfirmVisible.value = true
+}
+
+async function confirmSaveGeometry() {
+  saveConfirmVisible.value = false
+  await saveGeometryNow()
+  if (actionMessage.value?.type === 'ok') {
+    pendingSaveDiff.value = null
+  }
+}
+
 function handleResetDraft() {
   resetDraft()
+  clearValidationResults()
   if (!selectedFeature.value) return
   clearLocalDraft(String(selectedFeature.value.id))
   setDraftStatus('已恢复服务端版本')
@@ -899,6 +1226,12 @@ watch(
       renaming.value = false
       overviewPinned.value = false
       saveSuccessVisible.value = false
+      saveConfirmVisible.value = false
+      pendingSaveDiff.value = null
+      quickReportVisible.value = false
+      quickReportMode.value = false
+      pendingQuickReportLocation.value = null
+      clearValidationResults()
       clearSaveCloseTimer()
       stopDraftTimers()
       stopWorkspaceListeners()
@@ -909,6 +1242,20 @@ watch(
     mindmapEvents.bindEvents()
   },
   { immediate: true },
+)
+
+watch(
+  () => selectedFeature.value?.id ?? null,
+  () => {
+    if (selectedFeature.value) {
+      savedGraphBaseline.value = buildSavedGraphBaseline(
+        geometryToLines(selectedFeature.value.geometry),
+        editorGraph.graph.value,
+      )
+      return
+    }
+    savedGraphBaseline.value = createEmptyGraph()
+  },
 )
 
 watch(
@@ -923,6 +1270,11 @@ watch(
 
 watch(selectedFeature, () => {
   actionMessage.value = null
+  saveConfirmVisible.value = false
+  pendingSaveDiff.value = null
+  quickReportVisible.value = false
+  pendingQuickReportLocation.value = null
+  clearValidationResults()
 })
 
 // 当地图准备好且有管道数据时，确保渲染
@@ -952,6 +1304,16 @@ watch(
   { immediate: true },
 )
 
+watch(
+  editorGraphValue,
+  () => {
+    if (validationResults.value.length) {
+      clearValidationResults()
+    }
+  },
+  { deep: true },
+)
+
 // 图结构事件处理器（类型明确）
 function handleUpdateNode(id: string, attrs: NodeAttributes) {
   editorGraph.updateNode(id, { attributes: attrs })
@@ -965,26 +1327,7 @@ function handleUpdateEdge(id: string, attrs: EdgeAttributes) {
   editorGraph.updateEdge(id, { attributes: attrs })
 }
 
-
-function onWindowKeydown(event: KeyboardEvent) {
-  if (!props.open) return
-  if (event.key !== 'Escape') return
-
-  // ESC 键不再关闭编辑器，只用于取消编辑操作
-  // 编辑操作的取消由 usePipe2DEditorMapInteractions 和 useMindmapEditorEvents 处理
-  // 用户需要通过点击关闭按钮来关闭编辑器
-  event.preventDefault()
-  // 不再调用 requestDialogClose()
-}
-
-if (typeof window !== 'undefined') {
-  window.addEventListener('keydown', onWindowKeydown)
-}
-
 onBeforeUnmount(() => {
-  if (typeof window !== 'undefined') {
-    window.removeEventListener('keydown', onWindowKeydown)
-  }
   clearSaveCloseTimer()
   stopDraftTimers()
   stopWorkspaceListeners()

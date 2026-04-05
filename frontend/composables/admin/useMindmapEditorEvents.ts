@@ -121,8 +121,8 @@ export function useMindmapEditorEvents(
       }
 
       // 非连接模式：若已有单节点选中，使用该节点作为 source
-      if (editor.selectedNodeIds.value.size === 1) {
-        const sourceId = Array.from(editor.selectedNodeIds.value)[0]
+      if (editor.selectedNodeIds.value.size === 1 && editor.activeNodeId.value) {
+        const sourceId = editor.activeNodeId.value
         if (sourceId !== nodeId) {
           editor.connectNodes(sourceId, nodeId)
         }
@@ -223,8 +223,11 @@ export function useMindmapEditorEvents(
    * 处理全局快捷键
    */
   function handleGlobalKeyDown(event: KeyboardEvent): void {
+    const hasSingleNodeSelection = editor.selectedNodeIds.value.size === 1
+
     // Tab - 创建子节点
     if (event.key === 'Tab') {
+      if (!hasSingleNodeSelection) return
       event.preventDefault()
       editor.createChildNode()
       return
@@ -232,6 +235,7 @@ export function useMindmapEditorEvents(
 
     // Enter - 创建兄弟节点
     if (event.key === 'Enter') {
+      if (!hasSingleNodeSelection) return
       event.preventDefault()
       editor.createSiblingNode()
       return
@@ -284,15 +288,6 @@ export function useMindmapEditorEvents(
     if (event.key === 'y' && (event.ctrlKey || event.metaKey)) {
       event.preventDefault()
       editor.redo()
-      return
-    }
-
-    // Ctrl/Cmd + D - 复制
-    if (event.key === 'd' && (event.ctrlKey || event.metaKey)) {
-      event.preventDefault()
-      if (editor.hasSelection.value) {
-        editor.duplicateSelected()
-      }
       return
     }
 

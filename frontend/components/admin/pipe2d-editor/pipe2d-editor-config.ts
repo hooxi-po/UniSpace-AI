@@ -1,11 +1,11 @@
 import {
+  TriangleAlert,
   FileText,
   Hand,
   Home,
   Layers,
   Network,
   Plus,
-  Search,
   Upload,
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
@@ -21,6 +21,7 @@ export type ToolKey =
   | 'select'
   | 'addNode'
   | 'addPipe'
+  | 'reportFault'
   | 'bindAsset'
   | 'annotate'
   | 'layer'
@@ -58,6 +59,7 @@ export const toolItems: ToolItem[] = [
   { key: 'select', icon: Hand, label: '选择工具', tooltip: '选择工具', shortcut: 'V' },
   { key: 'addNode', icon: Plus, label: '创建节点', tooltip: '创建设备节点（窨井/阀门/泵站等）', shortcut: 'N' },
   { key: 'addPipe', icon: Network, label: '添加管线', tooltip: '添加管线', shortcut: 'P' },
+  { key: 'reportFault', icon: TriangleAlert, label: '故障标注', tooltip: '点击地图快速上报故障', shortcut: 'F' },
   { key: 'bindAsset', icon: Home, label: '房产绑定', tooltip: '绑定房产', shortcut: 'B' },
   { key: 'annotate', icon: FileText, label: '批注', tooltip: '添加批注', shortcut: 'M' },
   { key: 'layer', icon: Layers, label: '图层', tooltip: '图层过滤', shortcut: 'L' },
@@ -66,7 +68,7 @@ export const toolItems: ToolItem[] = [
 
 export const viewModeSet = new Set<ViewMode>(viewModeOptions.map(item => item.key))
 export const toolKeySet = new Set<ToolKey>(toolItems.map(item => item.key))
-export const defaultToolbarGhostIcon = Search
+export const defaultToolbarGhostIcon = Hand
 
 export const defaultPanelSectionCollapsed: Record<PanelSectionKey, boolean> = {
   basic: false,
@@ -89,4 +91,3 @@ export function createEmptyToolbarDragState(): ToolbarDragState {
     overCanvas: false,
   }
 }
-

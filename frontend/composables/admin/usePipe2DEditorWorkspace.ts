@@ -23,6 +23,7 @@ type UsePipe2DEditorWorkspaceOptions = {
   addPointMode: Ref<boolean>
   addNodeMode: Ref<boolean>
   deletePointMode: Ref<boolean>
+  quickReportMode: Ref<boolean>
   sceneMode: Ref<'2d' | '3d'>
   undergroundSliceEnabled: Ref<boolean>
   actionMessage: Ref<EditorMessage | null>
@@ -63,6 +64,7 @@ export function usePipe2DEditorWorkspace(options: UsePipe2DEditorWorkspaceOption
     // 工具提示
     if (activeTool.value === 'addNode') return '点击画布创建设备节点（窨井/阀门/泵站等） | 按 Esc 退出'
     if (activeTool.value === 'addPipe') return '点击画布继续编辑管线节点 | 双击结束'
+    if (activeTool.value === 'reportFault') return '故障标注模式：点击地图位置快速上报 | 按 Esc 退出'
     if (activeTool.value === 'bindAsset') return '点击管线关联房产信息 | 按 Esc 取消'
     if (activeTool.value === 'annotate') return '点击位置添加批注 | 按 Esc 取消'
 
@@ -74,7 +76,7 @@ export function usePipe2DEditorWorkspace(options: UsePipe2DEditorWorkspaceOption
     return ''
   })
   const toolCursorClass = computed(() => {
-    if (activeTool.value === 'addNode' || activeTool.value === 'addPipe') return 'cursor--crosshair'
+    if (activeTool.value === 'addNode' || activeTool.value === 'addPipe' || activeTool.value === 'reportFault') return 'cursor--crosshair'
     if (activeTool.value === 'bindAsset') return 'cursor--cell'
     if (activeTool.value === 'select') return 'cursor--grab'
     return 'cursor--default'
@@ -96,8 +98,9 @@ export function usePipe2DEditorWorkspace(options: UsePipe2DEditorWorkspaceOption
     options.mapContainerRef.value = el
   }
 
-  function setEditModes(targetAdd: boolean, targetDelete: boolean, targetAddNode = false) {
+  function setEditModes(targetAdd: boolean, targetDelete: boolean, targetAddNode = false, targetQuickReport = false) {
     options.addNodeMode.value = targetAddNode
+    options.quickReportMode.value = targetQuickReport
     if (options.addPointMode.value !== targetAdd) {
       options.toggleAddPointMode()
     }
@@ -113,7 +116,7 @@ export function usePipe2DEditorWorkspace(options: UsePipe2DEditorWorkspaceOption
   function ensurePipeSelectedForEditing(actionLabel: string) {
     if (options.selectedFeature.value) return true
     activeTool.value = 'select'
-    setEditModes(false, false, false)
+    setEditModes(false, false, false, false)
     options.actionMessage.value = { type: 'error', text: `请先选择一条管道，再${actionLabel}` }
     return false
   }
@@ -121,35 +124,40 @@ export function usePipe2DEditorWorkspace(options: UsePipe2DEditorWorkspaceOption
   function activateTool(tool: ToolKey) {
     activeTool.value = tool
     if (tool === 'select') {
-      setEditModes(false, false, false)
+      setEditModes(false, false, false, false)
       return true
     }
     if (tool === 'addNode') {
       if (!ensurePipeSelectedForEditing('创建节点')) return false
-      setEditModes(false, false, true)
+      setEditModes(false, false, true, false)
       return true
     }
     if (tool === 'addPipe') {
       if (!ensurePipeSelectedForEditing('添加管线')) return false
-      setEditModes(true, false, false)
+      setEditModes(true, false, false, false)
+      return true
+    }
+    if (tool === 'reportFault') {
+      if (!ensurePipeSelectedForEditing('标注故障')) return false
+      setEditModes(false, false, false, true)
       return true
     }
     if (tool === 'bindAsset') {
-      setEditModes(false, false, false)
+      setEditModes(false, false, false, false)
       showPlanned('房产绑定')
       return true
     }
     if (tool === 'annotate') {
-      setEditModes(false, false, false)
+      setEditModes(false, false, false, false)
       showPlanned('运维批注')
       return true
     }
     if (tool === 'layer') {
-      setEditModes(false, false, false)
+      setEditModes(false, false, false, false)
       showPlanned('图层过滤')
       return true
     }
-    setEditModes(false, false)
+    setEditModes(false, false, false, false)
     showPlanned('数据导入')
     return true
   }
@@ -169,6 +177,10 @@ export function usePipe2DEditorWorkspace(options: UsePipe2DEditorWorkspaceOption
   function tryDropToolToCanvas(tool: ToolKey, clientX: number, clientY: number) {
     if (!isPointInCanvas(clientX, clientY)) return
     if (!activateTool(tool)) return
+    if (tool === 'reportFault') {
+      options.actionMessage.value = { type: 'ok', text: '故障标注已启用，点击地图位置即可上报' }
+      return
+    }
     if (tool !== 'addNode' && tool !== 'addPipe') return
     const canvas = options.mapContainerRef.value
     if (!canvas) return
@@ -348,6 +360,11 @@ export function usePipe2DEditorWorkspace(options: UsePipe2DEditorWorkspaceOption
       activateTool('addPipe')
       return
     }
+    if (key === 'f') {
+      event.preventDefault()
+      activateTool('reportFault')
+      return
+    }
     if (event.code === 'Space') {
       event.preventDefault()
       activateTool('select')
@@ -374,12 +391,14 @@ export function usePipe2DEditorWorkspace(options: UsePipe2DEditorWorkspaceOption
       if (
         activeTool.value === 'addNode'
         || activeTool.value === 'addPipe'
+        || activeTool.value === 'reportFault'
         || options.addNodeMode.value
         || options.addPointMode.value
         || options.deletePointMode.value
+        || options.quickReportMode.value
       ) {
         activeTool.value = 'select'
-        setEditModes(false, false, false)
+        setEditModes(false, false, false, false)
       }
     },
   )

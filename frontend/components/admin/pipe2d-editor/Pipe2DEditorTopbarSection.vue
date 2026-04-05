@@ -44,6 +44,7 @@ const emit = defineEmits<{
   (e: 'toggle-scene-mode'): void
   (e: 'beautify'): void
   (e: 'share'): void
+  (e: 'validate-topology'): void
   (e: 'save-geometry'): void
   (e: 'search-select', id: string): void
   (e: 'close'): void
@@ -266,6 +267,15 @@ onBeforeUnmount(() => document.removeEventListener('click', onClickOutside))
         </button>
         <button class="icon-btn" type="button" title="分享" @click="emit('share')">
           <Send :size="18" />
+        </button>
+        <button
+          class="btn btn--sm"
+          type="button"
+          :disabled="saving || !selectedFeature"
+          title="校验孤立节点、自环和重复边"
+          @click="emit('validate-topology')"
+        >
+          校验拓扑
         </button>
         <button
           class="btn btn--primary btn--save"

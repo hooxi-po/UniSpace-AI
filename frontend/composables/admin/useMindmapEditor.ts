@@ -7,7 +7,7 @@
 
 import { computed, ref, type Ref } from 'vue'
 import type { Lines, Point } from '~/utils/pipe2d-geometry'
-import type { NodeType, EdgeType } from '~/utils/pipe2d-graph'
+import type { EdgeType, NodeType, PipeEdge, PipeNode } from '~/utils/pipe2d-graph'
 import type { EditorMode } from '~/utils/editor-modes'
 import { EditorModeHelpers } from '~/utils/editor-modes'
 import { usePipe2DEditorGraph } from './usePipe2DEditorGraph'
@@ -27,6 +27,8 @@ export interface UseMindmapEditorReturn {
   selectedNodeIds: Ref<Set<string>>
   /** 选中的边 ID 集合 */
   selectedEdgeIds: Ref<Set<string>>
+  /** 当前活跃节点 ID */
+  activeNodeId: Ref<string | null>
   /** 悬停的节点 ID */
   hoveredNodeId: Ref<string | null>
   /** 悬停的边 ID */
@@ -89,6 +91,7 @@ export function useMindmapEditor(
   const mode = ref<EditorMode>(EditorModeHelpers.idle())
   const selectedNodeIds = ref<Set<string>>(new Set())
   const selectedEdgeIds = ref<Set<string>>(new Set())
+  const selectedNodeOrder = ref<string[]>([])
   const hoveredNodeId = ref<string | null>(null)
   const hoveredEdgeId = ref<string | null>(null)
 
@@ -130,27 +133,61 @@ export function useMindmapEditor(
     return selectedNodeIds.value.size > 0 || selectedEdgeIds.value.size > 0
   })
 
+  const activeNodeId = computed(() => {
+    const selected = graphEditor.selected.value
+    if (selected?.kind === 'node' && selectedNodeIds.value.has(selected.nodeId)) {
+      return selected.nodeId
+    }
+    return selectedNodeOrder.value[selectedNodeOrder.value.length - 1] || null
+  })
+
   // ========== 操作方法 ==========
+
+  function setNodeSelection(nodeIds: string[], activeId: string | null = null): void {
+    selectedNodeIds.value = new Set(nodeIds)
+    selectedEdgeIds.value.clear()
+    selectedNodeOrder.value = nodeIds.filter((id, index) => nodeIds.indexOf(id) === index)
+    if (activeId && selectedNodeIds.value.has(activeId)) {
+      selectedNodeOrder.value = selectedNodeOrder.value.filter(id => id !== activeId)
+      selectedNodeOrder.value.push(activeId)
+      graphEditor.selectNode(activeId)
+      return
+    }
+    if (selectedNodeOrder.value.length > 0) {
+      graphEditor.selectNode(selectedNodeOrder.value[selectedNodeOrder.value.length - 1])
+      return
+    }
+    graphEditor.clearSelection()
+  }
+
+  function setEdgeSelection(edgeIds: string[], activeId: string | null = null): void {
+    selectedNodeIds.value.clear()
+    selectedEdgeIds.value = new Set(edgeIds)
+    selectedNodeOrder.value = []
+    const nextActiveId = activeId && selectedEdgeIds.value.has(activeId)
+      ? activeId
+      : edgeIds[edgeIds.length - 1] || null
+    if (nextActiveId) {
+      graphEditor.selectEdge(nextActiveId)
+      return
+    }
+    graphEditor.clearSelection()
+  }
 
   function createNodeAt(point: Point, text = '新节点', type: NodeType = 'default'): void {
     const [lon, lat] = point
     const node = graphEditor.addNode(lon, lat, type, { label: text })
 
-    // 选中新创建的节点（同步两套选中状态）
-    selectedNodeIds.value.clear()
-    selectedEdgeIds.value.clear()
-    selectedNodeIds.value.add(node.id)
-    graphEditor.selectNode(node.id)
+    setNodeSelection([node.id], node.id)
   }
 
   function createChildNode(): void {
-    // 获取当前选中的节点
-    if (selectedNodeIds.value.size !== 1) {
+    const parentId = activeNodeId.value
+    if (!parentId || selectedNodeIds.value.size !== 1) {
       console.warn('createChildNode: 需要选中一个节点')
       return
     }
 
-    const parentId = Array.from(selectedNodeIds.value)[0]
     const parentNode = graphEditor.graph.value.nodes.find(n => n.id === parentId)
     if (!parentNode) return
 
@@ -165,20 +202,16 @@ export function useMindmapEditor(
 
     // 不自动连线，用户需要手动连接
 
-    // 选中新节点
-    selectedNodeIds.value.clear()
-    selectedNodeIds.value.add(childNode.id)
-    graphEditor.selectNode(childNode.id)
+    setNodeSelection([childNode.id], childNode.id)
   }
 
   function createSiblingNode(): void {
-    // 获取当前选中的节点
-    if (selectedNodeIds.value.size !== 1) {
+    const siblingId = activeNodeId.value
+    if (!siblingId || selectedNodeIds.value.size !== 1) {
       console.warn('createSiblingNode: 需要选中一个节点')
       return
     }
 
-    const siblingId = Array.from(selectedNodeIds.value)[0]
     const siblingNode = graphEditor.graph.value.nodes.find(n => n.id === siblingId)
     if (!siblingNode) return
 
@@ -193,10 +226,7 @@ export function useMindmapEditor(
 
     // 不自动连线，用户需要手动连接
 
-    // 选中新节点
-    selectedNodeIds.value.clear()
-    selectedNodeIds.value.add(newNode.id)
-    graphEditor.selectNode(newNode.id)
+    setNodeSelection([newNode.id], newNode.id)
   }
 
   function connectNodes(sourceId: string, targetId: string, type: EdgeType = 'straight'): void {
@@ -204,52 +234,178 @@ export function useMindmapEditor(
   }
 
   function deleteSelected(): void {
-    // 删除选中的节点
-    selectedNodeIds.value.forEach(nodeId => {
-      graphEditor.removeNode(nodeId)
-    })
+    const nodeIds = Array.from(selectedNodeIds.value)
+    const edgeIds = Array.from(selectedEdgeIds.value)
+    if (!nodeIds.length && !edgeIds.length) return
 
-    // 删除选中的边
-    selectedEdgeIds.value.forEach(edgeId => {
-      graphEditor.removeEdge(edgeId)
-    })
+    // 原子批量删除（只 push 一次 history）
+    graphEditor.removeBatch(nodeIds, edgeIds)
 
     // 清除选中
     selectedNodeIds.value.clear()
     selectedEdgeIds.value.clear()
+    selectedNodeOrder.value = []
   }
 
   function duplicateSelected(): void {
-    // TODO: 实现复制逻辑
-    console.log('duplicateSelected - 待实现')
+    const graph = graphEditor.graph.value
+    const explicitNodeIds = new Set(selectedNodeIds.value)
+    const explicitEdgeIds = new Set(selectedEdgeIds.value)
+    if (!explicitNodeIds.size && !explicitEdgeIds.size) return
+    const explicitNodeOrder = selectedNodeOrder.value.filter(nodeId => explicitNodeIds.has(nodeId))
+
+    const nodeIdsToCopy = new Set(explicitNodeIds)
+    for (const edge of graph.edges) {
+      if (!explicitEdgeIds.has(edge.id)) continue
+      nodeIdsToCopy.add(edge.sourceId)
+      nodeIdsToCopy.add(edge.targetId)
+    }
+
+    const edgeIdsToCopy = new Set<string>()
+    for (const edge of graph.edges) {
+      if (explicitEdgeIds.size > 0) {
+        if (explicitEdgeIds.has(edge.id)) {
+          edgeIdsToCopy.add(edge.id)
+        }
+        continue
+      }
+      if (nodeIdsToCopy.has(edge.sourceId) && nodeIdsToCopy.has(edge.targetId)) {
+        edgeIdsToCopy.add(edge.id)
+      }
+    }
+
+    const nodesToCopy = graph.nodes.filter(node => nodeIdsToCopy.has(node.id))
+    const edgesToCopy = graph.edges.filter(
+      edge => edgeIdsToCopy.has(edge.id) && nodeIdsToCopy.has(edge.sourceId) && nodeIdsToCopy.has(edge.targetId),
+    )
+    if (!nodesToCopy.length) return
+
+    const lonValues = nodesToCopy.map(node => node.lon)
+    const latValues = nodesToCopy.map(node => node.lat)
+    const lonSpan = Math.max(...lonValues) - Math.min(...lonValues)
+    const latSpan = Math.max(...latValues) - Math.min(...latValues)
+    const offsetLon = Math.max(0.00025, lonSpan * 0.18 || 0.00035)
+    const offsetLat = -Math.max(0.0002, latSpan * 0.18 || 0.00025)
+
+    const previousSelected = graphEditor.selected.value
+    const duplicatedNodeIds: string[] = []
+    const duplicatedEdgeIds: string[] = []
+    let duplicatedExplicitNodeIds: string[] = []
+    let duplicatedExplicitEdgeIds: string[] = []
+
+    const clonePoint = (point: Point): Point => [point[0] + offsetLon, point[1] + offsetLat]
+    const cloneNode = (node: PipeNode, newId: string): PipeNode => ({
+      ...node,
+      id: newId,
+      lon: node.lon + offsetLon,
+      lat: node.lat + offsetLat,
+      attributes: { ...node.attributes },
+    })
+    const cloneEdge = (edge: PipeEdge, newId: string, sourceId: string, targetId: string): PipeEdge => ({
+      ...edge,
+      id: newId,
+      sourceId,
+      targetId,
+      midPoints: edge.midPoints.map(clonePoint),
+      controlPoints: edge.controlPoints
+        ? [clonePoint(edge.controlPoints[0]), clonePoint(edge.controlPoints[1])]
+        : null,
+      attributes: { ...edge.attributes },
+    })
+
+    graphEditor.applyGraphMutation((draft, helpers) => {
+      const nodeIdMap = new Map<string, string>()
+      const edgeIdMap = new Map<string, string>()
+
+      for (const node of nodesToCopy) {
+        const newId = helpers.nextNodeId()
+        nodeIdMap.set(node.id, newId)
+        duplicatedNodeIds.push(newId)
+        draft.nodes.push(cloneNode(node, newId))
+      }
+
+      for (const edge of edgesToCopy) {
+        const newSourceId = nodeIdMap.get(edge.sourceId)
+        const newTargetId = nodeIdMap.get(edge.targetId)
+        if (!newSourceId || !newTargetId) continue
+        const newId = helpers.nextEdgeId()
+        edgeIdMap.set(edge.id, newId)
+        duplicatedEdgeIds.push(newId)
+        draft.edges.push(cloneEdge(edge, newId, newSourceId, newTargetId))
+      }
+
+      const explicitNodeIdList = explicitNodeOrder.length ? explicitNodeOrder : Array.from(explicitNodeIds)
+      duplicatedExplicitNodeIds = explicitNodeIdList
+        .map(nodeId => nodeIdMap.get(nodeId))
+        .filter((nodeId): nodeId is string => Boolean(nodeId))
+      duplicatedExplicitEdgeIds = Array.from(explicitEdgeIds)
+        .map(edgeId => edgeIdMap.get(edgeId))
+        .filter((edgeId): edgeId is string => Boolean(edgeId))
+
+      if (previousSelected?.kind === 'node' && nodeIdMap.has(previousSelected.nodeId)) {
+        return { kind: 'node', nodeId: nodeIdMap.get(previousSelected.nodeId)! }
+      }
+      if (previousSelected?.kind === 'edge' && edgeIdMap.has(previousSelected.edgeId)) {
+        return { kind: 'edge', edgeId: edgeIdMap.get(previousSelected.edgeId)! }
+      }
+      if (duplicatedNodeIds.length) {
+        return { kind: 'node', nodeId: duplicatedNodeIds[duplicatedNodeIds.length - 1] }
+      }
+      if (duplicatedEdgeIds.length) {
+        return { kind: 'edge', edgeId: duplicatedEdgeIds[duplicatedEdgeIds.length - 1] }
+      }
+      return null
+    })
+    selectedNodeIds.value = new Set(duplicatedExplicitNodeIds)
+    selectedEdgeIds.value = new Set(duplicatedExplicitEdgeIds)
+    selectedNodeOrder.value = [...duplicatedExplicitNodeIds]
+
+    const nextSelected = graphEditor.selected.value
+    if (nextSelected?.kind === 'node' && selectedNodeIds.value.has(nextSelected.nodeId)) {
+      selectedNodeOrder.value = selectedNodeOrder.value.filter(id => id !== nextSelected.nodeId)
+      selectedNodeOrder.value.push(nextSelected.nodeId)
+      return
+    }
+    if (nextSelected?.kind === 'edge' && selectedEdgeIds.value.has(nextSelected.edgeId)) {
+      return
+    }
+    if (duplicatedExplicitNodeIds.length) {
+      graphEditor.selectNode(duplicatedExplicitNodeIds[duplicatedExplicitNodeIds.length - 1])
+      return
+    }
+    if (duplicatedExplicitEdgeIds.length) {
+      graphEditor.selectEdge(duplicatedExplicitEdgeIds[duplicatedExplicitEdgeIds.length - 1])
+      return
+    }
+    graphEditor.clearSelection()
   }
 
   function selectNode(nodeId: string): void {
-    selectedNodeIds.value.clear()
-    selectedEdgeIds.value.clear()
-    selectedNodeIds.value.add(nodeId)
-    graphEditor.selectNode(nodeId)
+    setNodeSelection([nodeId], nodeId)
   }
 
   function selectEdge(edgeId: string): void {
-    selectedNodeIds.value.clear()
-    selectedEdgeIds.value.clear()
-    selectedEdgeIds.value.add(edgeId)
-    graphEditor.selectEdge(edgeId)
+    setEdgeSelection([edgeId], edgeId)
   }
 
   function toggleNodeSelection(nodeId: string): void {
     if (selectedNodeIds.value.has(nodeId)) {
       selectedNodeIds.value.delete(nodeId)
+      selectedNodeOrder.value = selectedNodeOrder.value.filter(id => id !== nodeId)
       if (selectedNodeIds.value.size === 0) {
         graphEditor.clearSelection()
       } else {
-        // 将 graphEditor 指向集合中仍然选中的任意一个节点
-        const remaining = Array.from(selectedNodeIds.value)[selectedNodeIds.value.size - 1]
-        graphEditor.selectNode(remaining)
+        const fallbackNodeId = selectedNodeOrder.value[selectedNodeOrder.value.length - 1] || null
+        if (fallbackNodeId) {
+          graphEditor.selectNode(fallbackNodeId)
+        } else {
+          graphEditor.clearSelection()
+        }
       }
     } else {
       selectedNodeIds.value.add(nodeId)
+      selectedNodeOrder.value = selectedNodeOrder.value.filter(id => id !== nodeId)
+      selectedNodeOrder.value.push(nodeId)
       graphEditor.selectNode(nodeId)
     }
   }
@@ -257,15 +413,13 @@ export function useMindmapEditor(
   function clearSelection(): void {
     selectedNodeIds.value.clear()
     selectedEdgeIds.value.clear()
+    selectedNodeOrder.value = []
     graphEditor.clearSelection()
   }
 
   function selectAll(): void {
-    selectedNodeIds.value.clear()
-    selectedEdgeIds.value.clear()
-    graphEditor.graph.value.nodes.forEach(node => {
-      selectedNodeIds.value.add(node.id)
-    })
+    const nodeIds = graphEditor.graph.value.nodes.map(node => node.id)
+    setNodeSelection(nodeIds, activeNodeId.value && nodeIds.includes(activeNodeId.value) ? activeNodeId.value : nodeIds[nodeIds.length - 1] || null)
   }
 
   function undo(): void {
@@ -295,6 +449,7 @@ export function useMindmapEditor(
     mode,
     selectedNodeIds,
     selectedEdgeIds,
+    activeNodeId,
     hoveredNodeId,
     hoveredEdgeId,
 

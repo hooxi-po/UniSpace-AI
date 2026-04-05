@@ -19,6 +19,15 @@ import org.springframework.transaction.annotation.Transactional;
 @Repository
 public class WorkOrderRepository extends WorkOrderRepositorySupport {
 
+    private record PipeMatch(
+            String featureId,
+            String featureName,
+            String segmentId,
+            String area,
+            String pipelineMedium
+    ) {
+    }
+
     public WorkOrderRepository(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
         super(jdbcTemplate, objectMapper);
     }
@@ -346,6 +355,99 @@ public class WorkOrderRepository extends WorkOrderRepositorySupport {
             autoTrigger.put("severity", text(base.get("priority")));
         }
         payload.set("autoTrigger", autoTrigger);
+        return upsertWorkorder(payload);
+    }
+
+    @Transactional
+    public ObjectNode quickReport(JsonNode body) {
+        if (!body.has("lng") || !body.get("lng").isNumber() || !body.has("lat") || !body.get("lat").isNumber()) {
+            throw badRequest("location_required");
+        }
+
+        String featureId = text(body.get("featureId"));
+        String faultType = defaultText(text(body.get("faultType")), "other");
+        if (!Set.of("leak", "burst", "blockage", "other").contains(faultType)) {
+            throw badRequest("fault_type_invalid");
+        }
+
+        String severity = defaultText(text(body.get("severity")), "medium");
+        if (!ORDER_PRIORITY.contains(severity)) {
+            severity = "medium";
+        }
+
+        double lng = body.get("lng").asDouble();
+        double lat = body.get("lat").asDouble();
+        String note = defaultText(text(body.get("note")), "");
+        String reportedBy = defaultText(text(body.get("reportedBy")), "admin-2d-editor");
+
+        PipeMatch match = selectQuickReportPipeMatch(featureId, lng, lat);
+        if (match == null) {
+            throw notFound("nearest_pipe_not_found");
+        }
+
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("id", nextWorkorderId("maintenance"));
+        payload.put("title", buildQuickReportTitle(match.featureName(), faultType, severity));
+        payload.put("description", note);
+        payload.put("type", "maintenance");
+        payload.put("source", "manual");
+        payload.put("status", "todo");
+        payload.put("pipelineMedium", match.pipelineMedium());
+        payload.put("priority", severity);
+        payload.put("area", defaultText(match.area(), "未分区"));
+        payload.put("createdBy", reportedBy);
+
+        ArrayNode topologyChain = objectMapper.createArrayNode();
+        topologyChain.add(match.featureId());
+        if (match.segmentId() != null && !match.segmentId().isBlank()) {
+            topologyChain.add(match.segmentId());
+        }
+        payload.set("topologyChain", topologyChain);
+
+        ArrayNode segmentIds = objectMapper.createArrayNode();
+        if (match.segmentId() != null && !match.segmentId().isBlank()) {
+            segmentIds.add(match.segmentId());
+        }
+        payload.set("segmentIds", segmentIds);
+        payload.set("nodeIds", objectMapper.createArrayNode());
+        payload.set("roomIds", objectMapper.createArrayNode());
+        payload.set("equipmentIds", objectMapper.createArrayNode());
+        payload.set("linkedWorkorderIds", objectMapper.createArrayNode());
+
+        ObjectNode maintenance = objectMapper.createObjectNode();
+        maintenance.set("materials", objectMapper.createArrayNode());
+        maintenance.set("steps", objectMapper.createArrayNode());
+        maintenance.put("faultCause", note.isBlank() ? faultLabel(faultType) : note);
+        maintenance.put("healthBefore", "待勘查");
+        maintenance.put("healthAfter", "未修复");
+        maintenance.set("acceptancePhotos", objectMapper.createArrayNode());
+        maintenance.put("buildingRecoveryConfirmed", false);
+        ObjectNode cost = objectMapper.createObjectNode();
+        cost.put("laborCost", 0);
+        cost.put("materialCost", 0);
+        cost.put("durationHours", 0);
+        cost.put("totalCost", 0);
+        maintenance.set("cost", cost);
+        payload.set("maintenance", maintenance);
+
+        ArrayNode executionLogs = objectMapper.createArrayNode();
+        ObjectNode createdLog = objectMapper.createObjectNode();
+        createdLog.put("id", newLogId("LOG"));
+        createdLog.put("stage", "created");
+        createdLog.put("content", "快捷故障上报：" + faultLabel(faultType) + "（" + severity + "）" + withComment(note));
+        createdLog.put("actor", reportedBy);
+        createdLog.put("createdAt", OffsetDateTime.now().toString());
+        ObjectNode location = objectMapper.createObjectNode();
+        location.put("lng", lng);
+        location.put("lat", lat);
+        createdLog.set("location", location);
+        createdLog.set("photoUrls", objectMapper.createArrayNode());
+        createdLog.put("voiceUrl", "");
+        createdLog.put("nodeId", "");
+        createdLog.put("isMobileUpload", false);
+        executionLogs.add(createdLog);
+        payload.set("executionLogs", executionLogs);
+
         return upsertWorkorder(payload);
     }
 
@@ -997,6 +1099,129 @@ public class WorkOrderRepository extends WorkOrderRepositorySupport {
         }
 
         return new QueryFilter(where.toString(), params);
+    }
+
+    private PipeMatch findPipeMatchByFeatureId(String featureId) {
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT g.id AS feature_id, " +
+                        "COALESCE(g.properties->>'name', g.properties->>'ref', g.id) AS feature_name, " +
+                        "COALESCE(g.properties->>'area', g.properties->>'campus', g.properties->>'source', '未分区') AS area, " +
+                        "COALESCE(g.properties->>'pipelineMedium', g.properties->>'pipeLayer', g.properties->>'medium', g.properties->>'media', '') AS medium_raw, " +
+                        "COALESCE(ps.id, '') AS segment_id " +
+                        "FROM geo_features g " +
+                        "LEFT JOIN pipe_segments ps ON ps.feature_id = g.id " +
+                        "WHERE g.id = ? AND g.layer IN ('pipes', 'roads') " +
+                        "ORDER BY ps.updated_at DESC NULLS LAST LIMIT 1",
+                featureId
+        );
+        if (rows.isEmpty()) {
+            return null;
+        }
+        return mapPipeMatch(rows.get(0));
+    }
+
+    private PipeMatch findNearestSegmentBackedPipeMatch(double lng, double lat) {
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "WITH src AS (SELECT ST_SetSRID(ST_MakePoint(?, ?), 4326) AS geom) " +
+                        "SELECT g.id AS feature_id, " +
+                        "COALESCE(g.properties->>'name', g.properties->>'ref', g.id) AS feature_name, " +
+                        "COALESCE(g.properties->>'area', g.properties->>'campus', g.properties->>'source', '未分区') AS area, " +
+                        "COALESCE(g.properties->>'pipelineMedium', g.properties->>'pipeLayer', g.properties->>'medium', g.properties->>'media', '') AS medium_raw, " +
+                        "ps.id AS segment_id " +
+                        "FROM geo_features g " +
+                        "JOIN pipe_segments ps ON ps.feature_id = g.id " +
+                        "CROSS JOIN src " +
+                        "WHERE g.layer IN ('pipes', 'roads') " +
+                        "ORDER BY g.geom <-> src.geom " +
+                        "LIMIT 1",
+                lng,
+                lat
+        );
+        if (rows.isEmpty()) {
+            return null;
+        }
+        return mapPipeMatch(rows.get(0));
+    }
+
+    private PipeMatch findNearestPipeMatch(double lng, double lat) {
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "WITH src AS (SELECT ST_SetSRID(ST_MakePoint(?, ?), 4326) AS geom) " +
+                        "SELECT g.id AS feature_id, " +
+                        "COALESCE(g.properties->>'name', g.properties->>'ref', g.id) AS feature_name, " +
+                        "COALESCE(g.properties->>'area', g.properties->>'campus', g.properties->>'source', '未分区') AS area, " +
+                        "COALESCE(g.properties->>'pipelineMedium', g.properties->>'pipeLayer', g.properties->>'medium', g.properties->>'media', '') AS medium_raw, " +
+                        "COALESCE(ps.id, '') AS segment_id " +
+                        "FROM geo_features g " +
+                        "LEFT JOIN pipe_segments ps ON ps.feature_id = g.id " +
+                        "CROSS JOIN src " +
+                        "WHERE g.layer IN ('pipes', 'roads') " +
+                        "ORDER BY g.geom <-> src.geom " +
+                        "LIMIT 1",
+                lng,
+                lat
+        );
+        if (rows.isEmpty()) {
+            return null;
+        }
+        return mapPipeMatch(rows.get(0));
+    }
+
+    private PipeMatch selectQuickReportPipeMatch(String featureId, double lng, double lat) {
+        PipeMatch featureMatch = isBlank(featureId) ? null : findPipeMatchByFeatureId(featureId);
+        if (featureMatch != null && !isBlank(featureMatch.segmentId())) {
+            return featureMatch;
+        }
+
+        PipeMatch nearestSegmentMatch = findNearestSegmentBackedPipeMatch(lng, lat);
+        if (nearestSegmentMatch != null) {
+            return nearestSegmentMatch;
+        }
+        if (featureMatch != null) {
+            return featureMatch;
+        }
+        return findNearestPipeMatch(lng, lat);
+    }
+
+    private PipeMatch mapPipeMatch(Map<String, Object> row) {
+        return new PipeMatch(
+                textValue(row.get("feature_id")),
+                defaultText(textValue(row.get("feature_name")), textValue(row.get("feature_id"))),
+                textValue(row.get("segment_id")),
+                defaultText(textValue(row.get("area")), "未分区"),
+                normalizeQuickReportMedium(textValue(row.get("medium_raw")))
+        );
+    }
+
+    private String normalizeQuickReportMedium(String raw) {
+        String value = defaultText(raw, "").toLowerCase(Locale.ROOT);
+        if (value.contains("sewage") || value.contains("sewer") || value.contains("污")) {
+            return "sewage";
+        }
+        if (value.contains("drain") || value.contains("storm") || value.contains("rain") || value.contains("排") || value.contains("雨")) {
+            return "drainage";
+        }
+        if (value.contains("water") || value.contains("给") || value.contains("供")) {
+            return "water";
+        }
+        return "mixed";
+    }
+
+    private String buildQuickReportTitle(String featureName, String faultType, String severity) {
+        String level = switch (severity) {
+            case "high" -> "高";
+            case "low" -> "低";
+            default -> "中";
+        };
+        return "故障上报[" + level + "] " + faultLabel(faultType) + " - " + defaultText(featureName, "未命名管线");
+    }
+
+    private String faultLabel(String faultType) {
+        return switch (faultType) {
+            case "leak" -> "漏水";
+            case "burst" -> "破裂";
+            case "blockage" -> "堵塞";
+            default -> "其他故障";
+        };
     }
 
     // Keep the reflective test contract on the repository while the implementation lives in the support base.

@@ -18,6 +18,7 @@ type ContextMenuState = {
   y: number
   canInsert: boolean
   canDelete: boolean
+  canCopy: boolean
 }
 
 const props = defineProps<{
@@ -135,7 +136,7 @@ function onZoomSliderInput(event: Event) {
     >
       <li><button class="stage-menu__item" type="button" :disabled="!contextMenu.canInsert" @click="emit('menu-insert')">插入点</button></li>
       <li><button class="stage-menu__item" type="button" :disabled="!contextMenu.canDelete" @click="emit('menu-delete')">删除</button></li>
-      <li><button class="stage-menu__item" type="button" @click="emit('menu-copy')">复制</button></li>
+      <li><button class="stage-menu__item" type="button" :disabled="!contextMenu.canCopy" @click="emit('menu-copy')">复制</button></li>
       <li><button class="stage-menu__item" type="button" @click="emit('menu-bind-asset')">绑定房产</button></li>
       <li><button class="stage-menu__item" type="button" @click="emit('menu-trace')">查看链路</button></li>
     </ul>

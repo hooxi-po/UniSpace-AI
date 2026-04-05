@@ -1,7 +1,7 @@
-import { onBeforeUnmount, ref, watch, type ComputedRef, type Ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch, type ComputedRef, type Ref } from 'vue'
 import type { GeoJsonFeature } from '~/services/geo-features'
 import { cloneLines, geometryToLines, type Lines } from '~/utils/pipe2d-geometry'
-import { cloneGraph, type PipeGraph } from '~/utils/pipe2d-graph'
+import { cloneGraph, linesToGraph, type PipeGraph } from '~/utils/pipe2d-graph'
 
 type UsePipe2DEditorDraftsOptions = {
   open: Ref<boolean>
@@ -9,6 +9,7 @@ type UsePipe2DEditorDraftsOptions = {
   draftLines: Ref<Lines>
   originalLines: Ref<Lines>
   isDirty: ComputedRef<boolean>
+  hasDraftChanges?: ComputedRef<boolean>
   saving: Ref<boolean>
   fitCurrentPipeView: () => void
   /** 可选：图结构 ref，有值时持久化到 v4 草稿 */
@@ -23,6 +24,7 @@ const DRAFT_STORAGE_PREFIX_V3 = 'pipe2d-editor-draft:v3:'
 export function usePipe2DEditorDrafts(options: UsePipe2DEditorDraftsOptions) {
   const draftStatusText = ref('等待加载')
   const draftRestoredToastVisible = ref(false)
+  const hasDraftChanges = computed(() => options.hasDraftChanges?.value ?? options.isDirty.value)
 
   let draftAutosaveTimer: ReturnType<typeof setTimeout> | null = null
   let draftIntervalTimer: ReturnType<typeof setInterval> | null = null
@@ -102,7 +104,7 @@ export function usePipe2DEditorDrafts(options: UsePipe2DEditorDraftsOptions) {
 
   function saveDraftToLocal(force = false) {
     if (!options.open.value || options.saving.value || !options.selectedFeature.value) return
-    if (!force && !options.isDirty.value) return
+    if (!force && !hasDraftChanges.value) return
     writeLocalDraft(String(options.selectedFeature.value.id))
   }
 
@@ -144,9 +146,9 @@ export function usePipe2DEditorDrafts(options: UsePipe2DEditorDraftsOptions) {
       return
     }
     options.draftLines.value = localDraft.lines
-    // v4: 同时恢复图结构
-    if (localDraft.graph && options.restoreGraph) {
-      options.restoreGraph(localDraft.graph)
+    if (options.restoreGraph) {
+      // v4 直接恢复持久化图结构；v3 仅有 lines 时重建 graph，避免 draftLines/graph 脱节。
+      options.restoreGraph(localDraft.graph || linesToGraph(localDraft.lines, 'n'))
     }
     draftRestoredToastVisible.value = true
     if (draftToastTimer) clearTimeout(draftToastTimer)
@@ -162,6 +164,9 @@ export function usePipe2DEditorDrafts(options: UsePipe2DEditorDraftsOptions) {
       if (opened) {
         ensureDraftInterval()
         return
+      }
+      if (options.selectedFeature.value && hasDraftChanges.value && !options.saving.value) {
+        writeLocalDraft(String(options.selectedFeature.value.id))
       }
       stopTimers()
     },
@@ -194,7 +199,20 @@ export function usePipe2DEditorDrafts(options: UsePipe2DEditorDraftsOptions) {
     options.draftLines,
     () => {
       if (!options.open.value || !options.selectedFeature.value || options.saving.value) return
-      if (!options.isDirty.value) {
+      if (!hasDraftChanges.value) {
+        draftStatusText.value = '与服务端一致'
+        return
+      }
+      scheduleDraftAutosave()
+    },
+    { deep: true },
+  )
+
+  watch(
+    () => options.graph?.value,
+    () => {
+      if (!options.graph || !options.open.value || !options.selectedFeature.value || options.saving.value) return
+      if (!hasDraftChanges.value) {
         draftStatusText.value = '与服务端一致'
         return
       }
@@ -211,8 +229,8 @@ export function usePipe2DEditorDrafts(options: UsePipe2DEditorDraftsOptions) {
     draftStatusText,
     draftRestoredToastVisible,
     clearLocalDraft,
+    persistLocalDraft: saveDraftToLocal,
     setDraftStatus,
     stopDraftTimers: stopTimers,
   }
 }
-

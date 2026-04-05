@@ -13,6 +13,10 @@ export default {
         'tech-bg': '#000B1A',
         'tech-blue': '#1E90FF',
         'tech-cyan': '#00F2FF',
+        'tech-water': '#10B981',
+        'tech-sewage': '#8B5CF6',
+        'tech-drain': '#3B82F6',
+        'tech-red': '#FF4D4F',
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],

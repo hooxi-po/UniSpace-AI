@@ -33,10 +33,13 @@
       />
 
       <!-- Right Panel: Detailed Asset Management -->
-      <RightSidebar 
-        :data="isAssetItem(selectedItem) ? selectedItem : null" 
-        @close="selectedItem = null" 
+      <RightSidebar
+        :data="isAssetItem(selectedItem) ? selectedItem : null"
+        @close="selectedItem = null"
       />
+
+      <!-- Right Dashboard Panel (shown when no asset selected) -->
+      <SidebarRight v-if="!isAssetItem(selectedItem)" />
 
       <!-- AI Chat (Floating) -->
       <div class="pointer-events-auto">

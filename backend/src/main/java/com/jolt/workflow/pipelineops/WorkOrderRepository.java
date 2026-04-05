@@ -367,7 +367,7 @@ public class WorkOrderRepository extends WorkOrderRepositorySupport {
         String featureId = text(body.get("featureId"));
         String faultType = defaultText(text(body.get("faultType")), "other");
         if (!Set.of("leak", "burst", "blockage", "other").contains(faultType)) {
-            throw badRequest("fault_type_required");
+            throw badRequest("fault_type_invalid");
         }
 
         String severity = defaultText(text(body.get("severity")), "medium");

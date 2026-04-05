@@ -98,6 +98,29 @@ export type PipeGraph = {
   edges: PipeEdge[]
 }
 
+export type GraphNodeChange = {
+  id: string
+  kind: 'added' | 'removed' | 'modified'
+  summary: string
+}
+
+export type GraphEdgeChange = {
+  id: string
+  kind: 'added' | 'removed' | 'modified'
+  summary: string
+}
+
+export type GraphDiff = {
+  addedNodes: GraphNodeChange[]
+  removedNodes: GraphNodeChange[]
+  modifiedNodes: GraphNodeChange[]
+  addedEdges: GraphEdgeChange[]
+  removedEdges: GraphEdgeChange[]
+  modifiedEdges: GraphEdgeChange[]
+  totalChanges: number
+  hasChanges: boolean
+}
+
 // ---------------------------------------------------------------------------
 // 工厂函数
 // ---------------------------------------------------------------------------
@@ -409,4 +432,125 @@ export function linesToGraph(lines: Lines, idPrefix = 'n'): PipeGraph {
   }
 
   return { nodes, edges }
+}
+
+function samePoint(a: Point, b: Point) {
+  return a[0] === b[0] && a[1] === b[1]
+}
+
+function samePointList(a: Point[], b: Point[]) {
+  if (a.length !== b.length) return false
+  return a.every((point, index) => samePoint(point, b[index]))
+}
+
+function sameControlPoints(a: [Point, Point] | null, b: [Point, Point] | null) {
+  if (!a && !b) return true
+  if (!a || !b) return false
+  return samePoint(a[0], b[0]) && samePoint(a[1], b[1])
+}
+
+function summarizeNodeChange(previous: PipeNode | null, next: PipeNode | null) {
+  if (!previous && next) return `新增节点 ${next.id}`
+  if (previous && !next) return `删除节点 ${previous.id}`
+  if (!previous || !next) return '节点变更'
+
+  const changes: string[] = []
+  if (previous.type !== next.type) changes.push(`类型 ${previous.type} -> ${next.type}`)
+  if (previous.lon !== next.lon || previous.lat !== next.lat) changes.push('坐标变化')
+  if (JSON.stringify(previous.attributes) !== JSON.stringify(next.attributes)) changes.push('属性变化')
+  return changes.length ? `节点 ${next.id}: ${changes.join('，')}` : `节点 ${next.id}`
+}
+
+function summarizeEdgeChange(previous: PipeEdge | null, next: PipeEdge | null) {
+  if (!previous && next) return `新增管段 ${next.id}`
+  if (previous && !next) return `删除管段 ${previous.id}`
+  if (!previous || !next) return '管段变更'
+
+  const changes: string[] = []
+  if (previous.sourceId !== next.sourceId || previous.targetId !== next.targetId) changes.push('端点变化')
+  if (previous.edgeType !== next.edgeType) changes.push(`类型 ${previous.edgeType} -> ${next.edgeType}`)
+  if (!samePointList(previous.midPoints, next.midPoints)) changes.push('折点变化')
+  if (!sameControlPoints(previous.controlPoints, next.controlPoints)) changes.push('控制点变化')
+  if (JSON.stringify(previous.attributes) !== JSON.stringify(next.attributes)) changes.push('属性变化')
+  return changes.length ? `管段 ${next.id}: ${changes.join('，')}` : `管段 ${next.id}`
+}
+
+export function diffGraphs(original: PipeGraph, current: PipeGraph): GraphDiff {
+  const originalNodes = new Map(original.nodes.map(node => [node.id, node]))
+  const currentNodes = new Map(current.nodes.map(node => [node.id, node]))
+  const originalEdges = new Map(original.edges.map(edge => [edge.id, edge]))
+  const currentEdges = new Map(current.edges.map(edge => [edge.id, edge]))
+
+  const addedNodes: GraphNodeChange[] = []
+  const removedNodes: GraphNodeChange[] = []
+  const modifiedNodes: GraphNodeChange[] = []
+  const addedEdges: GraphEdgeChange[] = []
+  const removedEdges: GraphEdgeChange[] = []
+  const modifiedEdges: GraphEdgeChange[] = []
+
+  for (const node of current.nodes) {
+    const previous = originalNodes.get(node.id)
+    if (!previous) {
+      addedNodes.push({ id: node.id, kind: 'added', summary: summarizeNodeChange(null, node) })
+      continue
+    }
+    if (
+      previous.type !== node.type
+      || previous.lon !== node.lon
+      || previous.lat !== node.lat
+      || JSON.stringify(previous.attributes) !== JSON.stringify(node.attributes)
+    ) {
+      modifiedNodes.push({ id: node.id, kind: 'modified', summary: summarizeNodeChange(previous, node) })
+    }
+  }
+
+  for (const node of original.nodes) {
+    if (!currentNodes.has(node.id)) {
+      removedNodes.push({ id: node.id, kind: 'removed', summary: summarizeNodeChange(node, null) })
+    }
+  }
+
+  for (const edge of current.edges) {
+    const previous = originalEdges.get(edge.id)
+    if (!previous) {
+      addedEdges.push({ id: edge.id, kind: 'added', summary: summarizeEdgeChange(null, edge) })
+      continue
+    }
+    if (
+      previous.sourceId !== edge.sourceId
+      || previous.targetId !== edge.targetId
+      || previous.edgeType !== edge.edgeType
+      || !samePointList(previous.midPoints, edge.midPoints)
+      || !sameControlPoints(previous.controlPoints, edge.controlPoints)
+      || JSON.stringify(previous.attributes) !== JSON.stringify(edge.attributes)
+    ) {
+      modifiedEdges.push({ id: edge.id, kind: 'modified', summary: summarizeEdgeChange(previous, edge) })
+    }
+  }
+
+  for (const edge of original.edges) {
+    if (!currentEdges.has(edge.id)) {
+      removedEdges.push({ id: edge.id, kind: 'removed', summary: summarizeEdgeChange(edge, null) })
+    }
+  }
+
+  const totalChanges = (
+    addedNodes.length
+    + removedNodes.length
+    + modifiedNodes.length
+    + addedEdges.length
+    + removedEdges.length
+    + modifiedEdges.length
+  )
+
+  return {
+    addedNodes,
+    removedNodes,
+    modifiedNodes,
+    addedEdges,
+    removedEdges,
+    modifiedEdges,
+    totalChanges,
+    hasChanges: totalChanges > 0,
+  }
 }

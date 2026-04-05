@@ -27,6 +27,16 @@ export type PipelineOpsStats = {
   rejected: number
 }
 
+export type PipelineQuickReportPayload = {
+  featureId?: string
+  lng: number
+  lat: number
+  faultType: 'leak' | 'burst' | 'blockage' | 'other'
+  severity: 'low' | 'medium' | 'high'
+  note?: string
+  reportedBy?: string
+}
+
 async function readError(res: Response) {
   try {
     const json = await res.json()
@@ -90,6 +100,18 @@ export const pipelineOpsService = {
   }) {
     return requestJson<{ workorder: PipelineWorkOrder }>(
       '/api/pipeline-ops/auto-create',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      },
+      true,
+    )
+  },
+
+  async quickReport(payload: PipelineQuickReportPayload) {
+    return requestJson<{ workorder: PipelineWorkOrder }>(
+      '/api/pipeline-ops/quick-report',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

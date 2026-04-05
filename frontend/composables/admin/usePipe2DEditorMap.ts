@@ -5,6 +5,7 @@ import { usePipe2DEditorMapInteractions } from '~/composables/admin/pipe2d-edito
 import { usePipe2DEditorDrawMode, type DrawMode } from '~/composables/admin/pipe2d-editor/usePipe2DEditorDrawMode'
 import { usePipe2DEditorGraph, type SelectedElement } from '~/composables/admin/usePipe2DEditorGraph'
 import { sampleCubicBezier, type EdgeType, type NodeType } from '~/utils/pipe2d-graph'
+import type { ValidationIssue } from '~/utils/pipe2d-topology-validation'
 import {
   buildHistoryItems,
   clamp,
@@ -49,6 +50,9 @@ type UsePipe2DEditorMapOptions = {
   originalLines: Ref<Lines>
   saving: Ref<boolean>
   actionMessage: Ref<Message | null>
+  quickReportMode?: Ref<boolean>
+  validationResults?: Ref<ValidationIssue[]>
+  startQuickReport?: (payload: { lon: number; lat: number; nodeId?: string | null; edgeId?: string | null }) => void
   requestClose?: () => void
   // 思维导图选中状态（Phase 3 新增，可选）
   mindmapSelectedNodeIds?: Ref<Set<string>>
@@ -276,8 +280,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     return null
   }
 
-  function findNearestGraphEdge(screenPosition: { x: number; y: number }) {
-    const thresholdPx = 14
+  function findNearestGraphEdge(screenPosition: { x: number; y: number }, thresholdPx = 14) {
     const pointer = new Cesium.Cartesian2(screenPosition.x, screenPosition.y)
     let bestEdgeId: string | null = null
     let bestDistanceSq = thresholdPx * thresholdPx
@@ -368,6 +371,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
       toCartesian,
       graph: editorGraph.graph,
       graphSelected: editorGraph.selected,
+      validationResults: options.validationResults,
       previewTarget,
       connectSourceId,
       // 传递思维导图选中状态
@@ -415,6 +419,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     addPointMode,
     deletePointMode,
     addNodeMode,
+    quickReportMode: options.quickReportMode,
     placeGraphNodeAtScreen,
     pickGraphEntity: (pos) => {
       const result = pickEntity(pos)
@@ -424,6 +429,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
       if (nearestEdgeId) return { type: 'edge' as const, edgeId: nearestEdgeId }
       return null
     },
+    findNearestGraphEdge,
     selectGraphNode: (nodeId: string) => {
       editorGraph.selectNode(nodeId)
       if (options.mindmapSelectNode) {
@@ -459,6 +465,9 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     removeGraphEdge: editorGraph.removeEdge,
     moveGraphNode: editorGraph.moveNode,
     pushGraphHistory: editorGraph.pushGraphHistory,
+    restoreGraphFromLines: (lines) => {
+      editorGraph.initFromLines(lines)
+    },
     snapEnabled,
     history,
     redoHistory,
@@ -472,6 +481,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     clearDragReleaseFallback,
     installDragReleaseFallback,
     pushHistory,
+    startQuickReport: options.startQuickReport,
     // 传递思维导图状态（用于 ESC 键处理）
     mindmapSelectedNodeIds: options.mindmapSelectedNodeIds,
     mindmapSelectedEdgeIds: options.mindmapSelectedEdgeIds,

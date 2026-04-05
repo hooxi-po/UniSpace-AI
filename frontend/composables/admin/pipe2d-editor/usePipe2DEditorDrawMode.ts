@@ -56,6 +56,7 @@ export type DrawModeOptions = {
 export function usePipe2DEditorDrawMode(options: DrawModeOptions) {
   let handler: Cesium.ScreenSpaceEventHandler | null = null
   let moveHandler: Cesium.ScreenSpaceEventHandler | null = null
+  let keydownBound = false
 
   // 找到鼠标位置最近的节点（像素阈值内），用于连线吸附
   function findNearestNodeId(screenPos: Cesium.Cartesian2, thresholdPx = 20): string | null {
@@ -178,13 +179,19 @@ export function usePipe2DEditorDrawMode(options: DrawModeOptions) {
       handleMouseMove(e.endPosition)
     }, Cesium.ScreenSpaceEventType.MOUSE_MOVE)
 
-    window.addEventListener('keydown', handleKeydown)
+    if (!keydownBound) {
+      window.addEventListener('keydown', handleKeydown)
+      keydownBound = true
+    }
   }
 
   function destroyDrawEvents() {
     if (handler) { handler.destroy(); handler = null }
     if (moveHandler) { moveHandler.destroy(); moveHandler = null }
-    window.removeEventListener('keydown', handleKeydown)
+    if (keydownBound) {
+      window.removeEventListener('keydown', handleKeydown)
+      keydownBound = false
+    }
     exitDrawMode()
   }
 

@@ -101,6 +101,15 @@ public class PipelineOpsController {
         return root;
     }
 
+    @PostMapping(value = "/quick-report", produces = MediaType.APPLICATION_JSON_VALUE)
+    public JsonNode quickReport(@RequestBody String body) {
+        ObjectNode payload = readObjectBody(body);
+        ObjectNode workorder = repository.quickReport(payload);
+        ObjectNode root = objectMapper.createObjectNode();
+        root.set("workorder", workorder);
+        return root;
+    }
+
     @PostMapping(value = "/action", produces = MediaType.APPLICATION_JSON_VALUE)
     public JsonNode action(@RequestBody String body) {
         ObjectNode payload = readObjectBody(body);

@@ -124,6 +124,23 @@ export async function autoCreateWorkorder(payload: {
   return res.workorder
 }
 
+export async function quickReportWorkorder(payload: {
+  featureId?: string
+  lng: number
+  lat: number
+  faultType: 'leak' | 'burst' | 'blockage' | 'other'
+  severity: 'low' | 'medium' | 'high'
+  note?: string
+  reportedBy?: string
+}) {
+  const res = await pipelineOpsFetch<{ workorder: PipelineWorkOrder }>('/quick-report', {
+    method: 'POST',
+    write: true,
+    body: payload,
+  })
+  return res.workorder
+}
+
 export async function transitionWorkorder(payload: PipelineOrderTransitionPayload) {
   const res = await pipelineOpsFetch<{ workorder: PipelineWorkOrder }>('/workorders', {
     method: 'PATCH',

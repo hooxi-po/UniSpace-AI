@@ -2,6 +2,7 @@ import * as Cesium from 'cesium'
 import { watch, type ComputedRef, type Ref } from 'vue'
 import type { GeoJsonFeature } from '~/services/geo-features'
 import type { PipeGraph } from '~/utils/pipe2d-graph'
+import type { ValidationIssue } from '~/utils/pipe2d-topology-validation'
 import { autoControlPoints, graphToLines, sampleCubicBezier } from '~/utils/pipe2d-graph'
 import { cloneLines, geometryToLines, type Lines, type Point } from '~/utils/pipe2d-geometry'
 import type { SelectedElement } from '~/composables/admin/usePipe2DEditorGraph'
@@ -61,6 +62,22 @@ function createSelectedPolylineMaterial(color: string, alpha = 1) {
   })
 }
 
+function collectIssueNodeIds(issues: ValidationIssue[] | undefined) {
+  const ids = new Set<string>()
+  for (const issue of issues || []) {
+    for (const nodeId of issue.nodeIds) ids.add(nodeId)
+  }
+  return ids
+}
+
+function collectIssueEdgeIds(issues: ValidationIssue[] | undefined) {
+  const ids = new Set<string>()
+  for (const issue of issues || []) {
+    for (const edgeId of issue.edgeIds) ids.add(edgeId)
+  }
+  return ids
+}
+
 type UsePipe2DEditorMapGraphicsOptions = {
   getViewer: () => Cesium.Viewer | null
   getGraphicLayer: () => any | null
@@ -80,6 +97,7 @@ type UsePipe2DEditorMapGraphicsOptions = {
   // 图结构（Phase 2/3 新增，可选以保持向后兼容）
   graph?: Ref<PipeGraph>
   graphSelected?: Ref<SelectedElement>
+  validationResults?: Ref<ValidationIssue[]>
   previewTarget?: Ref<Point | null>
   connectSourceId?: Ref<string | null>
   // 思维导图编辑器选中状态（Phase 3 新增）
@@ -170,6 +188,7 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
     if (!viewer) return
     const graph = options.graph.value
     const selected = options.graphSelected?.value
+    const issueNodeIds = collectIssueNodeIds(options.validationResults?.value)
 
     // 清除旧的节点实体，避免重复渲染泄漏
     for (const entity of currentGraphNodeEntities) {
@@ -189,13 +208,37 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
       const isMindmapSelected = mindmapSelectedIds.has(node.id)
       const isHovered = mindmapHoveredId === node.id
       const isSelected = isTraditionalSelected || isMindmapSelected
+      const hasIssue = issueNodeIds.has(node.id)
+
+      if (hasIssue) {
+        const issueHalo = viewer.entities.add({
+          position: options.toCartesian([node.lon, node.lat]),
+          point: {
+            pixelSize: new Cesium.CallbackProperty(() => 18 + selectedEdgePulse() * 6, false),
+            color: new Cesium.CallbackProperty(() => {
+              const alpha = 0.12 + selectedEdgePulse() * 0.14
+              return Cesium.Color.fromCssColorString('#ef4444').withAlpha(alpha)
+            }, false),
+            outlineColor: Cesium.Color.fromCssColorString('#f97316'),
+            outlineWidth: 1.6,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          },
+          properties: {
+            graphNodeId: node.id,
+            validationIssue: true,
+          },
+        })
+        currentGraphNodeEntities.push(issueHalo)
+      }
 
       // 小圆点样式（和 Lines 点一致）
-      const visibleSize = isSelected ? 11 : 10
-      const outlineWidth = isSelected ? 2 : 1.5
+      const visibleSize = isSelected ? 11 : (isHovered ? 12 : 10)
+      const outlineWidth = isSelected ? 2 : (isHovered ? 2 : 1.5)
       const outlineColor = isSelected
         ? Cesium.Color.fromCssColorString('#fbbf24')  // 选中时金色轮廓
-        : Cesium.Color.fromCssColorString('#e2e8f0')
+        : isHovered
+          ? Cesium.Color.fromCssColorString('#67e8f9')  // 悬停时浅青色
+          : Cesium.Color.fromCssColorString('#e2e8f0')
 
       // 透明点击区域（扩大点击范围）
       const hitArea = viewer.entities.add({
@@ -258,6 +301,7 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
     if (!viewer) return
     const graph = options.graph.value
     const selected = options.graphSelected?.value
+    const issueEdgeIds = collectIssueEdgeIds(options.validationResults?.value)
 
     // 清除旧的边实体，避免重复渲染泄漏
     for (const entity of currentGraphEdgeEntities) {
@@ -279,6 +323,7 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
       const isMindmapSelected = mindmapSelectedIds.has(edge.id)
       const isHovered = mindmapHoveredId === edge.id
       const isSelected = isTraditionalSelected || isMindmapSelected
+      const hasIssue = issueEdgeIds.has(edge.id)
 
       let positions: Point[]
 
@@ -296,7 +341,27 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
       const baseEdgeColor = resolvePipeBaseColor(options.selectedFeature.value)
       const width = isSelected ? 7 : (isHovered ? 5 : 4)
       const color = isSelected ? '#06b6d4' : (isHovered ? '#22d3ee' : baseEdgeColor)
-      const alpha = isSelected ? 1.0 : (isHovered ? 1.0 : 1.0)
+      const alpha = isSelected ? 1.0 : (isHovered ? 0.95 : 0.85)
+
+      if (hasIssue) {
+        const issuePolyline = viewer.entities.add({
+          polyline: {
+            positions: positions.map(toSurfaceCartesian),
+            width: 8,
+            material: new Cesium.PolylineDashMaterialProperty({
+              color: Cesium.Color.fromCssColorString('#f97316').withAlpha(0.9),
+              dashLength: 10,
+            }),
+            arcType: GROUND_POLYLINE_ARC_TYPE,
+            clampToGround: true,
+          },
+          properties: {
+            graphEdgeId: edge.id,
+            validationIssue: true,
+          },
+        })
+        currentGraphEdgeEntities.push(issuePolyline)
+      }
 
       // 选中时添加底层光晕
       if (isSelected) {
@@ -562,6 +627,13 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
     watch(options.mindmapHoveredEdgeId, () => {
       renderGraphEdgeEntities()
     })
+  }
+
+  if (options.validationResults) {
+    watch(options.validationResults, () => {
+      renderGraphNodeEntities()
+      renderGraphEdgeEntities()
+    }, { deep: true })
   }
 
   return {

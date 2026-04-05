@@ -18,6 +18,7 @@ export type ContextMenuState = {
   y: number
   canInsert: boolean
   canDelete: boolean
+  canCopy: boolean
 }
 
 export type HistoryItem = {
@@ -226,6 +227,7 @@ export function createContextMenuState(): ContextMenuState {
     y: 0,
     canInsert: false,
     canDelete: false,
+    canCopy: false,
   }
 }
 

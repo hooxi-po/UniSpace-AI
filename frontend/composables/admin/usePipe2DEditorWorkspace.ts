@@ -63,7 +63,7 @@ export function usePipe2DEditorWorkspace(options: UsePipe2DEditorWorkspaceOption
 
     // 工具提示
     if (activeTool.value === 'addNode') return '点击画布创建设备节点（窨井/阀门/泵站等） | 按 Esc 退出'
-    if (activeTool.value === 'addPipe') return '点击画布继续编辑管线节点 | 双击结束'
+    if (activeTool.value === 'editPipe') return '点击第一个节点选为起点，再点击第二个节点连线 | Shift+点击使用曲线 | 按 Esc 退出'
     if (activeTool.value === 'reportFault') return '故障标注模式：点击地图位置快速上报 | 按 Esc 退出'
     if (activeTool.value === 'bindAsset') return '点击管线关联房产信息 | 按 Esc 取消'
     if (activeTool.value === 'annotate') return '点击位置添加批注 | 按 Esc 取消'
@@ -76,7 +76,7 @@ export function usePipe2DEditorWorkspace(options: UsePipe2DEditorWorkspaceOption
     return ''
   })
   const toolCursorClass = computed(() => {
-    if (activeTool.value === 'addNode' || activeTool.value === 'addPipe' || activeTool.value === 'reportFault') return 'cursor--crosshair'
+    if (activeTool.value === 'addNode' || activeTool.value === 'editPipe' || activeTool.value === 'reportFault') return 'cursor--crosshair'
     if (activeTool.value === 'bindAsset') return 'cursor--cell'
     if (activeTool.value === 'select') return 'cursor--grab'
     return 'cursor--default'
@@ -132,9 +132,9 @@ export function usePipe2DEditorWorkspace(options: UsePipe2DEditorWorkspaceOption
       setEditModes(false, false, true, false)
       return true
     }
-    if (tool === 'addPipe') {
-      if (!ensurePipeSelectedForEditing('添加管线')) return false
-      setEditModes(true, false, false, false)
+    if (tool === 'editPipe') {
+      if (!ensurePipeSelectedForEditing('编辑管线')) return false
+      setEditModes(false, false, false, false)
       return true
     }
     if (tool === 'reportFault') {
@@ -181,7 +181,7 @@ export function usePipe2DEditorWorkspace(options: UsePipe2DEditorWorkspaceOption
       options.actionMessage.value = { type: 'ok', text: '故障标注已启用，点击地图位置即可上报' }
       return
     }
-    if (tool !== 'addNode' && tool !== 'addPipe') return
+    if (tool !== 'addNode' && tool !== 'editPipe') return
     const canvas = options.mapContainerRef.value
     if (!canvas) return
     const rect = canvas.getBoundingClientRect()
@@ -357,7 +357,7 @@ export function usePipe2DEditorWorkspace(options: UsePipe2DEditorWorkspaceOption
     }
     if (key === 'p') {
       event.preventDefault()
-      activateTool('addPipe')
+      activateTool('editPipe')
       return
     }
     if (key === 'f') {
@@ -390,7 +390,7 @@ export function usePipe2DEditorWorkspace(options: UsePipe2DEditorWorkspaceOption
       if (feature) return
       if (
         activeTool.value === 'addNode'
-        || activeTool.value === 'addPipe'
+        || activeTool.value === 'editPipe'
         || activeTool.value === 'reportFault'
         || options.addNodeMode.value
         || options.addPointMode.value

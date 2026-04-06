@@ -66,6 +66,8 @@ type UsePipe2DEditorMapOptions = {
   mindmapSelectNode?: (nodeId: string) => void
   mindmapSelectEdge?: (edgeId: string) => void
   mindmapClearSelection?: () => void
+  // 管线编辑模式（禁止拖拽节点）
+  editPipeMode?: Ref<boolean>
 }
 
 export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
@@ -486,6 +488,10 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     mindmapSelectedNodeIds: options.mindmapSelectedNodeIds,
     mindmapSelectedEdgeIds: options.mindmapSelectedEdgeIds,
     mindmapModeType: options.mindmapModeType,
+    editPipeMode: options.editPipeMode,
+    connectGraphNodes: (sourceId, targetId, edgeType) => {
+      editorGraph.addEdge(sourceId, targetId, edgeType)
+    },
   })
 
   // ---------------------------------------------------------------------------
@@ -533,6 +539,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
       options.mindmapSelectedEdgeIds?.value.clear()
       options.mindmapSelectedNodeIds?.value.add(node.id)
     }
+    renderDraftGraphics()
     return true
   }
 

@@ -15,6 +15,7 @@
 import { watch, type Ref } from 'vue'
 import type { UseMindmapEditorReturn } from './useMindmapEditor'
 import type { Point } from '~/utils/pipe2d-geometry'
+import type { ToolKey } from '~/components/admin/pipe2d-editor/pipe2d-editor-config'
 
 export interface UseMindmapEditorEventsOptions {
   /** 思维导图编辑器实例 */
@@ -27,6 +28,8 @@ export interface UseMindmapEditorEventsOptions {
   mapContainerRef: Ref<HTMLDivElement | null>
   /** 是否打开（用于控制事件监听） */
   open: Ref<boolean>
+  /** 当前激活的工具 */
+  activeTool?: Ref<ToolKey>
 }
 
 export interface PickResult {
@@ -54,7 +57,7 @@ export interface UseMindmapEditorEventsReturn {
 export function useMindmapEditorEvents(
   options: UseMindmapEditorEventsOptions
 ): UseMindmapEditorEventsReturn {
-  const { editor, screenToLonLat, pickEntity, mapContainerRef, open } = options
+  const { editor, screenToLonLat, pickEntity, mapContainerRef, open, activeTool } = options
 
   // ========== 辅助函数 ==========
 
@@ -79,6 +82,9 @@ export function useMindmapEditorEvents(
    */
   function handleCanvasClick(event: PointerEvent): void {
     if (!isEnabled()) return
+
+    // 管线编辑模式由 Cesium LEFT_CLICK 处理，此处跳过
+    if (activeTool?.value === 'editPipe') return
 
     const screenPos = { x: event.clientX, y: event.clientY }
     const target = pickEntity(screenPos)

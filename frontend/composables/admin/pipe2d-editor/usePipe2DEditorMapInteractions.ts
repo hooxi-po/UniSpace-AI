@@ -1,5 +1,5 @@
 import * as Cesium from 'cesium'
-import { type ComputedRef, type Ref } from 'vue'
+import { watch, type ComputedRef, type Ref } from 'vue'
 import type { GeoJsonFeature } from '~/services/geo-features'
 import { cloneLines, isSamePoint, type Lines, type Point } from '~/utils/pipe2d-geometry'
 import {
@@ -69,11 +69,14 @@ type UsePipe2DEditorMapInteractionsOptions = {
   installDragReleaseFallback: () => void
   pushHistory: () => void
   startQuickReport?: (payload: { lon: number; lat: number; nodeId?: string | null; edgeId?: string | null }) => void
+  editPipeMode?: Ref<boolean>
+  connectGraphNodes?: (sourceId: string, targetId: string, edgeType: 'straight' | 'curve') => void
 }
 
 export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapInteractionsOptions) {
   let handler: Cesium.ScreenSpaceEventHandler | null = null
   let ignoreNextClick = false
+  let editPipeSourceNodeId: string | null = null
   let snapHintTimer: ReturnType<typeof setTimeout> | null = null
   let hoverHintTimer: ReturnType<typeof setTimeout> | null = null
   let hoverRafId: number | null = null
@@ -506,6 +509,8 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
 
     handler.setInputAction((movement: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
       // LEFT_DOWN：检测是否点中图节点，开始拖拽
+      // 管线编辑模式下禁止拖拽节点
+      if (options.editPipeMode?.value) return
       const graphHit = options.pickGraphEntity({ x: movement.position.x, y: movement.position.y })
       if (graphHit?.type === 'node') {
         options.draggingNodeId.value = graphHit.nodeId
@@ -524,6 +529,41 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
       hideContextMenu()
       if (ignoreNextClick) {
         ignoreNextClick = false
+        return
+      }
+
+      // 管线编辑模式：两次点击连线
+      if (options.editPipeMode?.value) {
+        const graphHit = options.pickGraphEntity({ x: movement.position.x, y: movement.position.y })
+        if (!graphHit || graphHit.type !== 'node') {
+          // 点击空白或边：清除起点
+          editPipeSourceNodeId = null
+          options.clearGraphSelection?.()
+          options.renderDraftGraphics()
+          return
+        }
+        const nodeId = graphHit.nodeId
+        if (!editPipeSourceNodeId) {
+          // 第一次点击：选为起点
+          editPipeSourceNodeId = nodeId
+          options.selectGraphNode(nodeId)
+          options.renderDraftGraphics()
+          return
+        }
+        if (editPipeSourceNodeId === nodeId) {
+          // 点击同一个节点：取消
+          editPipeSourceNodeId = null
+          options.clearGraphSelection?.()
+          options.renderDraftGraphics()
+          return
+        }
+        // 第二次点击：连线（默认直线，按住 Shift 为曲线）
+        // 注意：Cesium 事件不携带修饰键，这里默认直线
+        options.connectGraphNodes?.(editPipeSourceNodeId, nodeId, 'straight')
+        // 目标节点变为下一次起点，方便连续操作
+        editPipeSourceNodeId = nodeId
+        options.selectGraphNode(nodeId)
+        options.renderDraftGraphics()
         return
       }
 
@@ -631,6 +671,13 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
       handler.destroy()
       handler = null
     }
+  }
+
+  // 工具切换时清除管线编辑连线起点
+  if (options.editPipeMode) {
+    watch(options.editPipeMode, () => {
+      editPipeSourceNodeId = null
+    })
   }
 
   return {

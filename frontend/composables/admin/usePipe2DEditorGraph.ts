@@ -418,5 +418,6 @@ export function usePipe2DEditorGraph(options: {
     selectNode,
     selectEdge,
     clearSelection,
+    syncDraftLinesFromGraph,
   }
 }

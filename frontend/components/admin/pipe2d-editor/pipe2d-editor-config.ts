@@ -5,6 +5,7 @@ import {
   Home,
   Layers,
   Network,
+  Pencil,
   Plus,
   Upload,
 } from 'lucide-vue-next'
@@ -20,7 +21,7 @@ export type CanvasSkin = 'dots' | 'plain' | 'blueprint' | 'satellite'
 export type ToolKey =
   | 'select'
   | 'addNode'
-  | 'addPipe'
+  | 'editPipe'
   | 'reportFault'
   | 'bindAsset'
   | 'annotate'
@@ -58,7 +59,7 @@ export const viewModeOptions: Array<{ key: ViewMode; label: string }> = [
 export const toolItems: ToolItem[] = [
   { key: 'select', icon: Hand, label: '选择工具', tooltip: '选择工具', shortcut: 'V' },
   { key: 'addNode', icon: Plus, label: '创建节点', tooltip: '创建设备节点（窨井/阀门/泵站等）', shortcut: 'N' },
-  { key: 'addPipe', icon: Network, label: '添加管线', tooltip: '添加管线', shortcut: 'P' },
+  { key: 'editPipe', icon: Pencil, label: '管线编辑', tooltip: '点击两个节点连线（Shift+点击使用曲线）', shortcut: 'P' },
   { key: 'reportFault', icon: TriangleAlert, label: '故障标注', tooltip: '点击地图快速上报故障', shortcut: 'F' },
   { key: 'bindAsset', icon: Home, label: '房产绑定', tooltip: '绑定房产', shortcut: 'B' },
   { key: 'annotate', icon: FileText, label: '批注', tooltip: '添加批注', shortcut: 'M' },

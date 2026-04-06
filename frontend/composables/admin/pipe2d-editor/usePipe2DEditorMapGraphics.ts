@@ -117,6 +117,7 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
   // ---- 图节点/边/预览线实体列表 ----
   const currentGraphNodeEntities: Cesium.Entity[] = []
   const currentGraphEdgeEntities: Cesium.Entity[] = []
+  const currentControlPointEntities: Cesium.Entity[] = []
   let previewLineEntity: Cesium.Entity | null = null
 
   // ---- 防抖渲染优化 ----
@@ -128,12 +129,14 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
     if (!viewer) return
     for (const e of currentGraphNodeEntities) viewer.entities.remove(e)
     for (const e of currentGraphEdgeEntities) viewer.entities.remove(e)
+    for (const e of currentControlPointEntities) viewer.entities.remove(e)
     if (previewLineEntity) {
       viewer.entities.remove(previewLineEntity)
       previewLineEntity = null
     }
     currentGraphNodeEntities.length = 0
     currentGraphEdgeEntities.length = 0
+    currentControlPointEntities.length = 0
   }
 
   function clearGraphics() {
@@ -308,6 +311,10 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
       viewer.entities.remove(entity)
     }
     currentGraphEdgeEntities.length = 0
+    for (const entity of currentControlPointEntities) {
+      viewer.entities.remove(entity)
+    }
+    currentControlPointEntities.length = 0
 
     // 思维导图选中状态
     const mindmapSelectedIds = options.mindmapSelectedEdgeIds?.value || new Set<string>()
@@ -404,6 +411,56 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
         },
       })
       currentGraphEdgeEntities.push(polyline)
+
+      // 选中的曲线边：渲染可拖拽的控制点和引导线
+      if (isSelected && edge.edgeType === 'curve' && edge.controlPoints?.length === 2) {
+        const cp1 = edge.controlPoints[0]
+        const cp2 = edge.controlPoints[1]
+        const src: Point = [srcNode.lon, srcNode.lat]
+        const tgt: Point = [tgtNode.lon, tgtNode.lat]
+
+        // 引导线：端点 → 控制点（虚线）
+        for (const [endPt, cpPt] of [[src, cp1], [tgt, cp2]] as [Point, Point][]) {
+          const guideLine = viewer.entities.add({
+            polyline: {
+              positions: [toSurfaceCartesian(endPt), toSurfaceCartesian(cpPt)],
+              width: 1.5,
+              material: new Cesium.PolylineDashMaterialProperty({
+                color: Cesium.Color.fromCssColorString('#94a3b8').withAlpha(0.6),
+                dashLength: 6,
+              }),
+              arcType: GROUND_POLYLINE_ARC_TYPE,
+              clampToGround: true,
+            },
+            properties: {
+              graphEdgeId: edge.id,
+              isControlPointGuide: true,
+            },
+          })
+          currentControlPointEntities.push(guideLine)
+        }
+
+        // 控制点实体（菱形小点）
+        for (let cpIdx = 0; cpIdx < 2; cpIdx++) {
+          const cp = edge.controlPoints[cpIdx]
+          const cpEntity = viewer.entities.add({
+            position: toSurfaceCartesian(cp),
+            point: {
+              pixelSize: 9,
+              color: Cesium.Color.fromCssColorString('#f59e0b'),
+              outlineColor: Cesium.Color.WHITE,
+              outlineWidth: 2,
+              disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            },
+            properties: {
+              isControlPoint: true,
+              graphEdgeId: edge.id,
+              cpIndex: cpIdx,
+            },
+          })
+          currentControlPointEntities.push(cpEntity)
+        }
+      }
     }
   }
 

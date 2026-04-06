@@ -310,6 +310,8 @@ const mindmapSelectedEdgeIds = ref<Set<string>>(new Set())
 const mindmapHoveredNodeId = ref<string | null>(null)
 const mindmapHoveredEdgeId = ref<string | null>(null)
 const mindmapModeType = ref<string>('idle')
+// 管线编辑模式标志（由 activeTool watcher 维护，传递给 map 禁止拖拽）
+const editPipeMode = ref(false)
 
 // 思维导图选中回调持有者（由 mindmapEditor 初始化后赋值，通过闭包延迟调用）
 type MindmapSelectCallbacks = {
@@ -401,6 +403,7 @@ const {
   mindmapSelectNode: (nodeId: string) => _mindmapSelectCbs.selectNode(nodeId),
   mindmapSelectEdge: (edgeId: string) => _mindmapSelectCbs.selectEdge(edgeId),
   mindmapClearSelection: () => _mindmapSelectCbs.clearSelection(),
+  editPipeMode,
 })
 
 // 然后初始化思维导图编辑器（使用共享的 editorGraph 和状态引用）
@@ -487,6 +490,11 @@ const {
   setBasemapById,
   setZoomLevel,
 })
+
+// 同步 activeTool 到 editPipeMode（供 map 禁止拖拽）
+watch(activeTool, (tool) => {
+  editPipeMode.value = tool === 'editPipe'
+}, { immediate: true })
 
 const {
   loading,
@@ -681,6 +689,7 @@ const mindmapEvents = useMindmapEditorEvents({
   open: toRef(props, 'open'),
   screenToLonLat: (pos) => screenToLonLat(new Cesium.Cartesian2(pos.x, pos.y)),
   pickEntity,
+  activeTool,
 })
 
 // 合并思维导图模式提示和原有工具提示

@@ -49,6 +49,8 @@ type UsePipe2DEditorMapInteractionsOptions = {
   removeNodeMergeEdge?: (nodeId: string) => void
   removeGraphEdge?: (edgeId: string) => void
   moveGraphNode?: (nodeId: string, lon: number, lat: number) => void
+  moveControlPoint?: (edgeId: string, cpIndex: number, lon: number, lat: number) => void
+  pickControlPoint?: (screenPosition: { x: number; y: number }) => { edgeId: string; cpIndex: number } | null
   pushGraphHistory?: () => void
   restoreGraphFromLines?: (lines: Lines) => void
   snapEnabled: Ref<boolean>
@@ -77,6 +79,7 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
   let handler: Cesium.ScreenSpaceEventHandler | null = null
   let ignoreNextClick = false
   let editPipeSourceNodeId: string | null = null
+  let draggingControlPoint: { edgeId: string; cpIndex: number } | null = null
   let snapHintTimer: ReturnType<typeof setTimeout> | null = null
   let hoverHintTimer: ReturnType<typeof setTimeout> | null = null
   let hoverRafId: number | null = null
@@ -496,6 +499,15 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
     handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
 
     handler.setInputAction((movement: Cesium.ScreenSpaceEventHandler.MotionEvent) => {
+      // 拖拽控制点时实时更新坐标
+      if (draggingControlPoint && options.moveControlPoint) {
+        const newPos = options.screenToLonLat(movement.endPosition)
+        if (newPos) {
+          options.moveControlPoint(draggingControlPoint.edgeId, draggingControlPoint.cpIndex, newPos[0], newPos[1])
+          options.renderDraftGraphics()
+        }
+        return
+      }
       // 拖拽节点时实时更新坐标
       if (options.draggingNodeId.value && options.moveGraphNode) {
         const newPos = options.screenToLonLat(movement.endPosition)
@@ -508,7 +520,16 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
     }, Cesium.ScreenSpaceEventType.MOUSE_MOVE)
 
     handler.setInputAction((movement: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
-      // LEFT_DOWN：检测是否点中图节点，开始拖拽
+      // LEFT_DOWN：检测是否点中控制点或图节点，开始拖拽
+      // 控制点拖拽优先
+      const cpHit = options.pickControlPoint?.({ x: movement.position.x, y: movement.position.y })
+      if (cpHit) {
+        draggingControlPoint = cpHit
+        if (options.pushGraphHistory) options.pushGraphHistory()
+        options.setCameraControlsEnabled(false)
+        options.installDragReleaseFallback()
+        return
+      }
       // 管线编辑模式下禁止拖拽节点
       if (options.editPipeMode?.value) return
       const graphHit = options.pickGraphEntity({ x: movement.position.x, y: movement.position.y })
@@ -520,6 +541,13 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
     }, Cesium.ScreenSpaceEventType.LEFT_DOWN)
 
     handler.setInputAction(() => {
+      if (draggingControlPoint) {
+        draggingControlPoint = null
+        options.setCameraControlsEnabled(true)
+        options.clearDragReleaseFallback()
+        ignoreNextClick = true
+        return
+      }
       if (options.draggingNodeId.value) {
         stopDragging()
       }

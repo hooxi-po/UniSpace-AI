@@ -234,6 +234,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     | { type: 'node'; nodeId: string }
     | { type: 'edge'; edgeId: string }
     | { type: 'connectionPoint'; nodeId: string; direction: 'top' | 'right' | 'bottom' | 'left' }
+    | { type: 'controlPoint'; edgeId: string; cpIndex: number }
     | null {
     if (!viewer) return null
 
@@ -251,6 +252,16 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
       const props = entity?.properties
       if (!props) continue
 
+      // 控制点优先级最高（覆盖在边上方）
+      const isControlPoint = Boolean(readProperty(props, 'isControlPoint'))
+      if (isControlPoint) {
+        return {
+          type: 'controlPoint',
+          edgeId: String(readProperty(props, 'graphEdgeId') || ''),
+          cpIndex: Number(readProperty(props, 'cpIndex') ?? 0),
+        }
+      }
+
       const isConnectionPoint = Boolean(readProperty(props, 'isConnectionPoint'))
       if (isConnectionPoint) {
         return {
@@ -262,7 +273,8 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
 
       const edgeId = readProperty(props, 'graphEdgeId')
       const isHalo = Boolean(readProperty(props, 'isHalo'))
-      if (edgeId && !isHalo) {
+      const isGuide = Boolean(readProperty(props, 'isControlPointGuide'))
+      if (edgeId && !isHalo && !isGuide) {
         return {
           type: 'edge',
           edgeId: String(edgeId),
@@ -466,6 +478,19 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     removeNodeMergeEdge: editorGraph.removeNodeMergeEdge,
     removeGraphEdge: editorGraph.removeEdge,
     moveGraphNode: editorGraph.moveNode,
+    moveControlPoint: (edgeId, cpIndex, lon, lat) => {
+      const edge = editorGraph.graph.value.edges.find(e => e.id === edgeId)
+      if (!edge || !edge.controlPoints) return
+      edge.controlPoints[cpIndex] = [lon, lat]
+      editorGraph.syncDraftLinesFromGraph()
+    },
+    pickControlPoint: (pos) => {
+      const result = pickEntity(pos)
+      if (result?.type === 'controlPoint') {
+        return { edgeId: result.edgeId, cpIndex: result.cpIndex }
+      }
+      return null
+    },
     pushGraphHistory: editorGraph.pushGraphHistory,
     restoreGraphFromLines: (lines) => {
       editorGraph.initFromLines(lines)

@@ -65,22 +65,32 @@ async function requestJson(url, init = {}) {
   return json
 }
 
-function buildTestBuildingPayload(id) {
+function getDefaultGeometry() {
+  return {
+    type: 'Polygon',
+    coordinates: [[
+      [119.18970, 26.02518],
+      [119.18986, 26.02518],
+      [119.18986, 26.02530],
+      [119.18970, 26.02530],
+      [119.18970, 26.02518],
+    ]],
+  }
+}
+
+function buildTestBuildingPayload(id, existingFeature = null) {
+  const existingGeometry = existingFeature?.geometry
+  const existingProperties = existingFeature?.properties && typeof existingFeature.properties === 'object'
+    ? existingFeature.properties
+    : {}
+
   return {
     id,
     layer: 'buildings',
     visible: true,
-    geometry: {
-      type: 'Polygon',
-      coordinates: [[
-        [119.18970, 26.02518],
-        [119.18986, 26.02518],
-        [119.18986, 26.02530],
-        [119.18970, 26.02530],
-        [119.18970, 26.02518],
-      ]],
-    },
+    geometry: existingGeometry || getDefaultGeometry(),
     properties: {
+      ...existingProperties,
       name: TEST_BUILDING_NAME,
       short_name: TEST_BUILDING_NAME,
       building: 'office',
@@ -142,7 +152,7 @@ async function main() {
     (f) => String(f?.properties?.name || '') === TEST_BUILDING_NAME,
   )
   const targetId = String(existingByName?.id || TEST_BUILDING_ID)
-  const payload = buildTestBuildingPayload(targetId)
+  const payload = buildTestBuildingPayload(targetId, existingByName)
 
   if (existingByName) {
     await requestJson(`${baseUrl}/api/v1/features`, {

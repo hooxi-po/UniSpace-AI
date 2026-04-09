@@ -15,11 +15,12 @@ import { normalizeBackendBaseUrl } from '~/utils/backend-url'
 import {
   appendCacheBust,
   buildModelScale,
+  computeFootprintMetrics,
   fetchPagedFeatureCollectionByBboxes,
   getCurrentViewBboxes,
   getModelNativeSizeMeters,
+  getPolygonPositions,
   MODEL_NATIVE_SIZE_FALLBACK,
-  pickReplacementBuilding,
 } from '~/utils/map-view-helpers'
 import { styleBuildingEntity, styleGreenEntity, stylePipeNodeEntity } from '~/utils/map-entity-style'
 
@@ -105,12 +106,88 @@ const dynamicLayerQueryKey = ref<Record<LayerName, string>>({
 })
 let dynamicLayerReloadTimer: ReturnType<typeof setTimeout> | null = null
 
-const BUILDING_REPLACEMENT_MODEL = {
-  name: 'Office 建筑模型',
-  url: '/models/officeBuild.glb',
+type BuildingModelScaleMode = 'auto' | 'fixed'
+
+type BuildingModelConfig = {
+  url: string
+  heading: number
+  pitch: number
+  roll: number
+  scaleMode: BuildingModelScaleMode
+  scale: number
 }
-const BUILDING_REPLACEMENT_TARGET_ID = 'building_test_1'
-const BUILDING_REPLACEMENT_TARGET_NAME = '测试建筑1'
+
+function toFiniteNumber(value: unknown, fallback = 0) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string') {
+    const normalized = value.trim()
+    if (!normalized) return fallback
+    const next = Number.parseFloat(normalized)
+    if (Number.isFinite(next)) return next
+  }
+  return fallback
+}
+
+function toPositiveNumber(value: unknown, fallback = 1) {
+  const next = toFiniteNumber(value, fallback)
+  return next > 0 ? next : fallback
+}
+
+function isModelEnabled(value: unknown) {
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase()
+    if (!normalized) return true
+    return !['0', 'false', 'off', 'no'].includes(normalized)
+  }
+  return true
+}
+
+function normalizeModelUrl(value: unknown) {
+  if (typeof value !== 'string') return null
+  const normalized = value.trim()
+  if (!normalized) return null
+  if (
+    normalized.startsWith('/')
+    || normalized.startsWith('http://')
+    || normalized.startsWith('https://')
+    || normalized.startsWith('data:')
+    || normalized.startsWith('blob:')
+  ) {
+    return normalized
+  }
+  return `/${normalized.replace(/^\.?\//, '')}`
+}
+
+function readBuildingModelConfig(properties: Record<string, unknown>): BuildingModelConfig | null {
+  if (!isModelEnabled(properties.modelEnabled)) return null
+
+  const url = normalizeModelUrl(properties.modelUrl)
+  if (!url) return null
+
+  const rawScaleMode = String(properties.modelScaleMode || '').trim().toLowerCase()
+  const scaleMode: BuildingModelScaleMode = ['fixed', 'manual'].includes(rawScaleMode) ? 'fixed' : 'auto'
+
+  return {
+    url,
+    heading: toFiniteNumber(properties.modelHeading),
+    pitch: toFiniteNumber(properties.modelPitch),
+    roll: toFiniteNumber(properties.modelRoll),
+    scaleMode,
+    scale: toPositiveNumber(properties.modelScale, 1),
+  }
+}
+
+function resolveModelScale(
+  config: BuildingModelConfig,
+  footprintTargetSize: number,
+  nativeSizeMeters: number,
+) {
+  if (config.scaleMode === 'fixed') {
+    return config.scale
+  }
+  return buildModelScale(footprintTargetSize, nativeSizeMeters) * config.scale
+}
 
 function serializeBboxes(bboxes: string[]) {
   return bboxes.join('|')
@@ -405,57 +482,64 @@ function loadLayer(layerName: LayerName, force = false) {
       .then(layerDataSource => {
         if (!viewer || loadSeq !== dynamicLayerLoadSeq[layerName]) return
         dataSource.entities.removeAll()
-        let replacement = null
         if (layerName === 'buildings') {
           dataSources.models.entities.removeAll()
-          replacement = pickReplacementBuilding(
-            layerDataSource.entities.values,
-            viewer.clock.currentTime,
-            BUILDING_REPLACEMENT_TARGET_ID,
-            BUILDING_REPLACEMENT_TARGET_NAME,
-          )
         }
         for (const entity of layerDataSource.entities.values) {
           entity.label = undefined
           entity.billboard = undefined
           entity.description = undefined
           if (layerName === 'buildings') {
-            if (replacement && String(entity.id) === replacement.id) {
-              const initialScale = buildModelScale(
-                replacement.footprintTargetSize,
+            const currentTime = viewer.clock.currentTime
+            const originalProperties = (entity.properties?.getValue(currentTime) || {}) as Record<string, unknown>
+            const modelConfig = readBuildingModelConfig(originalProperties)
+            const polygonPositions = getPolygonPositions(entity, currentTime)
+
+            if (modelConfig && polygonPositions) {
+              const placement = computeFootprintMetrics(polygonPositions)
+              const initialScale = resolveModelScale(
+                modelConfig,
+                placement.footprintTargetSize,
                 MODEL_NATIVE_SIZE_FALLBACK,
               )
               const modelEntity = dataSources.models.entities.add({
                 id: entity.id,
-                name: BUILDING_REPLACEMENT_MODEL.name,
-                position: replacement.center,
+                name: String(originalProperties.name || originalProperties.short_name || entity.id),
+                position: placement.center,
                 orientation: Cesium.Transforms.headingPitchRollQuaternion(
-                  replacement.center,
-                  new Cesium.HeadingPitchRoll(replacement.heading, 0, 0),
+                  placement.center,
+                  new Cesium.HeadingPitchRoll(
+                    placement.heading + Cesium.Math.toRadians(modelConfig.heading),
+                    Cesium.Math.toRadians(modelConfig.pitch),
+                    Cesium.Math.toRadians(modelConfig.roll),
+                  ),
                 ),
                 model: new Cesium.ModelGraphics({
-                  uri: BUILDING_REPLACEMENT_MODEL.url,
+                  uri: modelConfig.url,
                   scale: initialScale,
                   runAnimations: true,
                   heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND,
+                  distanceDisplayCondition: new Cesium.ConstantProperty(BUILDING_DISTANCE_CONDITION),
                 }),
                 properties: new Cesium.PropertyBag({
-                  ...replacement.originalProperties,
+                  ...originalProperties,
                   __assetType: 'building',
-                  __renderMode: 'replacement-model',
-                  __modelUrl: BUILDING_REPLACEMENT_MODEL.url,
+                  __renderMode: 'model',
+                  __modelUrl: modelConfig.url,
                 }),
               })
 
-              void getModelNativeSizeMeters(viewer, BUILDING_REPLACEMENT_MODEL.url).then((nativeSizeMeters) => {
-                if (!viewer || loadSeq !== dynamicLayerLoadSeq.buildings) return
-                const latestModelEntity = dataSources.models.entities.getById(modelEntity.id)
-                if (!latestModelEntity?.model) return
-                latestModelEntity.model.scale = new Cesium.ConstantProperty(
-                  buildModelScale(replacement.footprintTargetSize, nativeSizeMeters),
-                )
-                viewer.scene.requestRender()
-              })
+              if (modelConfig.scaleMode === 'auto') {
+                void getModelNativeSizeMeters(viewer, modelConfig.url).then((nativeSizeMeters) => {
+                  if (!viewer || loadSeq !== dynamicLayerLoadSeq.buildings) return
+                  const latestModelEntity = dataSources.models.entities.getById(modelEntity.id)
+                  if (!latestModelEntity?.model) return
+                  latestModelEntity.model.scale = new Cesium.ConstantProperty(
+                    resolveModelScale(modelConfig, placement.footprintTargetSize, nativeSizeMeters),
+                  )
+                  viewer.scene.requestRender()
+                })
+              }
               continue
             }
             entity.point = undefined

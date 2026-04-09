@@ -60,6 +60,14 @@ export function useAssetCrud(options: UseAssetCrudOptions) {
           name: '新建筑',
           building: 'school',
           amenity: 'office',
+          'building:levels': 6,
+          modelEnabled: false,
+          modelUrl: '/models/residential_building.glb',
+          modelScaleMode: 'auto',
+          modelScale: 1,
+          modelHeading: 0,
+          modelPitch: 0,
+          modelRoll: 0,
         },
       }
     }
@@ -244,4 +252,3 @@ export function useAssetCrud(options: UseAssetCrudOptions) {
     assetCell,
   }
 }
-

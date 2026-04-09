@@ -18,6 +18,10 @@ function modeToType(mode: PipelineOpsBoardMode): PipelineOrderType | undefined {
   return mode
 }
 
+function getRequestErrorMessage(error: unknown, fallback: string) {
+  return (error as any)?.data?.statusMessage || (error as any)?.message || fallback
+}
+
 export function usePipelineOpsBoard(mode: PipelineOpsBoardMode) {
   const loading = ref(false)
   const submitting = ref(false)
@@ -90,19 +94,57 @@ export function usePipelineOpsBoard(mode: PipelineOpsBoardMode) {
     loading.value = true
     error.value = ''
     try {
-      const [workordersRes, statsRes, dashboardRes] = await Promise.all([
+      const [workordersRes, statsRes, dashboardRes] = await Promise.allSettled([
         pipelineOpsService.fetchWorkorders(query.value),
         pipelineOpsService.fetchStats(summaryQuery.value),
         pipelineOpsService.fetchDashboard(summaryQuery.value),
       ])
       if (requestId !== refreshRequestId) return
-      list.value = workordersRes.list
-      total.value = workordersRes.pagination?.total || 0
-      totalPages.value = workordersRes.pagination?.totalPages || 0
-      stats.value = statsRes.stats
-      dashboard.value = dashboardRes.dashboard
-      if (detail.value) {
-        const found = workordersRes.list.find(i => i.id === detail.value?.id)
+
+      const failedParts: string[] = []
+
+      if (workordersRes.status === 'fulfilled') {
+        list.value = workordersRes.value.list
+        total.value = workordersRes.value.pagination?.total || 0
+        totalPages.value = workordersRes.value.pagination?.totalPages || 0
+      } else {
+        list.value = []
+        total.value = 0
+        totalPages.value = 0
+        failedParts.push(getRequestErrorMessage(workordersRes.reason, '工单列表加载失败'))
+      }
+
+      if (statsRes.status === 'fulfilled') {
+        stats.value = statsRes.value.stats
+      } else {
+        stats.value = {
+          total: 0,
+          draft: 0,
+          todo: 0,
+          assigned: 0,
+          in_progress: 0,
+          paused: 0,
+          inProgress: 0,
+          review: 0,
+          completed: 0,
+          closed: 0,
+          cancelled: 0,
+          rejected: 0,
+        }
+        failedParts.push(getRequestErrorMessage(statsRes.reason, '工单统计加载失败'))
+      }
+
+      if (dashboardRes.status === 'fulfilled') {
+        dashboard.value = dashboardRes.value.dashboard
+      } else {
+        dashboard.value = null
+        failedParts.push(getRequestErrorMessage(dashboardRes.reason, '工单看板加载失败'))
+      }
+
+      error.value = failedParts.join('；')
+
+      if (detail.value && workordersRes.status === 'fulfilled') {
+        const found = workordersRes.value.list.find(i => i.id === detail.value?.id)
         if (found) detail.value = found
       }
     } catch (err: any) {

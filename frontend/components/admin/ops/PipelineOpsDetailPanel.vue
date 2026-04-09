@@ -61,6 +61,10 @@
 </template>
 
 <script setup lang="ts">
+import PipelineOpsImpactCard from './PipelineOpsImpactCard.vue'
+import PipelineOpsInspectionCard from './PipelineOpsInspectionCard.vue'
+import PipelineOpsLogsCard from './PipelineOpsLogsCard.vue'
+import PipelineOpsPumpCard from './PipelineOpsPumpCard.vue'
 import type {
   PipelineMedium,
   PipelineOrderStatus,

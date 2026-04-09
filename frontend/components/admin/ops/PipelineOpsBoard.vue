@@ -85,6 +85,11 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import PipelineOpsActionDialog from './PipelineOpsActionDialog.vue'
+import PipelineOpsCreateSection from './PipelineOpsCreateSection.vue'
+import PipelineOpsDetailPanel from './PipelineOpsDetailPanel.vue'
+import PipelineOpsListSection from './PipelineOpsListSection.vue'
+import PipelineOpsOverviewSection from './PipelineOpsOverviewSection.vue'
 import { usePipelineOpsBoardUi } from '~/composables/admin/usePipelineOpsBoardUi'
 import type { PipelineOpsBoardMode } from '~/composables/admin/usePipelineOpsBoard'
 import {

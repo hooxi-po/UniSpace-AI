@@ -12,12 +12,16 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 @Repository
 public class WorkOrderRepository extends WorkOrderRepositorySupport {
+
+    private static final Logger log = LoggerFactory.getLogger(WorkOrderRepository.class);
 
     private record PipeMatch(
             String featureId,
@@ -507,156 +511,242 @@ public class WorkOrderRepository extends WorkOrderRepositorySupport {
         }
 
         QueryFilter filter = buildQueryFilter(query, "w");
-        ObjectNode dashboard = objectMapper.createObjectNode();
+        ObjectNode dashboard = defaultDashboard();
 
-        ObjectNode totalsByType = objectMapper.createObjectNode();
-        for (String orderTypeName : ORDER_TYPES) {
-            List<Object> params = new ArrayList<>(filter.params());
-            params.add(orderTypeName);
-            Integer count = jdbcTemplate.queryForObject(
-                    "SELECT COUNT(*) FROM work_order w" + filter.whereSql() + " AND w.order_type = ?",
-                    params.toArray(),
-                    Integer.class
-            );
-            totalsByType.put(orderTypeName, count == null ? 0 : count);
+        ObjectNode totalsByType = (ObjectNode) dashboard.get("totalsByType");
+        try {
+            for (String orderTypeName : ORDER_TYPES) {
+                List<Object> params = new ArrayList<>(filter.params());
+                params.add(orderTypeName);
+                Integer count = jdbcTemplate.queryForObject(
+                        "SELECT COUNT(*) FROM work_order w" + filter.whereSql() + " AND w.order_type = ?",
+                        params.toArray(),
+                        Integer.class
+                );
+                totalsByType.put(orderTypeName, count == null ? 0 : count);
+            }
+        } catch (Exception ex) {
+            logDashboardSectionFailure("totalsByType", query, ex);
         }
-        dashboard.set("totalsByType", totalsByType);
 
-        ObjectNode totalsByStatus = objectMapper.createObjectNode();
-        for (String status : ORDER_STATUS) {
-            List<Object> params = new ArrayList<>(filter.params());
-            params.add(status);
-            Integer count = jdbcTemplate.queryForObject(
-                    "SELECT COUNT(*) FROM work_order w" + filter.whereSql() + " AND w.status = ?",
-                    params.toArray(),
-                    Integer.class
-            );
-            totalsByStatus.put(status, count == null ? 0 : count);
+        ObjectNode totalsByStatus = (ObjectNode) dashboard.get("totalsByStatus");
+        try {
+            for (String status : ORDER_STATUS) {
+                List<Object> params = new ArrayList<>(filter.params());
+                params.add(status);
+                Integer count = jdbcTemplate.queryForObject(
+                        "SELECT COUNT(*) FROM work_order w" + filter.whereSql() + " AND w.status = ?",
+                        params.toArray(),
+                        Integer.class
+                );
+                totalsByStatus.put(status, count == null ? 0 : count);
+            }
+        } catch (Exception ex) {
+            logDashboardSectionFailure("totalsByStatus", query, ex);
         }
-        dashboard.set("totalsByStatus", totalsByStatus);
 
         ArrayNode topBuildings = objectMapper.createArrayNode();
-        List<Object> topBuildingParams = new ArrayList<>(filter.params());
-        StringBuilder topBuildingsSql = new StringBuilder(
-                "SELECT COALESCE(obl.building_name, w.building_name, w.building_id, '') AS building_name, COUNT(*) AS cnt, " +
-                        "AVG(CASE WHEN w.started_at IS NOT NULL AND COALESCE(w.closed_at, w.finished_at, w.updated_at) > w.started_at " +
-                        "THEN EXTRACT(EPOCH FROM (COALESCE(w.closed_at, w.finished_at, w.updated_at) - w.started_at))/3600.0 ELSE 0 END) AS avg_hours " +
-                        "FROM work_order w LEFT JOIN order_building_link obl ON w.id = obl.work_order_id " +
-                        filter.whereSql()
-        );
-        if (query.buildingId() != null) {
-            topBuildingsSql.append(" AND COALESCE(obl.building_id, w.building_id) = ? ");
-            topBuildingParams.add(query.buildingId());
-        }
-        topBuildingsSql.append("GROUP BY COALESCE(obl.building_name, w.building_name, w.building_id, '') ORDER BY cnt DESC LIMIT 10");
-        List<Map<String, Object>> topRows = jdbcTemplate.queryForList(topBuildingsSql.toString(), topBuildingParams.toArray());
-        for (Map<String, Object> row : topRows) {
-            ObjectNode item = objectMapper.createObjectNode();
-            item.put("buildingName", textValue(row.get("building_name")));
-            item.put("count", numberValue(row.get("cnt"), 0).intValue());
-            item.put("avgImpactHours", round(numberValue(row.get("avg_hours"), 0).doubleValue(), 2));
-            topBuildings.add(item);
+        try {
+            try {
+                List<Object> topBuildingParams = new ArrayList<>(filter.params());
+                StringBuilder topBuildingsSql = new StringBuilder(
+                        "SELECT COALESCE(obl.building_name, w.building_name, w.building_id, '') AS building_name, COUNT(*) AS cnt, " +
+                                "AVG(CASE WHEN w.started_at IS NOT NULL AND COALESCE(w.closed_at, w.finished_at, w.updated_at) > w.started_at " +
+                                "THEN EXTRACT(EPOCH FROM (COALESCE(w.closed_at, w.finished_at, w.updated_at) - w.started_at))/3600.0 ELSE 0 END) AS avg_hours " +
+                                "FROM work_order w LEFT JOIN order_building_link obl ON w.id = obl.work_order_id " +
+                                filter.whereSql()
+                );
+                if (query.buildingId() != null) {
+                    topBuildingsSql.append(" AND COALESCE(obl.building_id, w.building_id) = ? ");
+                    topBuildingParams.add(query.buildingId());
+                }
+                topBuildingsSql.append("GROUP BY COALESCE(obl.building_name, w.building_name, w.building_id, '') ORDER BY cnt DESC LIMIT 10");
+                List<Map<String, Object>> topRows = jdbcTemplate.queryForList(topBuildingsSql.toString(), topBuildingParams.toArray());
+                for (Map<String, Object> row : topRows) {
+                    ObjectNode item = objectMapper.createObjectNode();
+                    item.put("buildingName", textValue(row.get("building_name")));
+                    item.put("count", numberValue(row.get("cnt"), 0).intValue());
+                    item.put("avgImpactHours", round(numberValue(row.get("avg_hours"), 0).doubleValue(), 2));
+                    topBuildings.add(item);
+                }
+            } catch (Exception primaryEx) {
+                logDashboardSectionFailure("affectedBuildingsTop10.primary", query, primaryEx);
+                List<Object> fallbackParams = new ArrayList<>(filter.params());
+                StringBuilder fallbackTopBuildingsSql = new StringBuilder(
+                        "SELECT COALESCE(w.building_name, w.building_id, '') AS building_name, COUNT(*) AS cnt, " +
+                                "AVG(CASE WHEN w.started_at IS NOT NULL AND COALESCE(w.closed_at, w.finished_at, w.updated_at) > w.started_at " +
+                                "THEN EXTRACT(EPOCH FROM (COALESCE(w.closed_at, w.finished_at, w.updated_at) - w.started_at))/3600.0 ELSE 0 END) AS avg_hours " +
+                                "FROM work_order w " +
+                                filter.whereSql()
+                );
+                if (query.buildingId() != null) {
+                    fallbackTopBuildingsSql.append(" AND w.building_id = ? ");
+                    fallbackParams.add(query.buildingId());
+                }
+                fallbackTopBuildingsSql.append("GROUP BY COALESCE(w.building_name, w.building_id, '') ORDER BY cnt DESC LIMIT 10");
+                List<Map<String, Object>> fallbackRows = jdbcTemplate.queryForList(
+                        fallbackTopBuildingsSql.toString(),
+                        fallbackParams.toArray()
+                );
+                for (Map<String, Object> row : fallbackRows) {
+                    ObjectNode item = objectMapper.createObjectNode();
+                    item.put("buildingName", textValue(row.get("building_name")));
+                    item.put("count", numberValue(row.get("cnt"), 0).intValue());
+                    item.put("avgImpactHours", round(numberValue(row.get("avg_hours"), 0).doubleValue(), 2));
+                    topBuildings.add(item);
+                }
+            }
+        } catch (Exception ex) {
+            logDashboardSectionFailure("affectedBuildingsTop10.fallback", query, ex);
         }
         dashboard.set("affectedBuildingsTop10", topBuildings);
 
-        List<Object> completedParams = new ArrayList<>(filter.params());
-        completedParams.add("completed");
-        completedParams.add("closed");
-        Double averageHandleHours = jdbcTemplate.queryForObject(
-                "SELECT COALESCE(AVG(CASE WHEN w.started_at IS NOT NULL AND COALESCE(w.finished_at, w.closed_at, w.updated_at) > w.started_at " +
-                        "THEN EXTRACT(EPOCH FROM (COALESCE(w.finished_at, w.closed_at, w.updated_at) - w.started_at))/3600.0 ELSE 0 END), 0) " +
-                        "FROM work_order w" + filter.whereSql() + " AND w.status IN (?, ?)",
-                completedParams.toArray(),
-                Double.class
-        );
-
-        Integer totalOrders = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM work_order w" + filter.whereSql(),
-                filter.params().toArray(),
-                Integer.class
-        );
-
-        Integer repeatedOrders = jdbcTemplate.queryForObject(
-                "SELECT COALESCE(SUM(cnt),0) FROM (" +
-                        "SELECT COUNT(*) AS cnt FROM work_order w" + filter.whereSql() +
-                        " AND jsonb_array_length(w.segment_ids) > 0 GROUP BY w.segment_ids HAVING COUNT(*) > 1" +
-                        ") t",
-                filter.params().toArray(),
-                Integer.class
-        );
-
-        Double totalCost = jdbcTemplate.queryForObject(
-                "SELECT COALESCE(SUM(CASE WHEN w.maintenance_payload ? 'cost' THEN COALESCE((w.maintenance_payload->'cost'->>'totalCost')::numeric,0) ELSE 0 END), 0) " +
-                        "FROM work_order w" + filter.whereSql(),
-                filter.params().toArray(),
-                Double.class
-        );
-
-        ObjectNode efficiency = objectMapper.createObjectNode();
-        efficiency.put("averageHandleHours", round(averageHandleHours == null ? 0 : averageHandleHours, 2));
-        int totalOrderCount = totalOrders == null ? 0 : totalOrders;
-        int repeatedOrderCount = repeatedOrders == null ? 0 : repeatedOrders;
+        ObjectNode efficiency = (ObjectNode) dashboard.get("efficiency");
+        double averageHandleHours = 0;
+        int totalOrderCount = 0;
+        int repeatedOrderCount = 0;
+        double totalCost = 0;
+        try {
+            List<Object> completedParams = new ArrayList<>(filter.params());
+            completedParams.add("completed");
+            completedParams.add("closed");
+            Double avg = jdbcTemplate.queryForObject(
+                    "SELECT COALESCE(AVG(CASE WHEN w.started_at IS NOT NULL AND COALESCE(w.finished_at, w.closed_at, w.updated_at) > w.started_at " +
+                            "THEN EXTRACT(EPOCH FROM (COALESCE(w.finished_at, w.closed_at, w.updated_at) - w.started_at))/3600.0 ELSE 0 END), 0) " +
+                            "FROM work_order w" + filter.whereSql() + " AND w.status IN (?, ?)",
+                    completedParams.toArray(),
+                    Double.class
+            );
+            averageHandleHours = avg == null ? 0 : avg;
+        } catch (Exception ex) {
+            logDashboardSectionFailure("efficiency.averageHandleHours", query, ex);
+        }
+        try {
+            Integer totalOrders = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM work_order w" + filter.whereSql(),
+                    filter.params().toArray(),
+                    Integer.class
+            );
+            totalOrderCount = totalOrders == null ? 0 : totalOrders;
+        } catch (Exception ex) {
+            logDashboardSectionFailure("efficiency.totalOrders", query, ex);
+        }
+        try {
+            Integer repeatedOrders = jdbcTemplate.queryForObject(
+                    "SELECT COALESCE(SUM(cnt),0) FROM (" +
+                            "SELECT COUNT(*) AS cnt FROM work_order w" + filter.whereSql() +
+                            " AND jsonb_typeof(w.segment_ids) = 'array' AND jsonb_array_length(w.segment_ids) > 0 " +
+                            "GROUP BY w.segment_ids HAVING COUNT(*) > 1" +
+                            ") t",
+                    filter.params().toArray(),
+                    Integer.class
+            );
+            repeatedOrderCount = repeatedOrders == null ? 0 : repeatedOrders;
+        } catch (Exception ex) {
+            logDashboardSectionFailure("efficiency.repeatedOrders", query, ex);
+        }
+        try {
+            Double cost = jdbcTemplate.queryForObject(
+                    "SELECT COALESCE(SUM(CASE " +
+                            "WHEN jsonb_typeof(w.maintenance_payload) = 'object' " +
+                            " AND jsonb_typeof(w.maintenance_payload->'cost') = 'object' " +
+                            " AND COALESCE(w.maintenance_payload->'cost'->>'totalCost', '') ~ '^-?[0-9]+(\\.[0-9]+)?$' " +
+                            "THEN (w.maintenance_payload->'cost'->>'totalCost')::numeric " +
+                            "ELSE 0 END), 0) " +
+                            "FROM work_order w" + filter.whereSql(),
+                    filter.params().toArray(),
+                    Double.class
+            );
+            totalCost = cost == null ? 0 : cost;
+        } catch (Exception ex) {
+            logDashboardSectionFailure("efficiency.totalCost", query, ex);
+        }
+        efficiency.put("averageHandleHours", round(averageHandleHours, 2));
         efficiency.put("repeatedOrderRate", totalOrderCount == 0 ? 0 : round((double) repeatedOrderCount / totalOrderCount, 2));
-        efficiency.put("totalCost", round(totalCost == null ? 0 : totalCost, 2));
+        efficiency.put("totalCost", round(totalCost, 2));
         dashboard.set("efficiency", efficiency);
 
         ArrayNode trend = objectMapper.createArrayNode();
-        List<Object> trendParams = new ArrayList<>(filter.params());
-        trendParams.addAll(filter.params());
-        List<Map<String, Object>> trendRows = jdbcTemplate.queryForList(
-                "WITH all_days AS (" +
-                        " SELECT day::date AS d FROM generate_series(current_date - interval '29 days', current_date, interval '1 day') day" +
-                        "), created_counts AS (" +
-                        " SELECT w.created_at::date AS d, COUNT(*) AS c FROM work_order w" + filter.whereSql() + " GROUP BY w.created_at::date" +
-                        "), completed_counts AS (" +
-                        " SELECT COALESCE(w.finished_at, w.closed_at)::date AS d, COUNT(*) AS c FROM work_order w" + filter.whereSql() +
-                        " AND COALESCE(w.finished_at, w.closed_at) IS NOT NULL GROUP BY COALESCE(w.finished_at, w.closed_at)::date" +
-                        ") " +
-                        "SELECT to_char(a.d, 'YYYY-MM-DD') AS day, COALESCE(cc.c,0) AS created, COALESCE(dc.c,0) AS completed " +
-                        "FROM all_days a LEFT JOIN created_counts cc ON cc.d = a.d LEFT JOIN completed_counts dc ON dc.d = a.d ORDER BY a.d",
-                trendParams.toArray()
-        );
-        for (Map<String, Object> row : trendRows) {
-            ObjectNode item = objectMapper.createObjectNode();
-            item.put("date", textValue(row.get("day")));
-            item.put("created", numberValue(row.get("created"), 0).intValue());
-            item.put("completed", numberValue(row.get("completed"), 0).intValue());
-            trend.add(item);
+        try {
+            List<Object> trendParams = new ArrayList<>(filter.params());
+            trendParams.addAll(filter.params());
+            List<Map<String, Object>> trendRows = jdbcTemplate.queryForList(
+                    "WITH all_days AS (" +
+                            " SELECT day::date AS d FROM generate_series(current_date - interval '29 days', current_date, interval '1 day') day" +
+                            "), created_counts AS (" +
+                            " SELECT w.created_at::date AS d, COUNT(*) AS c FROM work_order w" + filter.whereSql() + " GROUP BY w.created_at::date" +
+                            "), completed_counts AS (" +
+                            " SELECT COALESCE(w.finished_at, w.closed_at)::date AS d, COUNT(*) AS c FROM work_order w" + filter.whereSql() +
+                            " AND COALESCE(w.finished_at, w.closed_at) IS NOT NULL GROUP BY COALESCE(w.finished_at, w.closed_at)::date" +
+                            ") " +
+                            "SELECT to_char(a.d, 'YYYY-MM-DD') AS day, COALESCE(cc.c,0) AS created, COALESCE(dc.c,0) AS completed " +
+                            "FROM all_days a LEFT JOIN created_counts cc ON cc.d = a.d LEFT JOIN completed_counts dc ON dc.d = a.d ORDER BY a.d",
+                    trendParams.toArray()
+            );
+            for (Map<String, Object> row : trendRows) {
+                ObjectNode item = objectMapper.createObjectNode();
+                item.put("date", textValue(row.get("day")));
+                item.put("created", numberValue(row.get("created"), 0).intValue());
+                item.put("completed", numberValue(row.get("completed"), 0).intValue());
+                trend.add(item);
+            }
+        } catch (Exception ex) {
+            logDashboardSectionFailure("trendByDay", query, ex);
         }
         dashboard.set("trendByDay", trend);
 
         ArrayNode inProgressHeatmap = objectMapper.createArrayNode();
-        List<Object> heatmapParams = new ArrayList<>(filter.params());
-        heatmapParams.add("in_progress");
-        heatmapParams.add("paused");
-        heatmapParams.add("review");
-        List<Map<String, Object>> heatRows = jdbcTemplate.queryForList(
-                "SELECT w.id, w.title, w.building_id, COALESCE(w.building_name, b.building_name, '') AS building_name, " +
-                        "COALESCE(ST_X(ST_Centroid(g.geom)), 119.1895) AS lon, COALESCE(ST_Y(ST_Centroid(g.geom)), 26.0254) AS lat " +
-                        "FROM work_order w " +
-                        "LEFT JOIN buildings b ON b.code = w.building_id " +
-                        "LEFT JOIN LATERAL (" +
-                        "  SELECT gf.geom " +
-                        "  FROM geo_features gf " +
-                        "  WHERE gf.layer = 'buildings' AND (" +
-                        "    gf.id = w.building_id OR " +
-                        "    LOWER(COALESCE(gf.properties->>'code', '')) = LOWER(COALESCE(w.building_id, '')) OR " +
-                        "    LOWER(COALESCE(gf.properties->>'buildingCode', '')) = LOWER(COALESCE(w.building_id, '')) OR " +
-                        "    LOWER(COALESCE(gf.properties->>'name', '')) = LOWER(COALESCE(w.building_name, b.building_name, '')) OR " +
-                        "    LOWER(COALESCE(gf.properties->>'building_name', '')) = LOWER(COALESCE(w.building_name, b.building_name, ''))" +
-                        "  ) " +
-                        "  ORDER BY CASE " +
-                        "    WHEN gf.id = w.building_id THEN 0 " +
-                        "    WHEN LOWER(COALESCE(gf.properties->>'code', '')) = LOWER(COALESCE(w.building_id, '')) THEN 1 " +
-                        "    WHEN LOWER(COALESCE(gf.properties->>'buildingCode', '')) = LOWER(COALESCE(w.building_id, '')) THEN 2 " +
-                        "    WHEN LOWER(COALESCE(gf.properties->>'name', '')) = LOWER(COALESCE(w.building_name, b.building_name, '')) THEN 3 " +
-                        "    ELSE 4 " +
-                        "  END " +
-                        "  LIMIT 1" +
-                        ") g ON true " +
-                        filter.whereSql() + " AND w.status IN (?, ?, ?) ORDER BY w.updated_at DESC LIMIT 500",
-                heatmapParams.toArray()
-        );
+        List<Map<String, Object>> heatRows = List.of();
+        try {
+            try {
+                List<Object> heatmapParams = new ArrayList<>(filter.params());
+                heatmapParams.add("in_progress");
+                heatmapParams.add("paused");
+                heatmapParams.add("review");
+                heatRows = jdbcTemplate.queryForList(
+                        "SELECT w.id, w.title, w.building_id, COALESCE(w.building_name, b.building_name, '') AS building_name, " +
+                                "COALESCE(ST_X(ST_Centroid(g.geom)), 119.1895) AS lon, COALESCE(ST_Y(ST_Centroid(g.geom)), 26.0254) AS lat " +
+                                "FROM work_order w " +
+                                "LEFT JOIN buildings b ON b.code = w.building_id " +
+                                "LEFT JOIN LATERAL (" +
+                                "  SELECT gf.geom " +
+                                "  FROM geo_features gf " +
+                                "  WHERE gf.layer = 'buildings' AND (" +
+                                "    gf.id = w.building_id OR " +
+                                "    LOWER(COALESCE(gf.properties->>'code', '')) = LOWER(COALESCE(w.building_id, '')) OR " +
+                                "    LOWER(COALESCE(gf.properties->>'buildingCode', '')) = LOWER(COALESCE(w.building_id, '')) OR " +
+                                "    LOWER(COALESCE(gf.properties->>'name', '')) = LOWER(COALESCE(w.building_name, b.building_name, '')) OR " +
+                                "    LOWER(COALESCE(gf.properties->>'building_name', '')) = LOWER(COALESCE(w.building_name, b.building_name, ''))" +
+                                "  ) " +
+                                "  ORDER BY CASE " +
+                                "    WHEN gf.id = w.building_id THEN 0 " +
+                                "    WHEN LOWER(COALESCE(gf.properties->>'code', '')) = LOWER(COALESCE(w.building_id, '')) THEN 1 " +
+                                "    WHEN LOWER(COALESCE(gf.properties->>'buildingCode', '')) = LOWER(COALESCE(w.building_id, '')) THEN 2 " +
+                                "    WHEN LOWER(COALESCE(gf.properties->>'name', '')) = LOWER(COALESCE(w.building_name, b.building_name, '')) THEN 3 " +
+                                "    ELSE 4 " +
+                                "  END " +
+                                "  LIMIT 1" +
+                                ") g ON true " +
+                                filter.whereSql() + " AND w.status IN (?, ?, ?) ORDER BY w.updated_at DESC LIMIT 500",
+                        heatmapParams.toArray()
+                );
+            } catch (Exception primaryEx) {
+                logDashboardSectionFailure("inProgressHeatmap.primary", query, primaryEx);
+                List<Object> fallbackHeatmapParams = new ArrayList<>(filter.params());
+                fallbackHeatmapParams.add("in_progress");
+                fallbackHeatmapParams.add("paused");
+                fallbackHeatmapParams.add("review");
+                heatRows = jdbcTemplate.queryForList(
+                        "SELECT w.id, w.title, w.building_id, COALESCE(w.building_name, '') AS building_name, " +
+                                "119.1895 AS lon, 26.0254 AS lat " +
+                                "FROM work_order w " +
+                                filter.whereSql() + " AND w.status IN (?, ?, ?) ORDER BY w.updated_at DESC LIMIT 500",
+                        fallbackHeatmapParams.toArray()
+                );
+            }
+        } catch (Exception ex) {
+            logDashboardSectionFailure("inProgressHeatmap.fallback", query, ex);
+        }
         int idx = 0;
         for (Map<String, Object> row : heatRows) {
             ObjectNode item = objectMapper.createObjectNode();
@@ -674,6 +764,46 @@ public class WorkOrderRepository extends WorkOrderRepositorySupport {
 
         saveCache(cacheKey, dashboard);
         return dashboard;
+    }
+
+    private ObjectNode defaultDashboard() {
+        ObjectNode dashboard = objectMapper.createObjectNode();
+
+        ObjectNode totalsByType = objectMapper.createObjectNode();
+        for (String orderTypeName : ORDER_TYPES) {
+            totalsByType.put(orderTypeName, 0);
+        }
+        dashboard.set("totalsByType", totalsByType);
+
+        ObjectNode totalsByStatus = objectMapper.createObjectNode();
+        for (String status : ORDER_STATUS) {
+            totalsByStatus.put(status, 0);
+        }
+        dashboard.set("totalsByStatus", totalsByStatus);
+
+        ObjectNode efficiency = objectMapper.createObjectNode();
+        efficiency.put("averageHandleHours", 0);
+        efficiency.put("repeatedOrderRate", 0);
+        efficiency.put("totalCost", 0);
+        dashboard.set("efficiency", efficiency);
+
+        dashboard.set("affectedBuildingsTop10", objectMapper.createArrayNode());
+        dashboard.set("trendByDay", objectMapper.createArrayNode());
+        dashboard.set("inProgressHeatmap", objectMapper.createArrayNode());
+        return dashboard;
+    }
+
+    private void logDashboardSectionFailure(String section, PipelineOrderListQuery query, Exception ex) {
+        log.warn(
+                "pipeline_ops_dashboard_section_failed section={} type={} status={} area={} buildingId={} assignee={}",
+                section,
+                query.type(),
+                query.status(),
+                query.area(),
+                query.buildingId(),
+                query.assignee(),
+                ex
+        );
     }
 
     private ObjectNode actionAddLog(ObjectNode payload) {

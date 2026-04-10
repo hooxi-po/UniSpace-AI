@@ -262,6 +262,71 @@
                 <span class="field__hint">左右倾斜角，单位是度</span>
                 <span v-if="formErrors.modelRoll" class="field__error">{{ formErrors.modelRoll }}</span>
               </label>
+
+              <label class="field">
+                <span class="field__label">模型经度</span>
+                <input
+                  v-model.trim="form.modelLongitude"
+                  class="field__input"
+                  type="text"
+                  :disabled="submitting || !form.modelEnabled"
+                  placeholder="留空则跟随建筑中心"
+                >
+                <span class="field__hint">填写后会覆盖默认建筑中心</span>
+                <span v-if="formErrors.modelLongitude" class="field__error">{{ formErrors.modelLongitude }}</span>
+              </label>
+
+              <label class="field">
+                <span class="field__label">模型纬度</span>
+                <input
+                  v-model.trim="form.modelLatitude"
+                  class="field__input"
+                  type="text"
+                  :disabled="submitting || !form.modelEnabled"
+                  placeholder="留空则跟随建筑中心"
+                >
+                <span class="field__hint">支持手填，也支持地图点击拾取</span>
+                <span v-if="formErrors.modelLatitude" class="field__error">{{ formErrors.modelLatitude }}</span>
+              </label>
+
+              <div class="field field--block">
+                <span class="field__label">模型坐标快捷操作</span>
+                <div class="model-coordinate__actions">
+                  <button
+                    class="btn btn--small"
+                    type="button"
+                    :disabled="submitting || !form.modelEnabled"
+                    @click="modelCoordinatePickerOpen = true"
+                  >
+                    地图拾取
+                  </button>
+                  <button
+                    class="btn btn--small"
+                    type="button"
+                    :disabled="submitting || !form.modelEnabled || !geometryCenter"
+                    @click="useGeometryCenterAsModelCoordinate"
+                  >
+                    使用建筑中心
+                  </button>
+                  <button
+                    class="btn btn--small"
+                    type="button"
+                    :disabled="submitting || !form.modelEnabled || !modelCoordinate"
+                    @click="clearModelCoordinate"
+                  >
+                    跟随建筑中心
+                  </button>
+                </div>
+                <span class="field__hint">
+                  未填写模型经纬度时，GLB 会默认落在建筑底面中心。
+                </span>
+                <span v-if="geometryCenter" class="field__hint">
+                  当前建筑中心：{{ geometryCenter.lon.toFixed(6) }}, {{ geometryCenter.lat.toFixed(6) }}
+                </span>
+                <span v-else class="field__hint">
+                  当前几何坐标无效时，无法自动计算建筑中心。
+                </span>
+              </div>
             </div>
           </div>
 
@@ -363,17 +428,43 @@
         </button>
       </div>
     </div>
+
+    <ModelCoordinatePickerDialog
+      :open="modelCoordinatePickerOpen"
+      :backend-base-url="backendBaseUrl"
+      :building-id="form.id"
+      :current-coordinate="modelCoordinate"
+      :fallback-coordinate="geometryCenter"
+      :model-enabled="form.modelEnabled"
+      :model-url="form.modelUrl"
+      :model-scale-mode="form.modelScaleMode"
+      :model-scale="toPositiveNumberOrDefault(form.modelScale, 1)"
+      :rotation="{
+        heading: toNumberOrDefault(form.modelHeading, 0),
+        pitch: toNumberOrDefault(form.modelPitch, 0),
+        roll: toNumberOrDefault(form.modelRoll, 0),
+      }"
+      :submitting="submitting"
+      :save-error="localError || apiError"
+      @close="modelCoordinatePickerOpen = false"
+      @save="handleModelCoordinateSave"
+      @confirm="handleModelCoordinateConfirm"
+      @confirm-and-save="handleModelCoordinateConfirmAndSave"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
+import { ref, watch } from 'vue'
 import type { AssetLayer, GeoFeaturePayload } from '~/services/geo-features'
+import ModelCoordinatePickerDialog from '~/components/admin/ModelCoordinatePickerDialog.vue'
 import { useAssetFeatureDialog } from '~/composables/admin/useAssetFeatureDialog'
 
 const props = defineProps<{
   open: boolean
   mode: 'create' | 'edit'
   layer: AssetLayer
+  backendBaseUrl: string
   payload: GeoFeaturePayload | null
   submitting?: boolean
   apiError?: string | null
@@ -383,6 +474,17 @@ const emit = defineEmits<{
   (e: 'close'): void
   (e: 'submit', payload: GeoFeaturePayload): void
 }>()
+
+const modelCoordinatePickerOpen = ref(false)
+
+watch(
+  () => props.open,
+  (open) => {
+    if (!open) {
+      modelCoordinatePickerOpen.value = false
+    }
+  },
+)
 
 const {
   editorMode,
@@ -401,13 +503,75 @@ const {
   modelHeadingOptions,
   modelPitchOptions,
   modelRollOptions,
+  geometryCenter,
+  modelCoordinate,
   switchMode,
   formatJson,
   fillExampleGeometry,
   resetGeometry,
   clearGeometry,
+  setModelCoordinate,
+  clearModelCoordinate,
+  useGeometryCenterAsModelCoordinate,
   submit,
 } = useAssetFeatureDialog(props, (payload) => emit('submit', payload))
+
+function toNumberOrDefault(value: string, fallback: number) {
+  const next = Number.parseFloat(value.trim())
+  return Number.isFinite(next) ? next : fallback
+}
+
+function toPositiveNumberOrDefault(value: string, fallback: number) {
+  const next = toNumberOrDefault(value, fallback)
+  return next > 0 ? next : fallback
+}
+
+function formatAngle(value: number) {
+  return String(Number(value.toFixed(2)))
+}
+
+function applyModelCoordinatePayload(payload: {
+  coordinate: { lon: number; lat: number } | null
+  heading: number
+  pitch: number
+  roll: number
+}) {
+  setModelCoordinate(payload.coordinate)
+  form.modelHeading = formatAngle(payload.heading)
+  form.modelPitch = formatAngle(payload.pitch)
+  form.modelRoll = formatAngle(payload.roll)
+}
+
+function handleModelCoordinateSave(payload: {
+  coordinate: { lon: number; lat: number } | null
+  heading: number
+  pitch: number
+  roll: number
+}) {
+  applyModelCoordinatePayload(payload)
+}
+
+function handleModelCoordinateConfirm(payload: {
+  coordinate: { lon: number; lat: number } | null
+  heading: number
+  pitch: number
+  roll: number
+}) {
+  applyModelCoordinatePayload(payload)
+  modelCoordinatePickerOpen.value = false
+}
+
+function handleModelCoordinateConfirmAndSave(payload: {
+  coordinate: { lon: number; lat: number } | null
+  heading: number
+  pitch: number
+  roll: number
+}) {
+  applyModelCoordinatePayload(payload)
+  if (submit()) {
+    modelCoordinatePickerOpen.value = false
+  }
+}
 </script>
 
 <style scoped src="./AssetFeatureDialog.css"></style>

@@ -35,6 +35,18 @@ const DEFAULT_CAMERA = {
 type SelectItem = PipeNode | Building | GeoJsonFeature | null
 
 type Viewport = { x: number; y: number; scale: number }
+type PickCoordinate = { lon: number; lat: number }
+type PickerMarker = PickCoordinate & { label?: string }
+type BuildingModelPreview = {
+  id: string
+  url: string
+  heading: number
+  pitch: number
+  roll: number
+  scaleMode: BuildingModelScaleMode
+  scale: number
+  position: PickCoordinate | null
+}
 
 type MapLayers = {
   water: boolean
@@ -56,6 +68,9 @@ interface Props {
   layers: MapLayers
   backendBaseUrl: string
   weatherMode: boolean
+  pickerMarker?: PickerMarker | null
+  buildingModelPreview?: BuildingModelPreview | null
+  coordinateDragTargetId?: string | null
 }
 
 const props = defineProps<Props>()
@@ -63,6 +78,7 @@ const props = defineProps<Props>()
 const emit = defineEmits<{
   select: [item: SelectItem]
   'update:viewport': [value: Viewport]
+  'pick-coordinate': [value: PickCoordinate]
 }>()
 
 const cesiumContainerRef = ref<HTMLDivElement | null>(null)
@@ -84,6 +100,8 @@ const dataSources = {
   workorderHeat: new Cesium.CustomDataSource('workorderHeat'),
   focus: new Cesium.CustomDataSource('focus'),
 }
+const pickerDataSource = new Cesium.CustomDataSource('picker')
+const previewModelDataSource = new Cesium.CustomDataSource('preview-model')
 
 const normalizedBackendBaseUrl = computed(() => normalizeBackendBaseUrl(props.backendBaseUrl))
 type LayerName = keyof typeof dataSources
@@ -105,6 +123,14 @@ const dynamicLayerQueryKey = ref<Record<LayerName, string>>({
   focus: '',
 })
 let dynamicLayerReloadTimer: ReturnType<typeof setTimeout> | null = null
+const buildingPlacementCache = new Map<string, {
+  center: Cesium.Cartesian3
+  heading: number
+  footprintTargetSize: number
+}>()
+let previewModelLoadSeq = 0
+let coordinateDragActive = false
+let suppressNextClickSelection = false
 
 type BuildingModelScaleMode = 'auto' | 'fixed'
 
@@ -115,6 +141,7 @@ type BuildingModelConfig = {
   roll: number
   scaleMode: BuildingModelScaleMode
   scale: number
+  position: PickCoordinate | null
 }
 
 function toFiniteNumber(value: unknown, fallback = 0) {
@@ -167,6 +194,20 @@ function readBuildingModelConfig(properties: Record<string, unknown>): BuildingM
 
   const rawScaleMode = String(properties.modelScaleMode || '').trim().toLowerCase()
   const scaleMode: BuildingModelScaleMode = ['fixed', 'manual'].includes(rawScaleMode) ? 'fixed' : 'auto'
+  const modelLongitude = toFiniteNumber(
+    properties.modelLongitude ?? properties.modelLon ?? properties.modelLng,
+    Number.NaN,
+  )
+  const modelLatitude = toFiniteNumber(
+    properties.modelLatitude ?? properties.modelLat,
+    Number.NaN,
+  )
+  const hasCustomPosition = Number.isFinite(modelLongitude)
+    && Number.isFinite(modelLatitude)
+    && modelLongitude >= -180
+    && modelLongitude <= 180
+    && modelLatitude >= -90
+    && modelLatitude <= 90
 
   return {
     url,
@@ -175,6 +216,7 @@ function readBuildingModelConfig(properties: Record<string, unknown>): BuildingM
     roll: toFiniteNumber(properties.modelRoll),
     scaleMode,
     scale: toPositiveNumber(properties.modelScale, 1),
+    position: hasCustomPosition ? { lon: modelLongitude, lat: modelLatitude } : null,
   }
 }
 
@@ -191,6 +233,182 @@ function resolveModelScale(
 
 function serializeBboxes(bboxes: string[]) {
   return bboxes.join('|')
+}
+
+function toLonLat(cartesian: Cesium.Cartesian3): PickCoordinate {
+  const cartographic = Cesium.Cartographic.fromCartesian(cartesian)
+  return {
+    lon: Number(Cesium.Math.toDegrees(cartographic.longitude).toFixed(6)),
+    lat: Number(Cesium.Math.toDegrees(cartographic.latitude).toFixed(6)),
+  }
+}
+
+function screenToLonLat(screenPosition: Cesium.Cartesian2): PickCoordinate | null {
+  if (!viewer) return null
+
+  if (viewer.scene.mode === Cesium.SceneMode.SCENE2D || viewer.scene.mode === Cesium.SceneMode.COLUMBUS_VIEW) {
+    const ellipsoid = viewer.scene.globe?.ellipsoid
+    if (!ellipsoid) return null
+    const cartesian = viewer.camera.pickEllipsoid(screenPosition, ellipsoid)
+    if (!cartesian) return null
+    return toLonLat(cartesian)
+  }
+
+  const ray = viewer.camera.getPickRay(screenPosition)
+  if (!ray) return null
+  const cartesian = viewer.scene.globe.pick(ray, viewer.scene)
+  if (!cartesian) return null
+  return toLonLat(cartesian)
+}
+
+function updatePickerMarker() {
+  pickerDataSource.entities.removeAll()
+
+  const marker = props.pickerMarker
+  if (!viewer || !marker) return
+
+  pickerDataSource.entities.add({
+    id: 'picker-marker',
+    position: Cesium.Cartesian3.fromDegrees(marker.lon, marker.lat, 0),
+    point: new Cesium.PointGraphics({
+      pixelSize: 12,
+      color: Cesium.Color.fromCssColorString('#1664ff').withAlpha(0.95),
+      outlineColor: Cesium.Color.WHITE.withAlpha(0.95),
+      outlineWidth: 2,
+      heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+      disableDepthTestDistance: Number.POSITIVE_INFINITY,
+    }),
+    label: marker.label
+      ? new Cesium.LabelGraphics({
+          text: marker.label,
+          font: '12px sans-serif',
+          fillColor: Cesium.Color.WHITE,
+          showBackground: true,
+          backgroundColor: Cesium.Color.fromCssColorString('#1664ff').withAlpha(0.92),
+          pixelOffset: new Cesium.Cartesian2(0, -24),
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+        })
+      : undefined,
+  })
+
+  viewer.scene.requestRender()
+}
+
+function updateBuildingModelPreview() {
+  previewModelDataSource.entities.removeAll()
+
+  const preview = props.buildingModelPreview
+  for (const entity of dataSources.models.entities.values) {
+    entity.show = !preview || String(entity.id) !== preview.id
+  }
+
+  if (!viewer || !preview) {
+    viewer?.scene.requestRender()
+    return
+  }
+
+  const placement = buildingPlacementCache.get(preview.id) || (
+    preview.position
+      ? {
+          center: Cesium.Cartesian3.fromDegrees(preview.position.lon, preview.position.lat, 0),
+          heading: 0,
+          footprintTargetSize: MODEL_NATIVE_SIZE_FALLBACK,
+        }
+      : null
+  )
+  if (!placement) {
+    viewer.scene.requestRender()
+    return
+  }
+
+  const position = preview.position
+    ? Cesium.Cartesian3.fromDegrees(preview.position.lon, preview.position.lat, 0)
+    : placement.center
+
+  const initialScale = resolveModelScale(
+    {
+      url: preview.url,
+      heading: preview.heading,
+      pitch: preview.pitch,
+      roll: preview.roll,
+      scaleMode: preview.scaleMode,
+      scale: preview.scale,
+      position: preview.position,
+    },
+    placement.footprintTargetSize,
+    MODEL_NATIVE_SIZE_FALLBACK,
+  )
+
+  const previewEntity = previewModelDataSource.entities.add({
+    id: `preview-model:${preview.id}`,
+    position,
+    orientation: Cesium.Transforms.headingPitchRollQuaternion(
+      position,
+      new Cesium.HeadingPitchRoll(
+        placement.heading + Cesium.Math.toRadians(preview.heading),
+        Cesium.Math.toRadians(preview.pitch),
+        Cesium.Math.toRadians(preview.roll),
+      ),
+    ),
+    model: new Cesium.ModelGraphics({
+      uri: preview.url,
+      scale: initialScale,
+      runAnimations: true,
+      heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND,
+      distanceDisplayCondition: new Cesium.ConstantProperty(BUILDING_DISTANCE_CONDITION),
+    }),
+  })
+
+  if (preview.scaleMode === 'auto') {
+    const loadSeq = ++previewModelLoadSeq
+    void getModelNativeSizeMeters(viewer, preview.url).then((nativeSizeMeters) => {
+      if (!viewer || loadSeq !== previewModelLoadSeq) return
+      const latestEntity = previewModelDataSource.entities.getById(`preview-model:${preview.id}`)
+      if (!latestEntity?.model) return
+      latestEntity.model.scale = new Cesium.ConstantProperty(
+        resolveModelScale(
+          {
+            url: preview.url,
+            heading: preview.heading,
+            pitch: preview.pitch,
+            roll: preview.roll,
+            scaleMode: preview.scaleMode,
+            scale: preview.scale,
+            position: preview.position,
+          },
+          placement.footprintTargetSize,
+          nativeSizeMeters,
+        ),
+      )
+      viewer.scene.requestRender()
+    })
+  }
+
+  viewer.scene.requestRender()
+}
+
+function setCameraInteractionEnabled(enabled: boolean) {
+  if (!viewer) return
+  const controller = viewer.scene.screenSpaceCameraController
+  controller.enableRotate = enabled
+  controller.enableTranslate = enabled
+  controller.enableZoom = enabled
+  controller.enableTilt = enabled
+  controller.enableLook = enabled
+}
+
+function isCoordinateDragTarget(pickedObject: unknown) {
+  const targetId = props.coordinateDragTargetId?.trim()
+  if (!targetId || !pickedObject || !Cesium.defined(pickedObject)) return false
+
+  const picked = pickedObject as { id?: unknown }
+  const entity = picked.id instanceof Cesium.Entity ? picked.id : null
+  if (!entity) return false
+
+  const entityId = String(entity.id || '')
+  return entityId === 'picker-marker'
+    || entityId === targetId
+    || entityId === `preview-model:${targetId}`
 }
 
 // Watch for layer visibility changes
@@ -271,8 +489,12 @@ onMounted(() => {
 
   // Add all data sources to the viewer
   Object.values(dataSources).forEach(ds => viewer?.dataSources.add(ds))
+  viewer.dataSources.add(pickerDataSource)
+  viewer.dataSources.add(previewModelDataSource)
   mountWorkorderHeatmap()
   currentViewportBboxes.value = getCurrentViewBboxes(viewer)
+  updatePickerMarker()
+  updateBuildingModelPreview()
 
   // Load and process GeoJSON layers based on visibility
   loadGeoJsonLayers()
@@ -293,6 +515,43 @@ function setupClickHandler() {
   if (!viewer) return
   handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
   handler.setInputAction((movement: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
+    if (!viewer) return
+    const pickedObject = viewer.scene.pick(movement.position)
+    if (!isCoordinateDragTarget(pickedObject)) return
+
+    const pickedCoordinate = screenToLonLat(movement.position)
+    if (pickedCoordinate) {
+      emit('pick-coordinate', pickedCoordinate)
+    }
+
+    coordinateDragActive = true
+    suppressNextClickSelection = true
+    setCameraInteractionEnabled(false)
+  }, Cesium.ScreenSpaceEventType.LEFT_DOWN)
+
+  handler.setInputAction((movement: Cesium.ScreenSpaceEventHandler.MotionEvent) => {
+    if (!coordinateDragActive) return
+    const pickedCoordinate = screenToLonLat(movement.endPosition)
+    if (!pickedCoordinate) return
+    emit('pick-coordinate', pickedCoordinate)
+  }, Cesium.ScreenSpaceEventType.MOUSE_MOVE)
+
+  handler.setInputAction(() => {
+    if (!coordinateDragActive) return
+    coordinateDragActive = false
+    setCameraInteractionEnabled(true)
+  }, Cesium.ScreenSpaceEventType.LEFT_UP)
+
+  handler.setInputAction((movement: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
+    if (suppressNextClickSelection) {
+      suppressNextClickSelection = false
+      return
+    }
+
+    const pickedCoordinate = screenToLonLat(movement.position)
+    if (pickedCoordinate) {
+      emit('pick-coordinate', pickedCoordinate)
+    }
     const pickedObject = viewer?.scene.pick(movement.position)
     if (Cesium.defined(pickedObject) && pickedObject.id instanceof Cesium.Entity) {
       const entity = pickedObject.id
@@ -324,6 +583,22 @@ function setupClickHandler() {
     }
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK)
 }
+
+watch(
+  () => props.pickerMarker,
+  () => {
+    updatePickerMarker()
+  },
+  { deep: true, immediate: true },
+)
+
+watch(
+  () => props.buildingModelPreview,
+  () => {
+    updateBuildingModelPreview()
+  },
+  { deep: true, immediate: true },
+)
 
 /**
  * 设置视口同步功能
@@ -484,6 +759,7 @@ function loadLayer(layerName: LayerName, force = false) {
         dataSource.entities.removeAll()
         if (layerName === 'buildings') {
           dataSources.models.entities.removeAll()
+          buildingPlacementCache.clear()
         }
         for (const entity of layerDataSource.entities.values) {
           entity.label = undefined
@@ -495,19 +771,27 @@ function loadLayer(layerName: LayerName, force = false) {
             const modelConfig = readBuildingModelConfig(originalProperties)
             const polygonPositions = getPolygonPositions(entity, currentTime)
 
-            if (modelConfig && polygonPositions) {
+            if (polygonPositions) {
               const placement = computeFootprintMetrics(polygonPositions)
+              buildingPlacementCache.set(String(entity.id), placement)
+            }
+
+            if (modelConfig && polygonPositions) {
+              const placement = buildingPlacementCache.get(String(entity.id)) || computeFootprintMetrics(polygonPositions)
               const initialScale = resolveModelScale(
                 modelConfig,
                 placement.footprintTargetSize,
                 MODEL_NATIVE_SIZE_FALLBACK,
               )
+              const modelPosition = modelConfig.position
+                ? Cesium.Cartesian3.fromDegrees(modelConfig.position.lon, modelConfig.position.lat, 0)
+                : placement.center
               const modelEntity = dataSources.models.entities.add({
                 id: entity.id,
                 name: String(originalProperties.name || originalProperties.short_name || entity.id),
-                position: placement.center,
+                position: modelPosition,
                 orientation: Cesium.Transforms.headingPitchRollQuaternion(
-                  placement.center,
+                  modelPosition,
                   new Cesium.HeadingPitchRoll(
                     placement.heading + Cesium.Math.toRadians(modelConfig.heading),
                     Cesium.Math.toRadians(modelConfig.pitch),
@@ -562,6 +846,9 @@ function loadLayer(layerName: LayerName, force = false) {
         loadedLayers.value.add(layerName)
         dynamicLayerQueryKey.value[layerName] = queryKey
         applySelectionHighlight()
+        if (layerName === 'buildings') {
+          updateBuildingModelPreview()
+        }
       })
       .catch(err => {
         console.error(`Failed to load ${layerName} layer:`, sourceUrl, err)
@@ -617,6 +904,8 @@ function unloadLayer(layerName: LayerName) {
   dataSource.entities.removeAll()
   if (layerName === 'buildings') {
     dataSources.models.entities.removeAll()
+    buildingPlacementCache.clear()
+    updateBuildingModelPreview()
   }
   loadedLayers.value.delete(layerName)
   dynamicLayerQueryKey.value[layerName] = ''
@@ -743,7 +1032,10 @@ onBeforeUnmount(() => {
     handler.destroy()
     handler = null
   }
+  coordinateDragActive = false
+  suppressNextClickSelection = false
   if (viewer) {
+    setCameraInteractionEnabled(true)
     viewer.destroy()
     viewer = null
   }

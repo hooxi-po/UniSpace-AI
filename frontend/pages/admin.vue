@@ -126,6 +126,7 @@
         :open="editorOpen"
         :mode="editorMode"
         :layer="activeAssetLayer"
+        :backend-base-url="backendBaseUrl"
         :payload="editorPayload"
         :submitting="editorSubmitting"
         :api-error="editorError"

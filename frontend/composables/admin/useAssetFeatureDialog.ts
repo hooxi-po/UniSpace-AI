@@ -55,7 +55,14 @@ const FORM_PROPERTY_KEYS = new Set([
   'modelHeading',
   'modelPitch',
   'modelRoll',
+  'modelLongitude',
+  'modelLatitude',
 ])
+
+type LonLatPoint = {
+  lon: number
+  lat: number
+}
 
 type FormModel = {
   id: string
@@ -73,6 +80,8 @@ type FormModel = {
   modelHeading: string
   modelPitch: string
   modelRoll: string
+  modelLongitude: string
+  modelLatitude: string
   geometryType: string
   coordinatesText: string
 }
@@ -111,6 +120,8 @@ export function useAssetFeatureDialog(
     modelHeading: '0',
     modelPitch: '0',
     modelRoll: '0',
+    modelLongitude: '',
+    modelLatitude: '',
     geometryType: props.layer === 'buildings' ? 'Polygon' : 'LineString',
     coordinatesText: '[]',
   })
@@ -140,6 +151,18 @@ export function useAssetFeatureDialog(
     } catch {
       return null
     }
+  })
+
+  const geometryCenter = computed<LonLatPoint | null>(() => {
+    if (parsedCoordinates.value == null) return null
+    return deriveGeometryCenter(form.geometryType, parsedCoordinates.value)
+  })
+
+  const modelCoordinate = computed<LonLatPoint | null>(() => {
+    const lon = parseLongitude(form.modelLongitude)
+    const lat = parseLatitude(form.modelLatitude)
+    if (lon == null || lat == null) return null
+    return { lon, lat }
   })
 
   const formErrors = computed<Record<string, string>>(() => {
@@ -178,6 +201,20 @@ export function useAssetFeatureDialog(
       }
       if (parseFiniteNumber(form.modelRoll) == null) {
         errors.modelRoll = 'Roll 必须是数字'
+      }
+
+      const hasLongitude = form.modelLongitude.trim().length > 0
+      const hasLatitude = form.modelLatitude.trim().length > 0
+      if (hasLongitude !== hasLatitude) {
+        errors.modelLongitude = '模型经纬度需要同时填写'
+        errors.modelLatitude = '模型经纬度需要同时填写'
+      } else {
+        if (hasLongitude && parseLongitude(form.modelLongitude) == null) {
+          errors.modelLongitude = '经度必须是 -180 到 180 之间的数字'
+        }
+        if (hasLatitude && parseLatitude(form.modelLatitude) == null) {
+          errors.modelLatitude = '纬度必须是 -90 到 90 之间的数字'
+        }
       }
     }
 
@@ -342,6 +379,23 @@ export function useAssetFeatureDialog(
     return String(next) === normalized && next > 0 ? next : null
   }
 
+  function parseLongitude(value: unknown) {
+    const next = parseFiniteNumber(value)
+    return next != null && next >= -180 && next <= 180 ? next : null
+  }
+
+  function parseLatitude(value: unknown) {
+    const next = parseFiniteNumber(value)
+    return next != null && next >= -90 && next <= 90 ? next : null
+  }
+
+  function formatCoordinateInput(value: number | null) {
+    if (value == null || !Number.isFinite(value)) return ''
+    return value
+      .toFixed(6)
+      .replace(/(?:\.0+|(\.\d+?)0+)$/, '$1')
+  }
+
   function toFiniteNumber(value: unknown, fallback: number) {
     if (typeof value === 'number' && Number.isFinite(value)) return value
     if (typeof value === 'string') {
@@ -365,6 +419,87 @@ export function useAssetFeatureDialog(
       if (String(parsed) === normalized && parsed > 0) return parsed
     }
     return fallback
+  }
+
+  function toPoint(value: unknown): LonLatPoint | null {
+    if (!isPair(value)) return null
+    const pair = value as [unknown, unknown]
+    return {
+      lon: Number(pair[0]),
+      lat: Number(pair[1]),
+    }
+  }
+
+  function centerFromPoints(points: LonLatPoint[]) {
+    if (!points.length) return null
+
+    let minLon = points[0].lon
+    let maxLon = points[0].lon
+    let minLat = points[0].lat
+    let maxLat = points[0].lat
+
+    for (const point of points) {
+      if (point.lon < minLon) minLon = point.lon
+      if (point.lon > maxLon) maxLon = point.lon
+      if (point.lat < minLat) minLat = point.lat
+      if (point.lat > maxLat) maxLat = point.lat
+    }
+
+    return {
+      lon: Number(((minLon + maxLon) / 2).toFixed(6)),
+      lat: Number(((minLat + maxLat) / 2).toFixed(6)),
+    }
+  }
+
+  function collectPolygonPoints(value: unknown): LonLatPoint[] {
+    if (!Array.isArray(value)) return []
+    const points: LonLatPoint[] = []
+    for (const ring of value) {
+      if (!Array.isArray(ring)) continue
+      for (const point of ring) {
+        const next = toPoint(point)
+        if (next) points.push(next)
+      }
+    }
+    return points
+  }
+
+  function deriveGeometryCenter(type: string, coordinates: unknown): LonLatPoint | null {
+    if (type === 'Polygon') {
+      return centerFromPoints(collectPolygonPoints(coordinates))
+    }
+
+    if (type === 'MultiPolygon' && Array.isArray(coordinates)) {
+      const points = coordinates.flatMap(polygon => collectPolygonPoints(polygon))
+      return centerFromPoints(points)
+    }
+
+    if (type === 'LineString' && Array.isArray(coordinates)) {
+      return centerFromPoints(coordinates.map(toPoint).filter(Boolean) as LonLatPoint[])
+    }
+
+    if (type === 'MultiLineString' && Array.isArray(coordinates)) {
+      const points = coordinates.flatMap(line =>
+        Array.isArray(line) ? line.map(toPoint).filter(Boolean) : [],
+      ) as LonLatPoint[]
+      return centerFromPoints(points)
+    }
+
+    return null
+  }
+
+  function readModelCoordinate(properties: Record<string, unknown>): LonLatPoint | null {
+    const lon = parseLongitude(
+      properties.modelLongitude
+      ?? properties.modelLon
+      ?? properties.modelLng,
+    )
+    const lat = parseLatitude(
+      properties.modelLatitude
+      ?? properties.modelLat,
+    )
+    if (lon == null || lat == null) return null
+    return { lon, lat }
   }
 
   function pickExtraProperties(properties: Record<string, unknown>) {
@@ -435,6 +570,9 @@ export function useAssetFeatureDialog(
     form.modelHeading = String(toFiniteNumber(properties.modelHeading, 0))
     form.modelPitch = String(toFiniteNumber(properties.modelPitch, 0))
     form.modelRoll = String(toFiniteNumber(properties.modelRoll, 0))
+    const modelCoord = readModelCoordinate(properties)
+    form.modelLongitude = formatCoordinateInput(modelCoord?.lon ?? null)
+    form.modelLatitude = formatCoordinateInput(modelCoord?.lat ?? null)
     form.geometryType = String(payload.geometry?.type || (layer === 'buildings' ? 'Polygon' : 'LineString'))
     form.coordinatesText = JSON.stringify(
       payload.geometry?.coordinates ?? defaultGeometry(layer, form.geometryType).coordinates,
@@ -471,6 +609,12 @@ export function useAssetFeatureDialog(
         properties.modelHeading = parseFiniteNumber(form.modelHeading) ?? 0
         properties.modelPitch = parseFiniteNumber(form.modelPitch) ?? 0
         properties.modelRoll = parseFiniteNumber(form.modelRoll) ?? 0
+        const modelLon = parseLongitude(form.modelLongitude)
+        const modelLat = parseLatitude(form.modelLatitude)
+        if (modelLon != null && modelLat != null) {
+          properties.modelLongitude = modelLon
+          properties.modelLatitude = modelLat
+        }
       }
     } else {
       if (form.highway.trim()) properties.highway = form.highway.trim()
@@ -566,6 +710,24 @@ export function useAssetFeatureDialog(
     form.coordinatesText = '[]'
   }
 
+  function setModelCoordinate(point: LonLatPoint | null) {
+    if (!point) {
+      form.modelLongitude = ''
+      form.modelLatitude = ''
+      return
+    }
+    form.modelLongitude = formatCoordinateInput(point.lon)
+    form.modelLatitude = formatCoordinateInput(point.lat)
+  }
+
+  function clearModelCoordinate() {
+    setModelCoordinate(null)
+  }
+
+  function useGeometryCenterAsModelCoordinate() {
+    setModelCoordinate(geometryCenter.value)
+  }
+
   function enforceEditPayloadId(payload: GeoFeaturePayload) {
     if (props.mode !== 'edit') return payload
 
@@ -586,20 +748,20 @@ export function useAssetFeatureDialog(
     if (editorMode.value === 'form') {
       if (Object.keys(formErrors.value).length) {
         localError.value = '请先修正表单错误后再提交'
-        return
+        return false
       }
 
       const payload = buildPayloadFromForm()
       if (!payload) {
         localError.value = '表单数据无效，请检查几何结构'
-        return
+        return false
       }
 
       const finalPayload = enforceEditPayloadId(payload)
-      if (!finalPayload) return
+      if (!finalPayload) return false
 
       emitSubmit(finalPayload)
-      return
+      return true
     }
 
     let parsed: unknown
@@ -607,19 +769,20 @@ export function useAssetFeatureDialog(
       parsed = JSON.parse(payloadText.value)
     } catch {
       localError.value = 'JSON 格式错误'
-      return
+      return false
     }
 
     const payload = normalizePayload(parsed)
     if (!payload) {
       localError.value = '字段不完整或几何结构非法，至少需要 id / layer / geometry'
-      return
+      return false
     }
 
     const finalPayload = enforceEditPayloadId(payload)
-    if (!finalPayload) return
+    if (!finalPayload) return false
 
     emitSubmit(finalPayload)
+    return true
   }
 
   return {
@@ -639,11 +802,16 @@ export function useAssetFeatureDialog(
     modelHeadingOptions,
     modelPitchOptions,
     modelRollOptions,
+    geometryCenter,
+    modelCoordinate,
     switchMode,
     formatJson,
     fillExampleGeometry,
     resetGeometry,
     clearGeometry,
+    setModelCoordinate,
+    clearModelCoordinate,
+    useGeometryCenterAsModelCoordinate,
     submit,
   }
 }

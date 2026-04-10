@@ -183,6 +183,12 @@
   flex-wrap: wrap;
 }
 
+.model-coordinate__actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
 .editor {
   width: 100%;
   min-height: 240px;

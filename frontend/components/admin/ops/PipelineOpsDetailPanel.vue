@@ -16,7 +16,13 @@
         <div class="detail-card">
           <div class="detail-card__title">基本信息</div>
           <div class="detail-kv">描述: {{ detail.description || '-' }}</div>
-          <div class="detail-kv">优先级: {{ priorityLabel[detail.priority] }}</div>
+          <div class="detail-kv">
+            优先级:
+            <span class="priority-badge" :class="`priority-badge--${detail.priority}`">
+              <span class="priority-badge__dot"></span>
+              {{ priorityLabel[detail.priority] }}
+            </span>
+          </div>
           <div class="detail-kv">管网介质: {{ mediumLabel[detail.pipelineMedium] }}</div>
           <div class="detail-kv">区域: {{ detail.area }}</div>
           <div class="detail-kv">拓扑链路: {{ detail.topologyChain.join(' -> ') || '-' }}</div>
@@ -27,7 +33,9 @@
           :detail="detail"
           :impact-form="impactForm"
           :submitting="submitting"
+          :format-time="formatTime"
           @submit="emit('submit-impact-adjust')"
+          @locate-building="handleLocateBuilding"
         />
 
         <PipelineOpsLogsCard
@@ -101,10 +109,15 @@ defineProps<{
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'locate', detail: PipelineWorkOrder): void
+  (e: 'locate-building', buildingId: string): void
   (e: 'submit-impact-adjust'): void
   (e: 'submit-log'): void
   (e: 'submit-pump-control'): void
   (e: 'submit-inspection-record'): void
   (e: 'convert-inspection'): void
 }>()
+
+function handleLocateBuilding(buildingId: string) {
+  emit('locate-building', buildingId)
+}
 </script>

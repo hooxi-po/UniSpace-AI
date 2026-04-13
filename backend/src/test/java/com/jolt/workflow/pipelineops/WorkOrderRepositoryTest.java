@@ -49,6 +49,7 @@ class WorkOrderRepositoryTest {
                 null,
                 null,
                 null,
+                null,
                 "2026-03-10",
                 null,
                 1,

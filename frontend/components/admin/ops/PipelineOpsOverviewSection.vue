@@ -5,6 +5,16 @@
       <p class="ops-board__subtitle">{{ meta.subtitle }}</p>
     </div>
     <div class="ops-board__header-actions">
+      <button class="ops-btn ops-btn--report" type="button" @click="emit('toggle-report')">
+        {{ reportOpen ? '📊 收起报表' : '📊 查看统计报表' }}
+      </button>
+      <label class="ops-realtime-toggle">
+        <input type="checkbox" :checked="realtimeEnabled" @change="emit('toggle-realtime', ($event.target as HTMLInputElement).checked)" />
+        <span>🔄 实时更新</span>
+        <span v-if="realtimeEnabled && lastUpdateTime" class="ops-realtime-time">
+          {{ formatTime(lastUpdateTime) }}
+        </span>
+      </label>
       <button class="ops-btn" type="button" @click="emit('refresh')" :disabled="loading">刷新</button>
       <button class="ops-btn ops-btn--primary" type="button" @click="emit('toggle-form')">
         {{ formOpen ? '收起新建' : '新建工单' }}
@@ -63,15 +73,21 @@ defineProps<{
   meta: { title: string; subtitle: string }
   loading: boolean
   formOpen: boolean
+  reportOpen: boolean
+  realtimeEnabled: boolean
+  lastUpdateTime: number
   feedbackText: string
   feedbackType: 'info' | 'success' | 'error'
   stats: PipelineOpsStats
   dashboard: PipelineOpsDashboard | null
+  formatTime: (input?: string | number) => string
 }>()
 
 const emit = defineEmits<{
   (e: 'refresh'): void
   (e: 'toggle-form'): void
+  (e: 'toggle-report'): void
+  (e: 'toggle-realtime', enabled: boolean): void
   (e: 'dismiss-feedback'): void
 }>()
 </script>

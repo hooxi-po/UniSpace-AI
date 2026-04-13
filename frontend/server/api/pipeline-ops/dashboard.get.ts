@@ -3,6 +3,7 @@ import type {
   PipelineOrderListQuery,
   PipelineOrderStatus,
   PipelineOrderType,
+  PipelinePriority,
 } from '~/types/pipeline-ops'
 import { getDashboardFiltered } from '~/server/utils/pipeline-ops-db'
 
@@ -13,6 +14,7 @@ export default defineEventHandler(async (event) => {
     status: query.status ? String(query.status) as PipelineOrderStatus : undefined,
     area: query.area ? String(query.area) : undefined,
     pipelineMedium: query.pipelineMedium ? String(query.pipelineMedium) as PipelineMedium : undefined,
+    priority: query.priority ? String(query.priority) as PipelinePriority : undefined,
     nodeId: query.nodeId ? String(query.nodeId) : undefined,
     segmentId: query.segmentId ? String(query.segmentId) : undefined,
     buildingId: query.buildingId ? String(query.buildingId) : undefined,

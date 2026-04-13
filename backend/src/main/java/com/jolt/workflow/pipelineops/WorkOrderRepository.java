@@ -1156,7 +1156,7 @@ public class WorkOrderRepository extends WorkOrderRepositorySupport {
 
     private String buildSummaryCacheKey(String prefix, PipelineOrderListQuery query) {
         return prefix + ":" + query.type() + "|" + query.status() + "|" + query.area() + "|" + query.pipelineMedium()
-                + "|" + query.nodeId() + "|" + query.segmentId() + "|" + query.buildingId() + "|" + query.assignee()
+                + "|" + query.priority() + "|" + query.nodeId() + "|" + query.segmentId() + "|" + query.buildingId() + "|" + query.assignee()
                 + "|" + query.createdFrom() + "|" + query.createdTo() + "|" + query.keyword();
     }
 
@@ -1183,6 +1183,10 @@ public class WorkOrderRepository extends WorkOrderRepositorySupport {
         if (query.pipelineMedium() != null) {
             where.append(" AND ").append(aliasPrefix).append("pipeline_medium = ? ");
             params.add(query.pipelineMedium());
+        }
+        if (query.priority() != null) {
+            where.append(" AND ").append(aliasPrefix).append("priority = ? ");
+            params.add(query.priority());
         }
         if (query.assignee() != null) {
             where.append(" AND ").append(aliasPrefix).append("assignee = ? ");
@@ -1364,6 +1368,7 @@ public class WorkOrderRepository extends WorkOrderRepositorySupport {
             String status,
             String area,
             String pipelineMedium,
+            String priority,
             String nodeId,
             String segmentId,
             String buildingId,
@@ -1375,7 +1380,7 @@ public class WorkOrderRepository extends WorkOrderRepositorySupport {
             Integer limit
     ) {
         public String cacheKey() {
-            return type + "|" + status + "|" + area + "|" + pipelineMedium + "|" + nodeId + "|" + segmentId + "|" + buildingId + "|" + assignee + "|" + createdFrom + "|" + createdTo + "|" + keyword + "|" + page + "|" + limit;
+            return type + "|" + status + "|" + area + "|" + pipelineMedium + "|" + priority + "|" + nodeId + "|" + segmentId + "|" + buildingId + "|" + assignee + "|" + createdFrom + "|" + createdTo + "|" + keyword + "|" + page + "|" + limit;
         }
     }
 

@@ -21,6 +21,13 @@
       <option value="sewage">污水</option>
       <option value="mixed">混合</option>
     </select>
+    <select v-model="queryPriorityModel" class="ops-input">
+      <option value="">全部优先级</option>
+      <option value="urgent">紧急</option>
+      <option value="high">高</option>
+      <option value="medium">中</option>
+      <option value="low">低</option>
+    </select>
     <input v-model="queryNodeIdModel" class="ops-input" placeholder="按节点筛选" />
     <input v-model="queryBuildingIdModel" class="ops-input" placeholder="按楼宇筛选" />
     <input v-model="queryAssigneeModel" class="ops-input" placeholder="按执行人筛选" />
@@ -42,6 +49,7 @@
           <th>执行人</th>
           <th>影响楼宇</th>
           <th>创建时间</th>
+          <th>地图</th>
           <th>操作</th>
         </tr>
       </thead>
@@ -52,10 +60,32 @@
           <td>{{ typeLabel[item.type] }}</td>
           <td>{{ sourceLabel[item.source] }}</td>
           <td><span class="status-pill" :class="`status-pill--${item.status}`">{{ statusLabel[item.status] }}</span></td>
-          <td>{{ priorityLabel[item.priority] }}</td>
+          <td>
+            <span class="priority-badge" :class="`priority-badge--${item.priority}`">
+              <span class="priority-badge__dot"></span>
+              {{ priorityLabel[item.priority] }}
+            </span>
+          </td>
           <td>{{ item.assignee || '-' }}</td>
-          <td>{{ item.impactScope.impactedBuildings.length }}</td>
+          <td>
+            <span
+              class="impact-summary"
+              :title="getImpactTooltip(item)"
+            >
+              <span class="impact-summary-buildings">🏢 {{ item.impactScope.impactedBuildings.length }}</span>
+              <span class="impact-summary-rooms">🚪 {{ getTotalRooms(item) }}</span>
+            </span>
+          </td>
           <td>{{ formatTime(item.createdAt) }}</td>
+          <td>
+            <button
+              class="ops-btn ops-btn--mini ops-btn--map"
+              title="在地图上定位"
+              @click.stop="emit('locate-on-map', item)"
+            >
+              📍 定位
+            </button>
+          </td>
           <td>
             <div class="ops-actions" @click.stop>
               <button
@@ -71,7 +101,7 @@
           </td>
         </tr>
         <tr v-if="!loading && list.length === 0">
-          <td colspan="10" class="ops-empty">暂无工单数据</td>
+          <td colspan="11" class="ops-empty">暂无工单数据</td>
         </tr>
       </tbody>
     </table>
@@ -97,6 +127,7 @@ const pageModel = defineModel<number>('page', { required: true })
 const queryStatusModel = defineModel<PipelineOrderStatus | ''>('queryStatus', { default: '' })
 const queryAreaModel = defineModel<string>('queryArea', { default: '' })
 const queryMediumModel = defineModel<PipelineMedium | ''>('queryMedium', { default: '' })
+const queryPriorityModel = defineModel<PipelinePriority | ''>('queryPriority', { default: '' })
 const queryNodeIdModel = defineModel<string>('queryNodeId', { default: '' })
 const queryBuildingIdModel = defineModel<string>('queryBuildingId', { default: '' })
 const queryAssigneeModel = defineModel<string>('queryAssignee', { default: '' })
@@ -122,5 +153,21 @@ defineProps<{
 const emit = defineEmits<{
   (e: 'open-detail', id: string): void
   (e: 'trigger-action', item: PipelineWorkOrder, action: string): void
+  (e: 'locate-on-map', item: PipelineWorkOrder): void
 }>()
+
+function getTotalRooms(item: PipelineWorkOrder): number {
+  return item.impactScope.impactedBuildings.reduce((sum, b) => sum + b.rooms.length, 0)
+}
+
+function getImpactTooltip(item: PipelineWorkOrder): string {
+  const buildings = item.impactScope.impactedBuildings
+  if (buildings.length === 0) return '无影响范围'
+
+  const buildingNames = buildings.map(b => b.buildingName).join(', ')
+  const totalRooms = getTotalRooms(item)
+  const totalFloors = buildings.reduce((sum, b) => sum + b.floors.length, 0)
+
+  return `受影响楼宇: ${buildingNames}\n楼层数: ${totalFloors}\n房间数: ${totalRooms}`
+}
 </script>

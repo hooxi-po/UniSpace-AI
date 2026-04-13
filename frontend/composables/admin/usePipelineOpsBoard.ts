@@ -7,6 +7,7 @@ import type {
   PipelineOrderStatus,
   PipelineOrderType,
   PipelineOrderUpsertPayload,
+  PipelinePriority,
   PipelineWorkOrder,
   PumpAction,
 } from '~/types/pipeline-ops'
@@ -52,6 +53,7 @@ export function usePipelineOpsBoard(mode: PipelineOpsBoardMode) {
   const queryStatus = ref<PipelineOrderStatus | ''>('')
   const queryArea = ref('')
   const queryMedium = ref<PipelineMedium | ''>('')
+  const queryPriority = ref<PipelinePriority | ''>('')
   const queryNodeId = ref('')
   const queryBuildingId = ref('')
   const queryAssignee = ref('')
@@ -66,6 +68,7 @@ export function usePipelineOpsBoard(mode: PipelineOpsBoardMode) {
     status: queryStatus.value || undefined,
     area: queryArea.value || undefined,
     pipelineMedium: queryMedium.value || undefined,
+    priority: queryPriority.value || undefined,
     nodeId: queryNodeId.value || undefined,
     buildingId: queryBuildingId.value || undefined,
     assignee: queryAssignee.value || undefined,
@@ -81,6 +84,7 @@ export function usePipelineOpsBoard(mode: PipelineOpsBoardMode) {
     status: queryStatus.value || undefined,
     area: queryArea.value || undefined,
     pipelineMedium: queryMedium.value || undefined,
+    priority: queryPriority.value || undefined,
     nodeId: queryNodeId.value || undefined,
     buildingId: queryBuildingId.value || undefined,
     assignee: queryAssignee.value || undefined,
@@ -393,6 +397,7 @@ export function usePipelineOpsBoard(mode: PipelineOpsBoardMode) {
     queryStatus,
     queryArea,
     queryMedium,
+    queryPriority,
     queryNodeId,
     queryBuildingId,
     queryAssignee,

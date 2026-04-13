@@ -190,6 +190,7 @@ export type PipelineOrderListQuery = {
   status?: PipelineOrderStatus
   area?: string
   pipelineMedium?: PipelineMedium
+  priority?: PipelinePriority
   nodeId?: string
   segmentId?: string
   buildingId?: string

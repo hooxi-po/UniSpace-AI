@@ -23,6 +23,7 @@ export function usePipelineOpsBoardUi(mode: PipelineOpsBoardMode) {
     queryStatus,
     queryArea,
     queryMedium,
+    queryPriority,
     queryNodeId,
     queryBuildingId,
     queryAssignee,
@@ -486,25 +487,65 @@ export function usePipelineOpsBoardUi(mode: PipelineOpsBoardMode) {
 
   function locateOnMap(item: PipelineWorkOrder) {
     if (typeof window === 'undefined') return
-    const focusNode = item.nodeIds[0] || ''
-    const focusSegment = item.segmentIds[0] || ''
-    const focusBuilding = item.buildingId || item.impactScope.impactedBuildings[0]?.buildingId || ''
     const focusRooms = item.impactScope.impactedBuildings
       .flatMap(building => building.rooms.map(room => room.roomId).filter(Boolean))
       .slice(0, 8)
-      .join(',')
-    const focusId = item.buildingId
-      || item.impactScope.impactedBuildings[0]?.buildingId
-      || item.nodeIds[0]
-      || item.segmentIds[0]
-      || item.id
+    openMapWithTargets({
+      workorderId: item.id,
+      focusBuilding: item.buildingId || item.impactScope.impactedBuildings[0]?.buildingId || '',
+      focusNode: item.nodeIds[0] || '',
+      focusSegment: item.segmentIds[0] || '',
+      focusRooms,
+      fallbackFocusId: item.id,
+    })
+  }
+
+  function locateBuildingOnMap(buildingId: string) {
+    if (!detail.value) return
+    if (!buildingId) {
+      locateOnMap(detail.value)
+      return
+    }
+    const detailItem = detail.value
+    const impactedBuilding = detailItem.impactScope.impactedBuildings.find(item => item.buildingId === buildingId)
+    const focusRooms = impactedBuilding?.rooms
+      .map(room => room.roomId)
+      .filter(Boolean)
+      .slice(0, 8) || []
+    openMapWithTargets({
+      workorderId: detailItem.id,
+      focusBuilding: buildingId,
+      focusNode: detailItem.nodeIds[0] || '',
+      focusSegment: detailItem.segmentIds[0] || '',
+      focusRooms,
+      fallbackFocusId: detailItem.id,
+    })
+  }
+
+  function openMapWithTargets({
+    workorderId,
+    focusBuilding = '',
+    focusNode = '',
+    focusSegment = '',
+    focusRooms = [],
+    fallbackFocusId,
+  }: {
+    workorderId: string
+    focusBuilding?: string
+    focusNode?: string
+    focusSegment?: string
+    focusRooms?: string[]
+    fallbackFocusId: string
+  }) {
+    if (typeof window === 'undefined') return
+    const focusId = focusBuilding || focusNode || focusSegment || fallbackFocusId
     const query = new URLSearchParams({
       focusId,
-      fromWorkorder: item.id,
+      fromWorkorder: workorderId,
       focusBuilding,
       focusNode,
       focusSegment,
-      focusRooms,
+      focusRooms: focusRooms.join(','),
     })
     window.open(`/?${query.toString()}`, '_blank')
   }
@@ -540,10 +581,10 @@ export function usePipelineOpsBoardUi(mode: PipelineOpsBoardMode) {
     }, 1000)
   }
 
-  function formatTime(input?: string) {
+  function formatTime(input?: string | number) {
     if (!input) return '-'
     const date = new Date(input)
-    if (Number.isNaN(date.getTime())) return input
+    if (Number.isNaN(date.getTime())) return String(input)
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
   }
 
@@ -559,6 +600,7 @@ export function usePipelineOpsBoardUi(mode: PipelineOpsBoardMode) {
     queryStatus,
     queryArea,
     queryMedium,
+    queryPriority,
     queryNodeId,
     queryBuildingId,
     queryAssignee,
@@ -623,6 +665,7 @@ export function usePipelineOpsBoardUi(mode: PipelineOpsBoardMode) {
     submitInspectionRecord,
     convertInspection,
     locateOnMap,
+    locateBuildingOnMap,
     formatTime,
   }
 }

@@ -2,7 +2,7 @@
   <div v-if="open" class="ops-form">
     <div class="ops-form__title">人工建单</div>
 
-    <!-- 模板选择按钮 -->
+    <!-- 智能推荐与模板选择 -->
     <div class="ops-form__template-actions">
       <button
         class="ops-btn ops-btn--template"
@@ -11,9 +11,32 @@
       >
         📋 从模板创建
       </button>
+      <button
+        class="ops-btn ops-btn--smart"
+        type="button"
+        @click="handleSmartRecommend"
+        :disabled="isRecommending"
+      >
+        {{ isRecommending ? '🔄 分析中...' : '✨ 智能推荐' }}
+      </button>
       <span v-if="selectedTemplateName" class="ops-form__template-hint">
         当前使用模板: {{ selectedTemplateName }}
       </span>
+    </div>
+
+    <!-- 智能推荐结果 -->
+    <div v-if="recommendedTemplate" class="ops-smart-recommend">
+      <div class="ops-smart-recommend__header">
+        <span class="ops-smart-recommend__title">💡 推荐模板</span>
+        <button class="ops-smart-recommend__close" @click="recommendedTemplate = null">✕</button>
+      </div>
+      <div class="ops-smart-recommend__content">
+        <div class="ops-smart-recommend__name">{{ recommendedTemplate.name }}</div>
+        <div class="ops-smart-recommend__reason">{{ recommendedTemplate.reason }}</div>
+        <button class="ops-btn ops-btn--primary" @click="applyRecommendedTemplate">
+          应用此模板
+        </button>
+      </div>
     </div>
 
     <!-- 验证错误提示 -->
@@ -75,11 +98,52 @@
     </div>
     <div class="ops-form__row">
       <div class="ops-field-with-action">
-        <label>节点（逗号）<input v-model="form.nodeIdsText" class="ops-input" placeholder="N-1001,N-1002" /></label>
+        <label>节点（逗号）
+          <input v-model="form.nodeIdsText" class="ops-input" placeholder="N-1001,N-1002" @blur="handleAnalyzeImpact" />
+        </label>
       </div>
       <div class="ops-field-with-action">
-        <label>管段（逗号）<input v-model="form.segmentIdsText" class="ops-input" placeholder="S-2101,S-2102" /></label>
+        <label>管段（逗号）
+          <input v-model="form.segmentIdsText" class="ops-input" placeholder="S-2101,S-2102" @blur="handleAnalyzeImpact" />
+        </label>
       </div>
+      <button
+        class="ops-btn ops-btn--mini"
+        type="button"
+        :disabled="analyzingImpact"
+        @click="handleAnalyzeImpact"
+      >
+        {{ analyzingImpact ? '分析中...' : '🔍 智能分析影响范围' }}
+      </button>
+    </div>
+    <div v-if="impactAnalysisResult" class="ops-impact-result">
+      <div class="ops-impact-result__header">
+        <span class="ops-impact-result__title">📊 影响范围分析结果</span>
+        <button class="ops-btn ops-btn--mini" type="button" @click="applyImpactResult">
+          ✓ 应用到表单
+        </button>
+      </div>
+      <div class="ops-impact-result__content">
+        <div class="ops-impact-result__item">
+          <span class="ops-impact-result__label">受影响楼宇:</span>
+          <span class="ops-impact-result__value">{{ impactAnalysisResult.impactedBuildings.length }} 栋</span>
+        </div>
+        <div class="ops-impact-result__item">
+          <span class="ops-impact-result__label">受影响用户:</span>
+          <span class="ops-impact-result__value">{{ impactAnalysisResult.affectedUserCount }} 人</span>
+        </div>
+        <div class="ops-impact-result__item">
+          <span class="ops-impact-result__label">预计影响时长:</span>
+          <span class="ops-impact-result__value">{{ impactAnalysisResult.estimatedImpactHours }} 小时</span>
+        </div>
+        <div class="ops-impact-result__buildings">
+          <span v-for="building in impactAnalysisResult.impactedBuildings" :key="building.buildingId" class="building-tag">
+            {{ building.buildingName }}
+          </span>
+        </div>
+      </div>
+    </div>
+    <div class="ops-form__row">
       <label>关联楼宇编码<input v-model="form.buildingId" class="ops-input" placeholder="BLD-001" /></label>
       <label>关联楼宇名称<input v-model="form.buildingName" class="ops-input" placeholder="博学楼" /></label>
     </div>
@@ -131,6 +195,7 @@ import { computed, ref, watch } from 'vue'
 import type { PipelineMedium, PipelineOrderType, PipelinePriority } from '~/types/pipeline-ops'
 import type { PipelineOpsBoardMode } from '~/composables/admin/usePipelineOpsBoard'
 import type { PipelineWorkOrderTemplate } from '~/types/pipeline-ops-template'
+import { analyzeImpactScope, recommendTemplate, type ImpactAnalysisResponse, type TemplateRecommendResponse } from '~/services/pipeline-intelligence'
 import PipelineOpsTemplateSelector from './PipelineOpsTemplateSelector.vue'
 
 type CreateFormState = {
@@ -171,6 +236,10 @@ const emit = defineEmits<{
 const validationErrors = ref<string[]>([])
 const templateSelectorOpen = ref(false)
 const selectedTemplateName = ref('')
+const analyzingImpact = ref(false)
+const impactAnalysisResult = ref<ImpactAnalysisResponse | null>(null)
+const isRecommending = ref(false)
+const recommendedTemplate = ref<TemplateRecommendResponse | null>(null)
 const allowedTemplateType = computed<PipelineOrderType | null>(() => props.mode === 'linkage' ? null : props.mode)
 const workorderTypeLabel: Record<PipelineOrderType, string> = {
   inspection: '巡检',
@@ -241,5 +310,75 @@ function handleSubmitAutoCreate() {
   if (validateForm()) {
     emit('submit-auto-create')
   }
+}
+
+// 智能分析影响范围
+async function handleAnalyzeImpact() {
+  const nodeIds = props.form.nodeIdsText.split(',').map(s => s.trim()).filter(Boolean)
+  const segmentIds = props.form.segmentIdsText.split(',').map(s => s.trim()).filter(Boolean)
+
+  if (nodeIds.length === 0 && segmentIds.length === 0) {
+    return
+  }
+
+  analyzingImpact.value = true
+  try {
+    const result = await analyzeImpactScope({ nodeIds, segmentIds })
+    impactAnalysisResult.value = result
+  } catch (error) {
+    console.error('影响范围分析失败:', error)
+    validationErrors.value = ['影响范围分析失败，请稍后重试']
+  } finally {
+    analyzingImpact.value = false
+  }
+}
+
+// 应用影响范围分析结果到表单
+function applyImpactResult() {
+  if (!impactAnalysisResult.value) return
+
+  const buildings = impactAnalysisResult.value.impactedBuildings
+  if (buildings.length > 0) {
+    // 自动填充第一个楼宇的信息
+    props.form.buildingId = buildings[0].buildingId
+    props.form.buildingName = buildings[0].buildingName
+  }
+
+  // 清除分析结果
+  impactAnalysisResult.value = null
+}
+
+// 智能推荐模板
+async function handleSmartRecommend() {
+  const nodeIds = props.form.nodeIdsText.split(',').map(s => s.trim()).filter(Boolean)
+  const segmentIds = props.form.segmentIdsText.split(',').map(s => s.trim()).filter(Boolean)
+
+  if (nodeIds.length === 0 && segmentIds.length === 0) {
+    validationErrors.value = ['请先输入节点或管段ID']
+    return
+  }
+
+  isRecommending.value = true
+  try {
+    const result = await recommendTemplate({
+      nodeIds,
+      segmentIds,
+      area: props.form.area,
+      medium: props.form.pipelineMedium,
+    })
+    recommendedTemplate.value = result
+  } catch (error) {
+    console.error('智能推荐失败:', error)
+    validationErrors.value = ['智能推荐失败，请稍后重试']
+  } finally {
+    isRecommending.value = false
+  }
+}
+
+// 应用推荐的模板
+function applyRecommendedTemplate() {
+  if (!recommendedTemplate.value) return
+  applyTemplate(recommendedTemplate.value)
+  recommendedTemplate.value = null
 }
 </script>

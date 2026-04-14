@@ -667,5 +667,6 @@ export function usePipelineOpsBoardUi(mode: PipelineOpsBoardMode) {
     locateOnMap,
     locateBuildingOnMap,
     formatTime,
+    showNotice,
   }
 }

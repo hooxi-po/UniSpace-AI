@@ -17,6 +17,7 @@
       @toggle-report="reportOpen = !reportOpen"
       @toggle-realtime="realtimeEnabled = $event"
       @dismiss-feedback="dismissFeedback"
+      @filter-by-status="handleFilterByStatus"
     />
 
     <!-- 报表区域 -->
@@ -24,6 +25,12 @@
       v-if="reportOpen"
       :stats="stats"
       :dashboard="dashboard"
+    />
+
+    <!-- 异常预警监控 -->
+    <PipelineOpsAlertMonitor
+      :format-time="formatTime"
+      @auto-create-success="handleAlertAutoCreateSuccess"
     />
 
     <PipelineOpsCreateSection
@@ -175,6 +182,7 @@ const {
   locateOnMap,
   locateBuildingOnMap,
   formatTime,
+  showNotice,
 } = usePipelineOpsBoardUi(props.mode)
 
 const reportOpen = ref(false)
@@ -203,5 +211,15 @@ const statusLabel = pipelineOpsStatusLabel
 const mediumLabel = pipelineOpsMediumLabel
 const priorityLabel = pipelineOpsPriorityLabel
 const actionText = pipelineOpsActionText
+
+function handleFilterByStatus(status: string) {
+  queryStatus.value = status as any
+  page.value = 1
+}
+
+function handleAlertAutoCreateSuccess(workorderId: string) {
+  showNotice('success', `已自动创建工单: ${workorderId}`)
+  refresh()
+}
 </script>
 <style scoped src="./pipeline-ops-board.css"></style>

@@ -8,13 +8,17 @@
       <button class="ops-btn ops-btn--report" type="button" @click="emit('toggle-report')">
         {{ reportOpen ? '📊 收起报表' : '📊 查看统计报表' }}
       </button>
-      <label class="ops-realtime-toggle">
-        <input type="checkbox" :checked="realtimeEnabled" @change="emit('toggle-realtime', ($event.target as HTMLInputElement).checked)" />
-        <span>🔄 实时更新</span>
+      <button
+        class="ops-btn ops-btn--report"
+        type="button"
+        :class="{ 'ops-btn--active': realtimeEnabled }"
+        @click="emit('toggle-realtime', !realtimeEnabled)"
+      >
+        🔄 实时更新
         <span v-if="realtimeEnabled && lastUpdateTime" class="ops-realtime-time">
           {{ formatTime(lastUpdateTime) }}
         </span>
-      </label>
+      </button>
       <button class="ops-btn" type="button" @click="emit('refresh')" :disabled="loading">刷新</button>
       <button class="ops-btn ops-btn--primary" type="button" @click="emit('toggle-form')">
         {{ formOpen ? '收起新建' : '新建工单' }}
@@ -31,16 +35,70 @@
   </div>
 
   <div class="ops-board__stats">
-    <div class="stat-card"><div class="stat-card__label">总工单</div><div class="stat-card__value">{{ stats.total }}</div></div>
-    <div class="stat-card"><div class="stat-card__label">草稿</div><div class="stat-card__value">{{ stats.draft }}</div></div>
-    <div class="stat-card"><div class="stat-card__label">待办</div><div class="stat-card__value">{{ stats.todo }}</div></div>
-    <div class="stat-card"><div class="stat-card__label">已分配</div><div class="stat-card__value">{{ stats.assigned }}</div></div>
-    <div class="stat-card"><div class="stat-card__label">进行中</div><div class="stat-card__value">{{ stats.in_progress }}</div></div>
-    <div class="stat-card"><div class="stat-card__label">暂停</div><div class="stat-card__value">{{ stats.paused }}</div></div>
-    <div class="stat-card"><div class="stat-card__label">审核中</div><div class="stat-card__value">{{ stats.review }}</div></div>
-    <div class="stat-card"><div class="stat-card__label">已完成</div><div class="stat-card__value">{{ stats.completed }}</div></div>
-    <div class="stat-card"><div class="stat-card__label">已关闭</div><div class="stat-card__value">{{ stats.closed }}</div></div>
-    <div class="stat-card"><div class="stat-card__label">已驳回</div><div class="stat-card__value">{{ stats.rejected }}</div></div>
+    <div
+      class="stat-card"
+      :class="{ 'stat-card--inactive': stats.total === 0 }"
+      @click="emit('filter-by-status', '')"
+    >
+      <div class="stat-card__label">总工单</div>
+      <div class="stat-card__value">{{ stats.total }}</div>
+    </div>
+    <div
+      class="stat-card"
+      :class="{ 'stat-card--inactive': stats.todo === 0 }"
+      @click="emit('filter-by-status', 'todo')"
+    >
+      <div class="stat-card__label">待办</div>
+      <div class="stat-card__value">{{ stats.todo }}</div>
+    </div>
+    <div
+      class="stat-card"
+      :class="{ 'stat-card--inactive': stats.in_progress === 0 }"
+      @click="emit('filter-by-status', 'in_progress')"
+    >
+      <div class="stat-card__label">进行中</div>
+      <div class="stat-card__value">{{ stats.in_progress }}</div>
+    </div>
+    <div
+      class="stat-card"
+      :class="{ 'stat-card--inactive': stats.completed === 0 }"
+      @click="emit('filter-by-status', 'completed')"
+    >
+      <div class="stat-card__label">已完成</div>
+      <div class="stat-card__value">{{ stats.completed }}</div>
+    </div>
+    <div
+      class="stat-card"
+      :class="{ 'stat-card--inactive': stats.assigned === 0 }"
+      @click="emit('filter-by-status', 'assigned')"
+    >
+      <div class="stat-card__label">已分配</div>
+      <div class="stat-card__value">{{ stats.assigned }}</div>
+    </div>
+    <div
+      class="stat-card"
+      :class="{ 'stat-card--inactive': stats.paused === 0 }"
+      @click="emit('filter-by-status', 'paused')"
+    >
+      <div class="stat-card__label">暂停</div>
+      <div class="stat-card__value">{{ stats.paused }}</div>
+    </div>
+    <div
+      class="stat-card"
+      :class="{ 'stat-card--inactive': stats.review === 0 }"
+      @click="emit('filter-by-status', 'review')"
+    >
+      <div class="stat-card__label">审核中</div>
+      <div class="stat-card__value">{{ stats.review }}</div>
+    </div>
+    <div
+      class="stat-card"
+      :class="{ 'stat-card--inactive': stats.rejected === 0 }"
+      @click="emit('filter-by-status', 'rejected')"
+    >
+      <div class="stat-card__label">驳回</div>
+      <div class="stat-card__value">{{ stats.rejected }}</div>
+    </div>
   </div>
 
   <div v-if="dashboard" class="ops-dashboard">
@@ -89,5 +147,6 @@ const emit = defineEmits<{
   (e: 'toggle-report'): void
   (e: 'toggle-realtime', enabled: boolean): void
   (e: 'dismiss-feedback'): void
+  (e: 'filter-by-status', status: string): void
 }>()
 </script>

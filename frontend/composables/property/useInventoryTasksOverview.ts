@@ -141,11 +141,7 @@ export const useInventoryTasksOverview = () => {
     try {
       await inventoryService.startReview(task.id)
       await loadTasks()
-
-      const refreshed = tasks.value.find(t => t.id === task.id)
-      if (refreshed && detailOpen.value) {
-        await openDetail(refreshed)
-      }
+      if (activeTask.value?.id === task.id) await openDetail(task)
     } finally {
       acting.value = false
     }
@@ -157,11 +153,7 @@ export const useInventoryTasksOverview = () => {
     try {
       await inventoryService.archiveTask(task.id)
       await loadTasks()
-
-      const refreshed = tasks.value.find(t => t.id === task.id)
-      if (refreshed && detailOpen.value) {
-        await openDetail(refreshed)
-      }
+      if (activeTask.value?.id === task.id) await openDetail(task)
     } finally {
       acting.value = false
     }

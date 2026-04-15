@@ -15,6 +15,9 @@
     <div class="actions">
       <button class="btn btn--primary" @click="$emit('search')">搜索</button>
       <button class="btn" @click="$emit('reset')">重置</button>
+      <button class="btn" :disabled="batchSending || unsentCount <= 0" @click="$emit('sendAll')">
+        {{ batchSending ? '发送中...' : `批量发送未发送(${unsentCount})` }}
+      </button>
       <button class="btn" @click="$emit('sync')">同步表计</button>
       <span class="hint">共 {{ count }} 条账单</span>
     </div>
@@ -22,8 +25,8 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{ draftKeyword: string; selectedMonth: string; monthOptions: string[]; count: number }>()
-defineEmits<{ 'update:draftKeyword':[string]; 'update:selectedMonth':[string]; search:[]; reset:[]; sync:[] }>()
+defineProps<{ draftKeyword: string; selectedMonth: string; monthOptions: string[]; count: number; unsentCount: number; batchSending: boolean }>()
+defineEmits<{ 'update:draftKeyword':[string]; 'update:selectedMonth':[string]; search:[]; reset:[]; sendAll:[]; sync:[] }>()
 </script>
 
 <style scoped>
@@ -35,6 +38,6 @@ defineEmits<{ 'update:draftKeyword':[string]; 'update:selectedMonth':[string]; s
 .actions { display: flex; gap: 8px; align-items: center; }
 .hint { margin-left: auto; color: #646a73; font-size: 13px; }
 .btn { border: 1px solid var(--border, #dfe3ea); background: #fff; border-radius: 8px; padding: 8px 12px; cursor: pointer; font-size: 13px; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn--primary { background: #3370ff; border-color: #3370ff; color: #fff; }
 </style>
-

@@ -1,6 +1,7 @@
-@"
--- Demo distribution (DB-side), compatible with current status domain
--- TeacherApartment: 50% Occupied / 50% Empty
+-- Demo data distribution for rooms status (DB-side)
+-- Keep values compatible with existing status domain: Occupied / Empty
+
+-- TeacherApartment: 50% Occupied, 50% Empty
 WITH teacher_ranked AS (
   SELECT id,
          ROW_NUMBER() OVER (ORDER BY id) AS rn,
@@ -17,7 +18,7 @@ SET status = t.new_status
 FROM teacher_target t
 WHERE r.id = t.id;
 
--- Student: 50% Occupied / 50% Empty
+-- Student: 50% Occupied, 50% Empty
 WITH student_ranked AS (
   SELECT id,
          ROW_NUMBER() OVER (ORDER BY id) AS rn,
@@ -33,4 +34,3 @@ UPDATE rooms r
 SET status = s.new_status
 FROM student_target s
 WHERE r.id = s.id;
-"@ | Set-Content -Path "D:\UniSpace-AI\backend\src\main\resources\db\migration\V12__set_demo_room_status_distribution.sql"

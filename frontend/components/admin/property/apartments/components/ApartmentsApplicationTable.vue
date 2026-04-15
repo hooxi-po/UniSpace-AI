@@ -76,3 +76,10 @@ const roomText = (item: ApartmentApplicationItem) => {
 .btn--danger { color: #c52828; border-color: #f3caca; }
 </style>
 
+
+
+
+
+
+
+

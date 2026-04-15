@@ -274,6 +274,17 @@
   ],
   "reminders": [
     {
+      "id": "REM-1775613289261",
+      "billId": "UTIL-2026-04-RM-BLD-003-102",
+      "billNo": "UTIL-2026-04-RM-BLD-003-102",
+      "departmentName": "演示状态:在住",
+      "reminderType": "System",
+      "content": "水电账单提醒：2026-04，房间 学生宿舍楼 102，待缴金额 ¥0.00",
+      "sentAt": "2026-04-08T01:54:49.261Z",
+      "sentBy": "系统",
+      "isRead": false
+    },
+    {
       "id": "REM-1771166579435",
       "billId": "BILL-机械工程学院-2025-01",
       "billNo": "GF-2025-01-机械工程",

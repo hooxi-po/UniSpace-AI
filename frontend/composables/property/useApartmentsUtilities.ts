@@ -14,8 +14,11 @@ export type UtilityBill = {
   electricOver: number
   waterOver: number
   amount: number
-  status: '未发送' | '已发送'
+  status: '未发送' | '已发送' | '发送中' | '发送失败'
   updatedAt: string
+  sentAt?: string
+  sendChannel?: '系统消息' | '短信' | '邮件'
+  lastError?: string
 }
 
 const FREE_ELECTRIC = 5
@@ -23,10 +26,16 @@ const FREE_WATER = 5
 const ELECTRIC_PRICE = 1.2
 const WATER_PRICE = 2.0
 
+function toErrorMessage(error: unknown) {
+  const err = error as any
+  return err?.data?.error || err?.statusMessage || err?.message || '发送失败'
+}
+
 export const useApartmentsUtilities = () => {
   const loading = ref(false)
   const syncing = ref(false)
   const sending = ref(false)
+  const batchSending = ref(false)
 
   const draftKeyword = ref('')
   const appliedKeyword = ref('')
@@ -55,13 +64,16 @@ export const useApartmentsUtilities = () => {
     })
   })
 
+  const unsentBills = computed(() => filteredBills.value.filter((b) => b.status !== '已发送'))
+
   const stats = computed(() => {
     const list = filteredBills.value
     return {
       occupiedCount: occupiedRooms.value.length,
       totalAmount: Number(list.reduce((sum, b) => sum + b.amount, 0).toFixed(2)),
       sentCount: list.filter((b) => b.status === '已发送').length,
-      unsentCount: list.filter((b) => b.status === '未发送').length,
+      unsentCount: list.filter((b) => b.status !== '已发送').length,
+      failedCount: list.filter((b) => b.status === '发送失败').length,
     }
   })
 
@@ -107,8 +119,19 @@ export const useApartmentsUtilities = () => {
 
     const map = new Map(bills.value.map((b) => [b.id, b]))
     for (const item of incoming) {
-      if (!map.has(item.id)) map.set(item.id, item)
+      if (!map.has(item.id)) {
+        map.set(item.id, item)
+      }
     }
+
+    // 清理不在当前在住名单中的旧账单（月份一致）
+    const occupiedIdSet = new Set(occupiedRooms.value.map(r => r.id))
+    for (const [id, bill] of map.entries()) {
+      if (bill.month === month && !occupiedIdSet.has(bill.roomId)) {
+        map.delete(id)
+      }
+    }
+
     bills.value = Array.from(map.values())
   }
 
@@ -129,24 +152,75 @@ export const useApartmentsUtilities = () => {
   }
 
   async function sendBill(bill: UtilityBill) {
+    if (bill.status === '已发送' || bill.status === '发送中') return
+
+    bill.status = '发送中'
+    bill.lastError = undefined
+    bill.updatedAt = new Date().toISOString()
     sending.value = true
+
     try {
       await $fetch('/api/charging/reminders', {
         method: 'POST',
         body: {
-          id: bill.id,
+          billId: bill.id,
+          billNo: bill.id,
           owner: bill.resident,
           roomNo: bill.roomLabel,
           amountDue: bill.amount,
           action: 'water-electric-bill',
           month: bill.month,
+          content: `水电账单提醒：${bill.month}，房间 ${bill.roomLabel}，待缴金额 ¥${bill.amount.toFixed(2)}`,
         },
       })
+
       bill.status = '已发送'
+      bill.sentAt = new Date().toISOString()
+      bill.sendChannel = '系统消息'
+      bill.lastError = undefined
       bill.updatedAt = new Date().toISOString()
+      window.alert(`账单已发送：${bill.roomLabel}（${bill.month}）`)
+    } catch (error) {
+      bill.status = '发送失败'
+      bill.lastError = toErrorMessage(error)
+      bill.updatedAt = new Date().toISOString()
+      window.alert(`发送失败：${bill.lastError || '请稍后重试'}`)
+      throw error
     } finally {
       sending.value = false
     }
+  }
+
+  async function sendAllUnsentBills() {
+    const candidates = unsentBills.value
+    if (!candidates.length) {
+      window.alert('当前筛选条件下暂无可发送账单。')
+      return
+    }
+
+    batchSending.value = true
+    let success = 0
+    let failed = 0
+
+    try {
+      for (const bill of candidates) {
+        try {
+          await sendBill(bill)
+          success += 1
+        } catch {
+          failed += 1
+        }
+      }
+    } finally {
+      batchSending.value = false
+    }
+
+    if (failed > 0) {
+      window.alert(`账单发送完成：成功 ${success} 条，失败 ${failed} 条。可在列表中查看失败原因。`)
+      return
+    }
+
+    window.alert(`账单发送完成：成功 ${success} 条。`)
   }
 
   function openBillDetail(bill: UtilityBill) {
@@ -174,16 +248,19 @@ export const useApartmentsUtilities = () => {
     loading,
     syncing,
     sending,
+    batchSending,
     draftKeyword,
     selectedMonth,
     monthOptions,
     filteredBills,
+    unsentBills,
     stats,
     detailOpen,
     activeBill,
     loadOccupiedRooms,
     syncMetersForMonth,
     sendBill,
+    sendAllUnsentBills,
     openBillDetail,
     closeBillDetail,
     applySearch,

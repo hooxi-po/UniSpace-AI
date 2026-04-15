@@ -3,7 +3,7 @@
     <div class="header">
       <div>
         <h2 class="title">房间管理</h2>
-        <p class="subtitle">支持学生/教师宿舍腾退、再分配，并向原住户发送通知</p>
+        <p class="subtitle">支持学生/教师宿舍腾退、床位级再分配，并向住户发送通知</p>
       </div>
     </div>
 
@@ -34,16 +34,30 @@
       :submitting="operating"
       :mode="vacateOpen ? 'vacate' : 'reassign'"
       :room="activeRoom"
-      :reassign-type="reassignType"
       :reassign-department="reassignDepartment"
       :old-tenant-name="oldTenantName"
       :notice-remark="noticeRemark"
+      :source-beds="sourceBeds"
+      :source-bed-no="sourceBedNo"
+      :target-building-code="targetBuildingCode"
+      :target-floor="targetFloor"
+      :target-room-id="targetRoomId"
+      :target-bed-no="targetBedNo"
+      :target-building-options="targetBuildingOptions"
+      :target-floor-options="targetFloorOptions"
+      :target-room-options="targetRoomOptions"
+      :target-beds="targetBeds"
+      :bed-transfer-preview="bedTransferPreview"
       @close="closeDialogs"
       @submit="vacateOpen ? confirmVacate() : confirmReassign()"
-      @update:reassignType="reassignType = $event"
       @update:reassignDepartment="reassignDepartment = $event"
       @update:oldTenantName="oldTenantName = $event"
       @update:noticeRemark="noticeRemark = $event"
+      @update:sourceBedNo="sourceBedNo = $event"
+      @update:targetBuildingCode="targetBuildingCode = $event"
+      @update:targetFloor="targetFloor = $event"
+      @update:targetRoomId="targetRoomId = $event"
+      @update:targetBedNo="targetBedNo = $event"
     />
   </div>
 </template>
@@ -65,10 +79,20 @@ const {
   vacateOpen,
   reassignOpen,
   activeRoom,
-  reassignType,
   reassignDepartment,
   noticeRemark,
   oldTenantName,
+  sourceBeds,
+  sourceBedNo,
+  targetBuildingCode,
+  targetFloor,
+  targetRoomId,
+  targetBedNo,
+  targetBuildingOptions,
+  targetFloorOptions,
+  targetRoomOptions,
+  targetBeds,
+  bedTransferPreview,
   applySearch,
   resetSearch,
   openVacate,

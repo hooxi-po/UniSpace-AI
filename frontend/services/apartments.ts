@@ -1,3 +1,5 @@
+import { fetchWithProxyWriteAuth } from './proxy-write-auth'
+
 export interface ApartmentRoom {
   id: string
   buildingName: string
@@ -92,6 +94,37 @@ export interface ApartmentApplicationPayload {
   note?: string
 }
 
+async function readError(res: Response) {
+  try {
+    const json = await res.json()
+    if (json && typeof json.error === 'string') {
+      return json.error
+    }
+    if (json && typeof json.statusMessage === 'string') {
+      return json.statusMessage
+    }
+  } catch {
+    // noop
+  }
+  return `HTTP ${res.status}`
+}
+
+async function requestJson(url: string, init?: RequestInit, useWriteAuth = false) {
+  const res = useWriteAuth
+    ? await fetchWithProxyWriteAuth(url, init)
+    : await fetch(url, init)
+
+  if (!res.ok) {
+    throw new Error(await readError(res))
+  }
+
+  try {
+    return await res.json()
+  } catch {
+    return { ok: true }
+  }
+}
+
 export const apartmentsService = {
   async getRooms(params?: { type?: string; status?: string; buildingCode?: string }) {
     return await $fetch<ApartmentsRoomsResp>('/api/apartments/rooms', { params })
@@ -132,17 +165,19 @@ export const apartmentsService = {
     })
   },
   async vacateRoom(roomId: string) {
-    return await $fetch<{ ok: boolean; id?: string; status?: string }>('/api/apartments/room-vacate', {
+    return await requestJson('/api/apartments/room-vacate', {
       method: 'PATCH',
-      body: { roomId },
-    })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ roomId }),
+    }, true) as { ok: boolean; id?: string; status?: string }
   },
 
   async reassignRoom(payload: { roomId: string; tenantType: DormType; department?: string }) {
-    return await $fetch<{ ok: boolean; id?: string; status?: string }>('/api/apartments/room-reassign', {
+    return await requestJson('/api/apartments/room-reassign', {
       method: 'PATCH',
-      body: payload,
-    })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }, true) as { ok: boolean; id?: string; status?: string }
   },
 
   async sendRoomNotice(payload: {
@@ -153,17 +188,18 @@ export const apartmentsService = {
     oldTenant?: string
     remark?: string
   }) {
-    return await $fetch('/api/allocation/notifications', {
+    return await requestJson('/api/allocation/notifications', {
       method: 'POST',
-      body: {
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
         targetType: 'ROOM',
         targetId: payload.roomId,
         targetName: `${payload.buildingName} ${payload.roomNo}`,
         level: 'INFO',
         channel: 'SYSTEM',
         content: `${payload.action}：${payload.buildingName}${payload.roomNo}${payload.oldTenant ? `，原住户：${payload.oldTenant}` : ''}${payload.remark ? `，备注：${payload.remark}` : ''}`,
-      },
-    })
+      }),
+    }, true)
   },
 }
 

@@ -19,14 +19,17 @@
       v-model:selected-month="selectedMonth"
       :month-options="monthOptions"
       :count="filteredBills.length"
+      :unsent-count="unsentBills.length"
+      :batch-sending="batchSending"
       @search="applySearch"
       @reset="resetSearch"
+      @send-all="sendAllUnsentBills"
       @sync="syncMetersForMonth"
     />
 
     <ApartmentsUtilitiesTable
       :loading="loading || syncing"
-      :sending="sending"
+      :sending="sending || batchSending"
       :bills="filteredBills"
       @view="openBillDetail"
       @send="sendBill"
@@ -54,10 +57,12 @@ const {
   loading,
   syncing,
   sending,
+  batchSending,
   draftKeyword,
   selectedMonth,
   monthOptions,
   filteredBills,
+  unsentBills,
   stats,
   detailOpen,
   activeBill,
@@ -67,6 +72,7 @@ const {
   openBillDetail,
   closeBillDetail,
   sendBill,
+  sendAllUnsentBills,
 } = useApartmentsUtilities()
 </script>
 

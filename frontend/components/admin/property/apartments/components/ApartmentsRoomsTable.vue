@@ -28,8 +28,8 @@
               <td>{{ r.department || '—' }}</td>
               <td>
                 <div class="actions">
-                  <button class="btn" @click="$emit('vacate', r)">腾退</button>
-                  <button class="btn btn--primary" @click="$emit('reassign', r)">再分配</button>
+                  <button class="btn" :disabled="r.status !== 'Occupied'" @click="$emit('vacate', r)">腾退</button>
+                  <button class="btn btn--primary" :disabled="r.status !== 'Occupied'" @click="$emit('reassign', r)">再分配</button>
                 </div>
               </td>
             </tr>

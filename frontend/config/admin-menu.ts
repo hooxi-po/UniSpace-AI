@@ -121,6 +121,47 @@ export const adminMenuConfig = [
     ],
   },
   {
+    key: 'ops',
+    label: '管网运维闭环',
+    children: [
+      {
+        key: 'ops_inspection',
+        label: '巡检管理',
+        children: [
+          { key: 'ops_inspection_board', label: '巡检工单' },
+        ],
+      },
+      {
+        key: 'ops_maintenance',
+        label: '维修管理',
+        children: [
+          { key: 'ops_maintenance_board', label: '维修工单' },
+        ],
+      },
+      {
+        key: 'ops_retrofit',
+        label: '改造管理',
+        children: [
+          { key: 'ops_retrofit_board', label: '改造工单' },
+        ],
+      },
+      {
+        key: 'ops_retire',
+        label: '报废管理',
+        children: [
+          { key: 'ops_retire_board', label: '报废工单' },
+        ],
+      },
+      {
+        key: 'ops_linkage',
+        label: '工单联动',
+        children: [
+          { key: 'ops_linkage_board', label: '联动看板' },
+        ],
+      },
+    ],
+  },
+  {
     key: 'persons',
     label: '人员管理',
     children: [
@@ -152,4 +193,3 @@ export function getThirdTabs(tab: TabKey, sub: SubKey) {
   const subNode = active?.children?.find(i => i.key === sub) as any
   return (subNode?.children ?? []) as { key: ThirdKey; label: string }[]
 }
-

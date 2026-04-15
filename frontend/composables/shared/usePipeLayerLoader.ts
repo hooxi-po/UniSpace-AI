@@ -1,6 +1,7 @@
 import * as Cesium from 'cesium'
 import type { Ref } from 'vue'
 import {
+  PIPE_LAYER_COLOR_HEX,
   PIPE_LAYER_NAMES,
   classifyRoadToPipeLayer,
   type PipeLayerName,
@@ -33,15 +34,15 @@ type UsePipeLayerLoaderOptions = {
 
 const PIPE_STYLES: PipeStyles = {
   water: {
-    glowStroke: Cesium.Color.fromCssColorString('#119A61'),
+    glowStroke: Cesium.Color.fromCssColorString(PIPE_LAYER_COLOR_HEX.water),
     glowWidth: 5,
   },
   drain: {
-    glowStroke: Cesium.Color.fromCssColorString('#3F86EA'),
+    glowStroke: Cesium.Color.fromCssColorString(PIPE_LAYER_COLOR_HEX.drain),
     glowWidth: 5,
   },
   sewage: {
-    glowStroke: Cesium.Color.fromCssColorString('#A16AEE'),
+    glowStroke: Cesium.Color.fromCssColorString(PIPE_LAYER_COLOR_HEX.sewage),
     glowWidth: 5,
   },
 }

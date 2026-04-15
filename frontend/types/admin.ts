@@ -12,6 +12,11 @@ export type SubKey =
   | 'property_inventory'
   | 'property_query'
   | 'property_reports'
+  | 'ops_inspection'
+  | 'ops_maintenance'
+  | 'ops_retrofit'
+  | 'ops_retire'
+  | 'ops_linkage'
   | 'persons_manage'
 
 export type ThirdKey =
@@ -60,4 +65,9 @@ export type ThirdKey =
   | 'reports_moe'
   | 'reports_custom'
   | 'reports_logs'
+  | 'ops_inspection_board'
+  | 'ops_maintenance_board'
+  | 'ops_retrofit_board'
+  | 'ops_retire_board'
+  | 'ops_linkage_board'
   | 'persons_list'

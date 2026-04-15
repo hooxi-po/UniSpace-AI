@@ -12,7 +12,7 @@
     </div>
 
     <!-- Content -->
-    <div class="p-4">
+    <div class="p-3">
       <slot />
     </div>
   </div>

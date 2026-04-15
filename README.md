@@ -1,103 +1,128 @@
 # UniSpace-AI
 
-基于 GIS / 数字孪生的校园地下管网运维系统。
+**基于 GIS 和数字孪生技术的校园地下管网智能运维系统**
 
-- 前端：Nuxt 3（Vue 3）+ Cesium（3D 地图）+ TailwindCSS + AI 助手（Gemini，SSE 流式输出）
-- 后端：Spring Boot 4 + PostgreSQL/PostGIS + Flyway（空间要素表 `geo_features`）
-
-> 当前版本说明：主地图中的“管道”已切换为后端动态数据：前端请求 `GET /api/v1/features?layers=pipes`，并在前端按管道分类规则（源自道路 `highway`）映射为 `water/drain/sewage` 三类（统一线宽 `5`）。后端对 `pipes` 做了别名兼容（映射到数据库 `geo_features.layer='roads'`）。后台大厅（`/admin`）资产中心同步使用 `buildings/pipes`，支持 `visible` 开关与要素 CRUD（新增/编辑/删除）。
-
----
-
-## 目录
-
-- [项目结构](#项目结构)
-- [技术栈](#技术栈)
-- [快速开始](#快速开始)
-- [环境变量与配置](#环境变量与配置)
-- [前端说明（Nuxt + Cesium）](#前端说明-nuxt--cesium)
-- [后端说明（Spring Boot + PostGIS）](#后端说明-spring-boot--postgis)
-- [数据准备：GeoJSON 拆分](#数据准备-geojson-拆分)
-- [数据导入：GeoJSON -> PostGIS（buildings/pipes（存储层 roads）实操流程）](#数据导入-geojson---postgisbuildingspipes存储层-roads实操流程)
-- [API 列表（后端）](#api-列表后端)
-- [常见问题](#常见问题)
-- [Git 工作流（推荐）](#git-工作流推荐)
-- [下一步建议](#下一步建议)
-
----
-
-## 项目结构
-
-```
-UniSpace-AI/
-├── start.sh                    # 一键启动（前端 + 后端）
-├── docker-compose.yml          # PostGIS（PostgreSQL 16 + PostGIS 3.4）
-├── backend/                    # Spring Boot 后端
-│   ├── build.gradle.kts
-│   ├── src/main/java/com/jolt/workflow/
-│   │   ├── WorkflowApplication.java
-│   │   ├── HelloController.java
-│   │   ├── config/CorsConfig.java
-│   │   └── geo/
-│   │       ├── GeoFeatureController.java
-│   │       └── GeoFeatureRow.java
-│   └── src/main/resources/
-│       ├── application.properties
-│       └── db/migration/
-│           └── V1__init_postgis_and_features.sql
-└── frontend/                   # Nuxt 3 前端
-    ├── nuxt.config.ts
-    ├── pages/
-    │   ├── index.vue           # 主页面（Map + UI Overlay）
-    │   └── admin.vue           # 后台大厅（资产中心：buildings/pipes）
-    ├── components/
-    │   ├── MapView.vue         # Cesium Viewer + 图层加载/拾取（管道逻辑已抽离）
-    │   ├── MapControls.vue     # 底部图层切换
-    │   ├── LayerToggle.vue
-    │   ├── TopNav.vue
-    │   ├── SidebarLeft.vue
-    │   ├── RightSidebar.vue
-    │   └── ChatInterface.vue   # AI 聊天浮窗
-    ├── composables/
-    │   ├── shared/
-    │   │   └── usePipeLayerLoader.ts  # 管道图层加载/分类/样式复用逻辑
-    │   ├── useConstants.ts             # Mock 资产/告警/工单数据
-    │   └── useGeminiChat.ts            # 与 /api/chat 的 SSE 流式交互
-    ├── server/api/
-    │   └── chat.post.ts        # Gemini API 代理（SSE）
-    ├── scripts/
-    │   └── ensure-nuxt-internal.mjs   # 修复 #internal/nuxt/paths 运行时报错
-    └── public/map/
-        ├── map_all.geojson
-        ├── water.geojson
-        ├── green.geojson
-        ├── buildings.geojson
-        ├── roads.geojson
-        └── split_geojson.py    # GeoJSON 拆分脚本
-```
-
----
+一个集成了空间数据可视化、拓扑关系管理、实时监测告警、工单全生命周期管理的完整数字孪生平台。
 
 ## 技术栈
 
-### 前端
+- **前端**：Nuxt 3 + Vue 3 + Cesium（3D地图）+ Mars3D（2D编辑器）+ TailwindCSS
+- **后端**：Spring Boot 4 + PostgreSQL/PostGIS + Flyway + JdbcTemplate
+- **AI**：Gemini 流式对话（`/api/chat`）
+- **数据层**：空间要素（GeoJSON）、Twin 拓扑、实时测点、工单系统、房产管理
 
-- Nuxt 3 / Vue 3
-- Cesium
-- TailwindCSS（全局样式/主地图仍使用）
-- 后台大厅（`/admin`）：浅色字节后台风格（纯 CSS，组件化在 `frontend/components/admin/`）
-- `vite-plugin-cesium`
-- AI：`@google/genai`（通过 Nuxt server route 代理）
+## 核心功能
 
-### 后端
+### 1. 三维地图可视化
+- **Cesium 三维引擎**：校园全景三维展示
+- **多图层管理**：建筑、管道（供水/排水/污水）、管网节点、绿地
+- **动态加载优化**：按视口 bbox 分页加载（800条/页，最多5页），防抖350ms
+- **实时高亮**：点击实体自动高亮并显示详情
+- **工单热力图**：叠加显示进行中的工单位置
 
-- Spring Boot 4
-- Spring Web
-- Spring Data JPA（当前主要用于初始化/数据源管理；Geo 查询使用 `JdbcTemplate`）
-- Flyway
-- PostgreSQL + PostGIS
+### 2. 拓扑关系管理
+- **drilldown 穿透查询**：点击管段自动查询关联的节点、阀门、建筑、房间、设备
+- **trace 上下游追踪**：基于 BFS 算法追踪管网上游/下游完整路径
+- **影响范围自动计算**：工单创建时自动计算受影响的建筑和房间
+- **拓扑数据模型**：`pipe_nodes`（节点）、`pipe_segments`（管段）、`asset_relations`（关系）
 
----
+### 3. 实时监测与告警
+- **测点数据采集**：支持压力、流量、浊度、余氯等多指标
+- **阈值规则引擎**：自动评估数据并触发 warning/critical 告警
+- **双表存储**：`m2_metric_latest`（最新值）+ `m2_metric_history`（历史数据）
+- **告警事件管理**：`m2_alert_events` 记录所有告警，支持状态流转
+
+### 4. 工单全生命周期管理
+- **四类工单**：巡检（inspection）、维修（maintenance）、改造（retrofit）、报废（retire）
+- **状态机流转**：draft → todo → assigned → in_progress → review → completed → closed
+- **热水泵联动控制**：批量控制受影响建筑的热水泵开关，支持定时恢复
+- **执行日志**：支持照片、语音、GPS 定位上传
+- **影响范围调整**：手动调整工单影响的建筑和房间
+- **统计与看板**：工单状态统计、效率分析、影响范围 Top 10
+
+### 5. 管道二维编辑器
+- **Mars3D 引擎**：支持 2D/2.5D/3D 视图切换
+- **可视化编辑**：节点拖拽、线段插点/删点、右键菜单
+- **草稿自动保存**：800ms 防抖 + 8s 定时保存到 localStorage
+- **撤销/重做**：支持无限次撤销和重做（最多保留50条历史）
+- **Twin 数据洞察**：实时查看 drilldown、trace、telemetry、audit 数据
+- **快捷报修**：编辑器内直接创建维修工单
+
+### 6. 建筑 3D 模型管理
+- **GLB 模型加载**：支持上传和配置 GLB 格式的建筑模型
+- **可视化坐标编辑**：在地图上点击或拖拽设置模型位置
+- **姿态调整**：滑杆实时预览 Heading/Pitch/Roll 旋转
+- **自动缩放**：根据建筑底面自动估算模型缩放比例
+
+### 7. 房产管理（部分实现）
+- **转固管理**：资产转固申请、审核、库存管理
+- **调配管理**：公用房归口调配、临时借用
+- **收费管理**：公房收费标准、缴费记录
+- **经营管理**：经营性用房租赁管理
+- **人员管理**：人员信息维护
+
+### 8. AI 智能助手
+- **Gemini 集成**：基于 Google Gemini API 的对话式 AI
+- **SSE 流式输出**：实时流式返回 AI 回复
+- **业务查询**：支持管网状态查询、工单进度查询等（需进一步完善）
+
+## 系统架构
+
+### 整体架构
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        浏览器层                              │
+│  主地图（3D Cesium）+ 后台管理（资产/工单/房产）             │
+└─────────────────────────────────────────────────────────────┘
+                              ↓ HTTP/WebSocket
+┌─────────────────────────────────────────────────────────────┐
+│                      前端层（Nuxt 3）                         │
+│  Pages + Components + Composables + Nuxt Server API         │
+└─────────────────────────────────────────────────────────────┘
+                              ↓ HTTP REST
+┌─────────────────────────────────────────────────────────────┐
+│                   后端层（Spring Boot 4）                     │
+│  Controllers + Repositories（JdbcTemplate）                  │
+└─────────────────────────────────────────────────────────────┘
+                              ↓ JDBC
+┌─────────────────────────────────────────────────────────────┐
+│                数据库层（PostgreSQL + PostGIS）               │
+│  空间要素 + 拓扑关系 + 测点数据 + 工单系统                    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 核心数据表
+
+| 表名 | 用途 | 关键字段 |
+|------|------|---------|
+| `geo_features` | 空间要素（建筑/管道/绿地） | id, layer, geom, properties, visible |
+| `pipe_nodes` | 管网节点 | id, feature_id, node_type, properties |
+| `pipe_segments` | 管段 | id, feature_id, from_node_id, to_node_id, diameter_mm, material |
+| `asset_relations` | 资产关系 | source_id, source_type, target_id, target_type, relation_type |
+| `telemetry_latest` | 实时测点数据 | point_id, feature_id, metric, value, sampled_at |
+| `m2_metric_history` | 历史测点数据 | point_id, metric, value, sampled_at |
+| `m2_alert_events` | 告警事件 | point_id, metric, severity, status |
+| `work_order` | 工单 | id, order_type, status, node_ids, segment_ids, impact_scope |
+| `pump_control_log` | 热水泵控制日志 | work_order_id, building_id, pump_id, action, result |
+
+### 技术特点
+
+1. **数据库端 JSON 构造**：利用 PostgreSQL 的 `jsonb_build_object` 和 `ST_AsGeoJSON` 在数据库层直接生成 GeoJSON，性能提升 6 倍
+2. **Controller-Repository 模式**：无 Service 层，Repository 直接处理业务逻辑
+3. **按需动态加载**：按视口 bbox 分页拉取，单次 800 条，最多 5 页，帧率稳定在 55-60 FPS
+4. **拓扑图算法**：基于 BFS 的上下游追踪，支持复杂管网结构
+5. **草稿自动保存**：800ms 防抖 + 8s 定时保存，避免数据丢失
+6. **审计日志完整**：所有编辑操作记录 before/after payload，可回溯
+
+## 文档导航
+
+- 项目总览：当前这份 [`README.md`](./README.md)
+- 开发指南：[`CLAUDE.md`](./CLAUDE.md)（项目架构、约定和最佳实践）
+- 模块导航：[`docs/README.md`](./docs/README.md)
+- 前端手册：[`docs/frontend.md`](./docs/frontend.md)
+- 后端手册：[`docs/backend.md`](./docs/backend.md)
+- 数据与 API 手册：[`docs/data-and-api.md`](./docs/data-and-api.md)
+- 业务模块手册：[`docs/business-modules.md`](./docs/business-modules.md)
 
 ## 快速开始
 
@@ -105,562 +130,309 @@ UniSpace-AI/
 
 - Node.js >= 18
 - JDK 21
-- Docker（可选：用于启动 PostGIS 容器）
+- PostgreSQL/PostGIS 或 Docker
 
-### 方式 A：一键启动（推荐）
+### 1. 准备环境变量
 
 ```bash
 cp .env.example .env
-# 按需修改 .env（至少配置 POSTGRES_PASSWORD / APP_ADMIN_PASSWORD / GEMINI_API_KEY）
+```
+
+至少需要配置：
+
+- `POSTGRES_PASSWORD` 或 `DB_PASSWORD`
+- `APP_ADMIN_PASSWORD`（当后端写鉴权开启时）
+- `GEMINI_API_KEY`（使用 AI 对话时需要）
+
+### 2. 一键启动
+
+```bash
 chmod +x start.sh
 ./start.sh
 ```
 
-启动后：
+`start.sh` 会自动：
+- 解析根目录 `.env`
+- 校验 Java / Node 环境
+- 若本地没有 PostgreSQL，自动启动 Docker 容器
+- 清理遗留的 3000/8080 端口进程
+- 安装前端依赖
+- 启动后端和前端
 
-- 前端：http://localhost:3000
-- 后端：http://localhost:8080
+启动后访问：
+- 前端：`http://localhost:3000`
+- 后端：`http://localhost:8080`
 
-### 方式 B：分别启动
-
-#### 1) 启动数据库（建议）
-
-项目提供 `docker-compose.yml` 用于启动 PostGIS：
+### 3. 手动启动
 
 ```bash
+# 启动数据库
 docker compose up -d
-```
 
-默认数据库参数：
-
-- Host：`localhost`
-- Port：`5432`
-- Database：`unispace`
-- Username：`postgres`
-- Password：读取环境变量 `POSTGRES_PASSWORD`
-
-#### 2) 启动后端
-
-```bash
+# 启动后端
 cd backend
 ./gradlew bootRun
-```
 
-#### 3) 启动前端
-
-```bash
+# 启动前端
 cd frontend
-npm ci || npm install
+npm ci
 npm run dev
 ```
 
----
+## 核心 API
 
-## 环境变量与配置
+### 空间要素与拓扑关系
 
-### 后端（backend）
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/api/v1/features` | GET | 查询空间要素（支持 bbox、图层、分页） |
+| `/api/v1/features/{id}` | GET | 查询单个要素 |
+| `/api/v1/features` | POST | 创建要素 |
+| `/api/v1/features` | PUT | 更新要素 |
+| `/api/v1/features` | DELETE | 删除要素 |
+| `/api/v1/features/visibility` | PUT | 更新可见性 |
+| `/api/v1/twin/drilldown/{featureId}` | GET | 穿透查询（节点/建筑/房间/设备） |
+| `/api/v1/twin/trace` | GET | 上下游追踪 |
+| `/api/v1/twin/nodes` | GET | 查询管网节点 |
+| `/api/v1/twin/telemetry/latest` | GET | 查询最新测点数据 |
+| `/api/v1/twin/pipes/{id}/geometry` | PUT | 更新管道几何 |
+| `/api/v1/twin/pipes/{id}/properties` | PUT | 更新管道属性 |
+| `/api/v1/twin/audit/{featureId}` | GET | 查询编辑审计日志 |
 
-`backend/src/main/resources/application.properties` 中支持如下变量：
+### 实时监测与告警
 
-- `DB_URL`（默认：`jdbc:postgresql://localhost:5432/unispace`）
-- `DB_USER`（默认：`postgres`）
-- `DB_PASSWORD`（必需，建议强口令）
-- `APP_SECURITY_WRITE_AUTH_ENABLED`（默认：`true`，开启后端写接口鉴权）
-- `APP_ADMIN_USER`（默认：`admin`）
-- `APP_ADMIN_PASSWORD`（当写接口鉴权开启时必需）
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/api/v1/module2/telemetry/ingest` | POST | 上报测点数据 |
+| `/api/v1/module2/telemetry/thresholds` | PUT | 设置阈值规则 |
+| `/api/v1/module2/telemetry/latest` | GET | 查询最新测点数据 |
+| `/api/v1/module2/telemetry/history` | GET | 查询历史测点数据 |
 
-### 前端（frontend）
+### 工单系统
 
-`frontend/nuxt.config.ts` 中：
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/api/v1/pipeline-ops/workorders` | GET | 查询工单列表 |
+| `/api/v1/pipeline-ops/workorder` | GET | 查询单个工单 |
+| `/api/v1/pipeline-ops/workorders` | POST | 创建/更新工单 |
+| `/api/v1/pipeline-ops/workorders` | PATCH | 工单状态流转 |
+| `/api/v1/pipeline-ops/auto-create` | POST | 自动创建工单（告警触发） |
+| `/api/v1/pipeline-ops/quick-report` | POST | 快捷报修 |
+| `/api/v1/pipeline-ops/action` | POST | 执行工单操作（泵控/日志/调整） |
+| `/api/v1/pipeline-ops/stats` | GET | 工单统计 |
+| `/api/v1/pipeline-ops/dashboard` | GET | 工单看板数据 |
 
-- `GEMINI_API_KEY`：Nuxt server 侧读取的 Gemini API Key（**必需**，否则 `/api/chat` 会 500）
-- `BACKEND_WRITE_AUTH_ENABLED`（默认：继承 `APP_SECURITY_WRITE_AUTH_ENABLED`；为 `false` 时 Nuxt 代理后端写接口不再附加 Basic 头）
-- `BACKEND_ADMIN_USER` / `BACKEND_ADMIN_PASSWORD`：当 `BACKEND_WRITE_AUTH_ENABLED=true` 时用于 Nuxt server 侧代理后端写接口（可复用 `APP_ADMIN_USER` / `APP_ADMIN_PASSWORD`）
-- 当 `BACKEND_WRITE_AUTH_ENABLED=true` 时，`/api/backend/*` 写路由还会校验调用方请求头中的 HTTP Basic（需与 `BACKEND_ADMIN_USER` / `BACKEND_ADMIN_PASSWORD` 一致）
+### 房产管理
 
-示例：
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/api/v1/property/buildings` | GET | 查询建筑列表 |
+| `/api/v1/property/rooms` | GET | 查询房间列表 |
+| `/api/v1/property/overview` | GET | 房产概览统计 |
+
+## 数据库迁移
+
+当前 Flyway 迁移版本：`V1 ~ V10`
+
+| 版本 | 说明 |
+|------|------|
+| V1 | 初始化 PostGIS + `geo_features` 表 |
+| V2 | 添加 `visible` 字段 |
+| V3 | Twin 拓扑表（`pipe_nodes`、`pipe_segments`、`asset_relations`、`telemetry_latest`、`edit_audit_log`） |
+| V4 | Twin 拓扑种子数据 |
+| V5 | Twin 实体表（`pipe_valves`、`pump_stations`、`pipe_manholes`、`building_floors`、`building_rooms`） |
+| V6 | Module2 测点系统表 |
+| V7 | 扩展拓扑实体种子数据 |
+| V8 | 房产基础表（`buildings`、`rooms`） |
+| V9 | 房产种子数据 |
+| V10 | 工单系统表（`work_order`、`order_building_link`、`work_order_log`、`pump_control_log`） |
+
+## 环境变量
+
+| 变量 | 用途 | 默认值 / 说明 |
+| --- | --- | --- |
+| `POSTGRES_PASSWORD` | Docker/Postgres 密码 | 必填 |
+| `DB_URL` | Spring 数据库地址 | `jdbc:postgresql://localhost:5432/unispace` |
+| `DB_USER` | Spring 数据库用户 | `postgres` |
+| `DB_PASSWORD` | Spring 数据库密码 | 为空时回退 `POSTGRES_PASSWORD` |
+| `APP_SECURITY_WRITE_AUTH_ENABLED` | Spring 写接口鉴权开关 | `true` |
+| `APP_ADMIN_USER` | Spring Basic 用户名 | `admin` |
+| `APP_ADMIN_PASSWORD` | Spring Basic 密码 | 写鉴权开启时必填 |
+| `BACKEND_WRITE_AUTH_ENABLED` | Nuxt 写代理鉴权开关 | 默认继承后端语义，建议保持 `true` |
+| `BACKEND_ADMIN_USER` | Nuxt 代理转发时附加的用户名 | `admin` |
+| `BACKEND_ADMIN_PASSWORD` | Nuxt 代理转发时附加的密码 | 写代理开启时必填 |
+| `BACKEND_BASE_URL` / `NUXT_PUBLIC_BACKEND_BASE_URL` | Nuxt 访问后端的基地址 | `http://localhost:8080` |
+| `GEMINI_API_KEY` | `/api/chat` 使用的 Gemini Key | 未配置时聊天接口返回 500 |
+| `CORS_ALLOWED_ORIGINS` | 后端 CORS 白名单 | `http://localhost:3000,http://127.0.0.1:3000` |
+| `JPA_SHOW_SQL` | 是否打印 SQL | `false` |
+
+## 环境变量
+
+| 变量 | 用途 | 默认值 / 说明 |
+| --- | --- | --- |
+| `POSTGRES_PASSWORD` | Docker/Postgres 密码 | 必填 |
+| `DB_URL` | Spring 数据库地址 | `jdbc:postgresql://localhost:5432/unispace` |
+| `DB_USER` | Spring 数据库用户 | `postgres` |
+| `DB_PASSWORD` | Spring 数据库密码 | 为空时回退 `POSTGRES_PASSWORD` |
+| `APP_SECURITY_WRITE_AUTH_ENABLED` | Spring 写接口鉴权开关 | `true` |
+| `APP_ADMIN_USER` | Spring Basic 用户名 | `admin` |
+| `APP_ADMIN_PASSWORD` | Spring Basic 密码 | 写鉴权开启时必填 |
+| `BACKEND_WRITE_AUTH_ENABLED` | Nuxt 写代理鉴权开关 | 默认继承后端语义 |
+| `BACKEND_ADMIN_USER` | Nuxt 代理转发用户名 | `admin` |
+| `BACKEND_ADMIN_PASSWORD` | Nuxt 代理转发密码 | 写代理开启时必填 |
+| `BACKEND_BASE_URL` | Nuxt 访问后端的基地址 | `http://localhost:8080` |
+| `GEMINI_API_KEY` | AI 对话 API Key | 未配置时聊天接口返回 500 |
+| `CORS_ALLOWED_ORIGINS` | 后端 CORS 白名单 | `http://localhost:3000,http://127.0.0.1:3000` |
+
+## 验证与测试
+
+### 仓库级验证
 
 ```bash
-cp .env.example .env
-vi .env
-
-export GEMINI_API_KEY=YOUR_KEY
+./scripts/verify-local.sh
 ```
 
----
+支持：
+- `./scripts/verify-local.sh full` - 完整验证（后端测试 + 前端类型检查 + 前端构建）
+- `./scripts/verify-local.sh frontend` - 仅前端验证
+- `./scripts/verify-local.sh backend` - 仅后端验证
+- `./scripts/verify-local.sh guardrails` - 代码规模检查
 
-## 前端说明（Nuxt + Cesium）
+### 其他脚本
 
-### 页面入口
+```bash
+# 检查大文件阈值
+./scripts/check-size-guardrails.sh
 
-- `pages/index.vue`
-  - 作为全局状态“源头”维护：
-    - `selectedItem`：当前选中对象（建筑/管网/GeoJSON feature）
-    - `viewport`：视口（经纬度 + 相机高度）
-    - `layers`：图层开关（water/sewage/drain/buildings/green）
-  - 将状态通过 props 传给 `MapView`、`MapControls`、`RightSidebar` 等组件。
+# 生成性能基线报告
+./scripts/perf-baseline.sh
 
-- `pages/admin.vue`
-  - 后台大厅（浅色字节后台风格）：
-    - 使用左侧菜单布局（组件：`components/admin/AdminLayout.vue`、`components/admin/AdminSider.vue`），资产中心包含二级菜单：建筑 / 管道
-    - 资产中心：读取走后端 GeoJSON API（`GET /api/v1/features?...`），写操作走 Nuxt server 代理（`/api/backend/*`），并支持搜索、可见性切换、要素 CRUD
-    - 组件化：表格/弹窗/操作已拆分为 `components/admin/GeoFeatureTable.vue`、`components/admin/AssetFeatureDialog.vue`、`components/admin/AssetDeleteDialog.vue`、`components/admin/AssetRowActions.vue`、`components/admin/AssetVisibilitySwitch.vue`
-    - 资产 CRUD 逻辑收敛到 `composables/admin/useAssetCrud.ts`，请求封装在 `services/geo-features.ts`
-    - 编辑体验：支持「表单模式（默认）」+「高级 JSON」双模式
-    - `useConstants.ts` 中的资产/告警/工单仍为 mock（主地图与右侧详情面板仍会用到）
+# 前端类型检查
+cd frontend
+npm run typecheck
 
-### 地图核心（`components/MapView.vue`）
+# 前端生产构建
+npm run build
 
-- 使用 `Cesium.Viewer` 初始化场景，采用深色底图（Carto dark）
-- 地图图层职责拆分：
-  - `MapView.vue`：地图容器、相机同步、拾取、高亮、通用图层装载
-  - `composables/shared/usePipeLayerLoader.ts`：管道图层加载/分类/样式（可复用）
-- 图层数据来源：
-  - 管道三分类（`water/drain/sewage`）：从后端 `GET /api/v1/features?layers=pipes&visible=true` 拉取后分类
-  - 建筑：从后端 `GET /api/v1/features?layers=buildings&visible=true` 拉取
-  - 绿地：仍使用静态文件 `public/map/green.geojson`
-- 管道样式：三类统一线宽 `5`，并使用发光材质（`PolylineGlowMaterialProperty`）
-- 图层显隐：通过 `dataSource.show = props.layers.xxx` 控制
-- 拾取：`ScreenSpaceEventHandler` + `viewer.scene.pick`，拾取 entity 后 emit `select` 给父组件
+# 迁移工单数据到 Postgres
+npm run migrate:pipeline-ops
 
-### 资产台账（Mock）
+# 创建测试建筑（带 GLB 模型）
+npm run seed:test-building
+```
 
-- `composables/useConstants.ts` 提供 mock：
-  - `BUILDINGS` / `PIPELINES` / `WORK_ORDERS` / `MOCK_ALERTS` / `PRESSURE_DATA`
-- `index.vue` 的 `handleSelection(...)` 会尝试将选中的 GeoJSON feature 匹配到 mock 资产（或兜底生成 Building）。
+### 测试现状
 
-### AI 聊天（Gemini）
+后端已有测试：
+- `WorkflowApplicationTests` - 应用启动测试
+- `SecurityConfigTest` - 安全配置测试
+- `WorkOrderRepositoryTest` - 工单仓储测试
 
-- UI：`components/ChatInterface.vue`
-- 客户端：`composables/useGeminiChat.ts`
-  - 请求 `POST /api/chat`
-  - 读取 `ReadableStream`，解析 `data: {"text":"..."}` 的 SSE 分片
-- 服务端：`server/api/chat.post.ts`
-  - 使用 `@google/genai`
-  - 需要 `GEMINI_API_KEY`
+前端当前以 `npm run typecheck` 和 `npm run build` 作为主要验证手段。
 
----
+## 目录结构
 
-## 后端说明（Spring Boot + PostGIS）
+```text
+UniSpace-AI/
+├── .env.example                    # 环境变量模板
+├── docker-compose.yml              # Docker 配置
+├── start.sh                        # 一键启动脚本
+├── CLAUDE.md                       # 项目架构与开发指南
+├── scripts/
+│   ├── verify-local.sh            # 仓库级验证
+│   ├── check-size-guardrails.sh   # 代码规模检查
+│   └── perf-baseline.sh           # 性能基线测试
+├── backend/
+│   ├── build.gradle.kts
+│   ├── src/main/java/com/jolt/workflow/
+│   │   ├── config/                # CORS / 安全 / RequestId / 异常处理
+│   │   ├── geo/                   # GeoJSON / Twin / 遥测
+│   │   ├── pipelineops/           # 管网工单
+│   │   └── property/              # 房产基础接口
+│   ├── src/main/resources/
+│   │   ├── application.properties
+│   │   └── db/migration/          # Flyway 迁移脚本 V1~V10
+│   └── src/test/
+└── frontend/
+    ├── pages/
+    │   ├── index.vue              # 主地图
+    │   ├── admin.vue              # 后台管理
+    │   └── admin-pipe-editor.vue  # 管道编辑器
+    ├── components/
+    │   ├── MapView.vue            # Cesium 地图组件
+    │   ├── ChatInterface.vue      # AI 对话组件
+    │   └── admin/
+    │       ├── AssetFeatureDialog.vue           # 资产表单
+    │       ├── ModelCoordinatePickerDialog.vue  # 模型坐标编辑器
+    │       ├── Pipe2DEditorDialog.vue           # 管道编辑器主容器
+    │       └── ops/                             # 工单看板组件
+    ├── composables/
+    │   ├── admin/                 # 后台管理逻辑
+    │   ├── property/              # 房产管理逻辑
+    │   └── shared/                # 共享逻辑
+    ├── services/                  # API 服务层
+    ├── server/
+    │   ├── api/                   # Nuxt Server API 路由
+    │   ├── data/                  # 本地 JSON 数据
+    │   └── utils/                 # 服务端工具
+    ├── public/
+    │   ├── map/                   # GeoJSON 样例数据
+    │   └── models/                # GLB 3D 模型
+    └── views/admin/               # 后台页面视图
+```
 
-### 数据库迁移（Flyway）
+## 开发提示
 
-当前迁移清单（`backend/src/main/resources/db/migration`）：
+1. **写操作鉴权**：浏览器端的建筑与管道写操作统一走 Nuxt `/api/backend/*` 代理，并通过全局 Basic 鉴权弹层补充凭据
+2. **管道图层映射**：Spring Boot 对外 API 名称是 `pipes`，实际数据库层复用 `geo_features.layer='roads'`
+3. **房产模块状态**：房产业务大量是文件型原型实现（JSON 文件），”已实现”指页面与读写链路存在，不代表都已切到后端数据库
+4. **性能优化**：地图采用按视口 bbox 分页加载，单次 800 条，最多 5 页，相机移动后 350ms 防抖加载
+5. **草稿机制**：管道编辑器支持本地草稿自动保存（800ms 防抖 + 8s 定时），避免数据丢失
+6. **审计日志**：所有编辑操作记录在 `edit_audit_log` 表，包含 before/after payload
 
-- `V1__init_postgis_and_features.sql`：初始化 `geo_features` + PostGIS 扩展
-- `V2__add_visibility_to_geo_features.sql`：新增 `visible` 字段与索引
-- `V3__add_twin_topology_tables.sql`：`pipe_nodes / pipe_segments / asset_relations / telemetry_latest / edit_audit_log`
-- `V4__seed_twin_topology_and_telemetry.sql`：基于 `roads` 回填初始拓扑关系与遥测样例
-- `V5__add_twin_entity_tables.sql`：新增 `pipe_manholes / pipe_valves / pump_stations / building_floors / building_rooms`
-- `V6__add_module2_telemetry_tables.sql`：新增模块2测点/阈值/实时/历史/告警表
-- `V7__seed_extended_twin_topology_entities.sql`：补充扩展拓扑实体样例与全链路关系种子
+## 常见问题
 
-`backend/src/main/resources/db/migration/V1__init_postgis_and_features.sql`：
-
-- 启用扩展：`postgis`
-- 创建表：`geo_features`
-
-字段：
-
-- `id TEXT PRIMARY KEY`
-- `layer TEXT NOT NULL`
-- `geom geometry(GEOMETRY, 4326) NOT NULL`
-- `properties JSONB NOT NULL DEFAULT '{}'::jsonb`
-- `created_at TIMESTAMPTZ NOT NULL DEFAULT now()`
-- `updated_at TIMESTAMPTZ NOT NULL DEFAULT now()`
-
-并包含索引与 `updated_at` 触发器。
-
-### 后端 GeoJSON API 的实现方式
-
-`GeoFeatureController` 使用 `JdbcTemplate` + Postgres JSONB 函数构造 GeoJSON：
-
-- `jsonb_build_object` / `jsonb_agg`
-- `ST_AsGeoJSON(geom)::jsonb` 将 geometry 输出为 GeoJSON
-
-这样可以避免在 Java 侧大量拼装 GeoJSON，提高查询与序列化效率。
-
----
-
-## 数据准备：GeoJSON 拆分
-
-`frontend/public/map/split_geojson.py` 用于将 `map_all.geojson` 按规则拆分为：
-
-- `water.geojson`
-- `green.geojson`
-- `buildings.geojson`
-- `roads.geojson`
-
-分类规则（核心逻辑）：
-
-- Point 类型直接跳过
-- 水体：`properties.natural == 'water'` 或存在 `properties.water`
-- 绿地：`natural == 'wood' | 'wetland'` 或 `landuse == 'cemetery'`
-- 建筑：存在 `properties.building`
-- 管道（源自道路）：存在 `properties.highway`
-
----
-
-## 数据导入：GeoJSON -> PostGIS（buildings/pipes（存储层 roads）实操流程）
-
-目标：将前端静态文件中的 **建筑/管道（API 语义 pipes，存储层 roads）** 导入到后端 PostGIS 表 `geo_features`，并通过后端 GeoJSON API 验证。
-
-### 0) 启动数据库容器
-
+### 1. 后端启动失败：数据库连接错误
+检查 `.env` 中的数据库配置，确保 PostgreSQL 已启动：
 ```bash
 docker compose up -d
 ```
 
-默认数据库：`postgres/postgres@localhost:5432/unispace`
-
-### 1) 初始化数据库表（Flyway 迁移）
-
-推荐方式：启动后端一次，让 Flyway 自动执行全部迁移（V1~V7）。
-
-如果你只想快速初始化基础表，也可以手动执行 V1：
-
+### 2. 前端启动失败：端口被占用
+清理占用的端口：
 ```bash
-docker exec -i unispace-postgis psql -U postgres -d unispace < backend/src/main/resources/db/migration/V1__init_postgis_and_features.sql
+lsof -ti:3000 | xargs kill -9
 ```
 
-验证表存在：
-
-```bash
-docker exec -it unispace-postgis psql -U postgres -d unispace -c "\d geo_features"
-```
-
-### 2) 将 GeoJSON 拷贝进容器
-
-```bash
-docker cp frontend/public/map/roads.geojson unispace-postgis:/tmp/roads.geojson
-docker cp frontend/public/map/buildings.geojson unispace-postgis:/tmp/buildings.geojson
-```
-
-### 3) 导入 pipes（存储层 roads）
-
-```bash
-docker exec -i unispace-postgis psql -U postgres -d unispace -c "
-WITH gj AS (
-  SELECT pg_read_file('/tmp/roads.geojson')::jsonb AS fc
-),
-feat AS (
-  SELECT jsonb_array_elements(fc->'features') AS f
-  FROM gj
-)
-INSERT INTO geo_features (id, layer, geom, properties)
-SELECT
-  COALESCE(NULLIF(f->>'id',''), md5((f->'geometry')::text || (f->'properties')::text)) AS id,
-  'roads' AS layer,
-  ST_SetSRID(ST_GeomFromGeoJSON((f->'geometry')::text), 4326) AS geom,
-  COALESCE(f->'properties', '{}'::jsonb) AS properties
-FROM feat
-WHERE f ? 'geometry'
-ON CONFLICT (id) DO UPDATE
-SET layer = EXCLUDED.layer,
-    geom = EXCLUDED.geom,
-    properties = EXCLUDED.properties,
-    updated_at = now();
-"
-```
-
-### 4) 导入 buildings
-
-```bash
-docker exec -i unispace-postgis psql -U postgres -d unispace -c "
-WITH gj AS (
-  SELECT pg_read_file('/tmp/buildings.geojson')::jsonb AS fc
-),
-feat AS (
-  SELECT jsonb_array_elements(fc->'features') AS f
-  FROM gj
-)
-INSERT INTO geo_features (id, layer, geom, properties)
-SELECT
-  COALESCE(NULLIF(f->>'id',''), md5((f->'geometry')::text || (f->'properties')::text)) AS id,
-  'buildings' AS layer,
-  ST_SetSRID(ST_GeomFromGeoJSON((f->'geometry')::text), 4326) AS geom,
-  COALESCE(f->'properties', '{}'::jsonb) AS properties
-FROM feat
-WHERE f ? 'geometry'
-ON CONFLICT (id) DO UPDATE
-SET layer = EXCLUDED.layer,
-    geom = EXCLUDED.geom,
-    properties = EXCLUDED.properties,
-    updated_at = now();
-"
-```
-
-### 5) 验证导入结果
-
-```bash
-docker exec -i unispace-postgis psql -U postgres -d unispace -c "select layer, count(*) from geo_features where layer in ('buildings','roads') group by layer order by layer;"
-```
-
-### 6) 验证后端 API
-
-后端启动后：
-
-```bash
-curl "http://localhost:8080/api/v1/features?layers=buildings,pipes&limit=5" | head -c 400
-```
-
----
-
-## API 列表（后端）
-
-> 路径前缀：`/api/v1`
->
-> 安全策略：`GET /api/**` 公开；`POST/PUT/PATCH/DELETE /api/**` 需要 HTTP Basic（`APP_ADMIN_USER` / `APP_ADMIN_PASSWORD`）。
-
-### `GET /api/v1/features`
-
-Query 参数：
-
-- `bbox`（可选）：`minLon,minLat,maxLon,maxLat`（EPSG:4326）
-- `layers`（可选）：逗号分隔图层名（`pipes` 会在后端自动映射到 `roads` 存储层）
-- `limit`（可选，默认 `2000`）
-- `page`（可选）：分页页码（从 `1` 开始）
-- `offset`（可选）：偏移量；若同时传 `page` 与 `offset`，优先 `offset`
-- `visible`（可选）：`true | false`（后端会按 `geo_features.visible` 过滤；返回的 `properties` 也会附加 `visible` 字段）
-
-返回：GeoJSON `FeatureCollection`。
-
-示例：
-
-```bash
-curl -s "http://localhost:8080/api/v1/features?layers=pipes&limit=10" | cat
-```
-
-### `GET /api/v1/features/{id}`
-
-返回：单个 GeoJSON `Feature`。
-
-### `POST /api/v1/features`
-
-用途：新增建筑/管道要素。
-
-鉴权：需要 HTTP Basic（示例：`-u "$APP_ADMIN_USER:$APP_ADMIN_PASSWORD"`）。
-
-Body（示例）：
-
-```json
-{
-  "id": "pipe_001",
-  "layer": "pipes",
-  "visible": true,
-  "geometry": { "type": "LineString", "coordinates": [[119.1, 26.0], [119.2, 26.1]] },
-  "properties": { "name": "新管道", "highway": "service" }
-}
-```
-
-返回：`{"ok":true,"id":"..."}`（201，或 400/409）。
-
-### `PUT /api/v1/features`
-
-用途：更新要素（按 `id` 全量更新 `layer/geometry/properties/visible`）。
-
-鉴权：需要 HTTP Basic。
-
-返回：`{"ok":true,"id":"..."}`（或 400/404）。
-
-### `DELETE /api/v1/features?id=...`
-
-用途：按 `id` 删除要素。
-
-鉴权：需要 HTTP Basic。
-
-返回：`{"ok":true,"id":"..."}`（或 400/404）。
-
-### `PUT /api/v1/features/visibility`
-
-用途：按请求体中的 `id` 更新要素可见性（后台大厅的开关会调用该接口）。
-
-鉴权：需要 HTTP Basic。
-
-Body：
-
-```json
-{"id":"...","visible":true}
-```
-
-返回：`{"ok":true}`（或 400/404）。
-
-### `PUT /api/v1/features/{id}/visibility`（兼容接口）
-
-用途：按路径 `id` 更新可见性。
-
-鉴权：需要 HTTP Basic。
-
-Body：
-
-```json
-{"visible":true}
-```
-
-返回：`{"ok":true}`（或 400/404）。
-
-### `GET /api/v1/twin/drilldown/{id}`
-
-返回字段除 `feature/segment/nodes/relations/linkedBuildings` 外，新增：
-
-- `impactedRooms`
-- `valves`
-- `equipments`
-
-用于主地图点击管段后的真实穿透展示。
-
-### `POST /api/v1/module2/telemetry/ingest`
-
-用途：写入模块2测点数据（实时+历史），并按阈值自动产生告警。
-
-示例：
-
-```json
-{
-  "pointId": "pt_pipe_001_pressure",
-  "featureId": "way/25598484",
-  "metric": "pressure",
-  "value": 2.45,
-  "unit": "bar",
-  "sampledAt": "2026-02-21T06:20:00Z"
-}
-```
-
-### `PUT /api/v1/module2/telemetry/thresholds`
-
-用途：设置或更新测点阈值规则（`warn/alarm` 上下限）。
-
-### `GET /api/v1/module2/telemetry/latest`
-
-用途：查询模块2实时测点数据（支持 `pointIds`、`metric`、`limit`）。
-
-### `GET /api/v1/module2/telemetry/history`
-
-用途：查询模块2历史测点数据（支持 `pointId`、`metric`、`from`、`to`、`limit`）。
-
-## 性能基线脚本
-
-```bash
-./scripts/perf-baseline.sh
-```
-
-可选环境变量：
-
-- `BACKEND_URL`（默认 `http://localhost:8080`）
-- `FRONTEND_URL`（默认 `http://localhost:3000`）
-- `BBOX`（默认 `119.1500,26.0000,119.2500,26.0800`）
-- `PAGE_SIZE`（默认 `800`）
-- `MAX_PAGES`（默认 `5`）
-- `FPS_CURRENT`（可选，手工填入真实 FPS；不填则脚本给出估算值）
-
-脚本会在 `reports/` 下生成可复现的基线报告（首屏加载、实体数量、FPS Current/Target）。
-
----
-
-## 常见问题
-
-### 1) 后端启动提示 8080 端口占用
-
-临时换端口：
-
-```bash
-cd backend
-./gradlew bootRun --args='--server.port=8081'
-```
-
-### 2) AI 聊天接口报错（未设置 `GEMINI_API_KEY`）
-
-```bash
-export GEMINI_API_KEY=YOUR_KEY
-```
-
-### 3) 地图数据量大导致前端卡顿
-
-当前实现已支持按视口 `bbox` + `page/offset` 增量加载。若仍卡顿，建议：
-
-- 缩小单次分页大小（`limit`）
-- 降低前端分页拉取页数上限
-- 使用 `scripts/perf-baseline.sh` 定期生成性能基线报告
-
-### 4) 前端报错 `#internal/nuxt/paths` 未定义
-
-已在 `frontend/scripts/ensure-nuxt-internal.mjs` 做兼容修复，并接入 `dev/build/postinstall` 生命周期。
-如果仍报错，先清理并重建 Nuxt 产物：
-
+### 3. AI 对话返回 500 错误
+检查 `.env` 中是否配置了 `GEMINI_API_KEY`
+
+### 4. 写操作返回 401/403 错误
+检查后端和前端的写鉴权配置是否一致：
+- `APP_SECURITY_WRITE_AUTH_ENABLED`
+- `BACKEND_WRITE_AUTH_ENABLED`
+- `APP_ADMIN_PASSWORD` / `BACKEND_ADMIN_PASSWORD`
+
+### 5. Mars3D 加载失败
+检查 `node_modules/mars3d` 是否存在，清除 `.nuxt` 缓存重新构建：
 ```bash
 cd frontend
 rm -rf .nuxt
 npm run dev
 ```
 
----
+## 贡献指南
 
-## Git 工作流（推荐）
+1. Fork 本仓库
+2. 创建特性分支：`git checkout -b feature/your-feature-name`
+3. 提交更改：`git commit -m “feat: your message”`
+4. 推送到分支：`git push origin feature/your-feature-name`
+5. 提交 Pull Request
 
-本仓库推荐使用以 `develop` 为主干的 **GitHub Flow**（功能分支 + PR + Squash 合并），原则是：**不要在 `develop`/`main` 上直接改代码**。
+## 许可证
 
-### 1) 开发前同步（确保本地最新）
+[MIT License](LICENSE)
 
-```bash
-git checkout develop
-git pull origin develop
-```
+## 联系方式
 
-### 2) 为每个任务创建分支（任务隔离）
-
-```bash
-git checkout -b feature/your-feature-name
-```
-
-分支命名建议：
-
-- **feature**：`feature/...`
-- **bugfix**：`fix/...`
-- **文档**：`docs/...`
-
-### 3) 迭代开发与提交（小步提交）
-
-```bash
-git status
-git add .
-git commit -m "feat: your message"
-```
-
-提交信息建议前缀：`feat`、`fix`、`docs`、`style`。
-
-### 4) 推送前先同步 develop（减少冲突）
-
-```bash
-git pull origin develop
-# 有冲突则解决后再 commit
-git push -u origin feature/your-feature-name
-```
-
-### 5) 发起 PR 并合并
-
-- **发起 PR**：在 GitHub 上对你的分支点击 *Compare & pull request*
-- **评审**：多人协作时走 Code Review
-- **合并策略**：建议使用 **Squash and merge** 保持提交历史整洁
-
-### 6) 合并后清理分支
-
-```bash
-git checkout develop
-git pull origin develop
-git branch -d feature/your-feature-name
-git fetch -p
-```
-
-### 7) 常用命令速查
-
-- **查看状态**：`git status`
-- **查看提交图**：`git log --oneline --graph`
-- **查看分支**：`git branch -a`
-- **查看 diff**：`git diff`
-
-## 下一步建议
-
-- **数据统一**：将 `frontend/public/map/*.geojson` 导入 `geo_features`，前端切换为从 `/api/v1/features` 加载。
-- **接口鲁棒性**：让 `/api/v1/features` 在无数据时也返回合法 FeatureCollection（而不是 500）。
-- **台账/告警/工单接口化**：逐步替换 `useConstants.ts` 的 mock 数据为后端真实数据。
-- **房产管理模块**：`/admin` 下的“房产管理”目前为 mock，可对接真实业务数据与权限体系。
+如有问题或建议，请提交 Issue 或 Pull Request。

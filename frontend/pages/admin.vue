@@ -4,7 +4,15 @@
     v-model:subValue="activeSubTab"
     v-model:thirdValue="activeThirdTab"
     title="后台大厅"
-    :subtitle="activeTab === 'assets' ? '资产中心' : activeTab === 'property' ? '房产管理' : activeTab === 'persons' ? '人员管理' : ''"
+    :subtitle="activeTab === 'assets'
+      ? '资产中心'
+      : activeTab === 'property'
+        ? '房产管理'
+        : activeTab === 'ops'
+          ? '管网运维闭环'
+          : activeTab === 'persons'
+            ? '人员管理'
+            : ''"
     :tabs="tabs"
     :sub-tabs="currentSubTabs"
     :third-tabs="currentThirdTabs"
@@ -118,6 +126,7 @@
         :open="editorOpen"
         :mode="editorMode"
         :layer="activeAssetLayer"
+        :backend-base-url="backendBaseUrl"
         :payload="editorPayload"
         :submitting="editorSubmitting"
         :api-error="editorError"
@@ -134,13 +143,6 @@
         @confirm="confirmDelete"
       />
 
-      <Pipe2DEditorDialog
-        :open="pipeEditorOpen"
-        :backend-base-url="backendBaseUrl"
-        :initial-feature-id="pipeEditorFeatureId"
-        @close="pipeEditorOpen = false"
-        @saved="handlePipeEditorSaved"
-      />
     </template>
   </AdminLayout>
 </template>
@@ -157,7 +159,6 @@ import PropertyTable from '~/components/admin/PropertyTable.vue'
 import JsonDrawer from '~/components/admin/JsonDrawer.vue'
 import AssetFeatureDialog from '~/components/admin/AssetFeatureDialog.vue'
 import AssetDeleteDialog from '~/components/admin/AssetDeleteDialog.vue'
-import Pipe2DEditorDialog from '~/components/admin/Pipe2DEditorDialog.vue'
 
 import { adminCompMap } from '~/config/admin-comp-map'
 import { getTabs, getSubTabs, getThirdTabs } from '~/config/admin-menu'
@@ -173,6 +174,8 @@ import { useAssetCrud } from '~/composables/admin/useAssetCrud'
 import { normalizeBackendBaseUrl } from '~/utils/backend-url'
 
 const compMap = adminCompMap
+const route = useRoute()
+const router = useRouter()
 
 const searchPlaceholder = computed(() => {
   if (activeTab.value === 'property') return '搜索 id / 名称 / 类型'
@@ -185,9 +188,15 @@ const tabs = computed(() => getTabs())
 
 type TabKey = typeof tabs.value[number]['key']
 
-const activeTab = ref<TabKey>('assets')
-const activeSubTab = ref<SubKey>('assets_buildings')
-const activeThirdTab = ref<ThirdKey | undefined>(undefined)
+const initTab = typeof route.query.tab === 'string' ? route.query.tab : 'assets'
+const activeTab = ref<TabKey>(tabs.value.some(t => t.key === initTab) ? initTab as TabKey : 'assets')
+const initSub = typeof route.query.sub === 'string' ? route.query.sub : ''
+const initialSubTabs = getSubTabs(activeTab.value)
+const fallbackSub = initialSubTabs[0]?.key ?? 'assets_buildings'
+const activeSubTab = ref<SubKey>((initialSubTabs.some(s => s.key === initSub) ? initSub : fallbackSub) as SubKey)
+const activeThirdTab = ref<ThirdKey | undefined>(
+  typeof route.query.third === 'string' ? route.query.third as ThirdKey : undefined
+)
 
 const currentSubTabs = computed(() => getSubTabs(activeTab.value))
 const currentThirdTabs = computed(() => getThirdTabs(activeTab.value, activeSubTab.value))
@@ -197,7 +206,7 @@ watch(activeTab, () => {
   if (subs.length && !subs.some(s => s.key === activeSubTab.value)) {
     activeSubTab.value = subs[0].key
   }
-})
+}, { immediate: true })
 
 watch([activeTab, activeSubTab], () => {
   activeThirdTab.value = undefined
@@ -220,7 +229,6 @@ const runtimeConfig = useRuntimeConfig()
 const backendBaseUrl = normalizeBackendBaseUrl(runtimeConfig.public.backendBaseUrl as string | undefined)
 const currentCount = ref(0)
 const assetReloadKey = ref(0)
-const pipeEditorOpen = ref(false)
 const pipeEditorFeatureId = ref<string | null>(null)
 
 const { detailOpen, detailObj, detailType, closeDetail, openAssetDetail, openPropertyDetail } = useAdminDetail()
@@ -267,12 +275,8 @@ function handleAssetSelect(feature: AssetFeatureLike) {
 }
 
 function openPipeEditor() {
-  pipeEditorOpen.value = true
-}
-
-function handlePipeEditorSaved(id: string) {
-  pipeEditorFeatureId.value = id
-  assetReloadKey.value += 1
+  const query = pipeEditorFeatureId.value ? { featureId: pipeEditorFeatureId.value } : {}
+  void router.push({ path: '/admin/pipe-editor', query })
 }
 </script>
 

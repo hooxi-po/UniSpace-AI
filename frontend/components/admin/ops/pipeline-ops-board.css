@@ -116,6 +116,14 @@
   display: block;
 }
 
+.ops-board :deep(.ops-actions-dropdown:focus-within .ops-actions-menu) {
+  display: block;
+}
+
+.ops-board :deep(.ops-actions-dropdown--open .ops-actions-menu) {
+  display: block;
+}
+
 .ops-board :deep(.ops-actions-menu) {
   display: none;
   position: absolute;

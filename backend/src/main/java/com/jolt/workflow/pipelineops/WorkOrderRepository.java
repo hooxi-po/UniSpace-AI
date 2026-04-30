@@ -58,6 +58,7 @@ public class WorkOrderRepository extends WorkOrderRepositorySupport {
         List<Object> listParams = new ArrayList<>(filter.params());
         listParams.add(safeLimit);
         listParams.add(safeOffset);
+        String orderBySql = buildListOrderBySql(query.sortBy());
 
         String listSql = "SELECT w.*, " +
                 "COALESCE((SELECT jsonb_agg(jsonb_build_object(" +
@@ -74,7 +75,7 @@ public class WorkOrderRepository extends WorkOrderRepositorySupport {
                 "'message', COALESCE(p.message, '')" +
                 ") ORDER BY p.executed_at ASC) FROM pump_control_log p WHERE p.work_order_id = w.id), '[]'::jsonb) AS pump_controls " +
                 "FROM work_order w" + filter.whereSql() +
-                " ORDER BY w.updated_at DESC LIMIT ? OFFSET ?";
+                orderBySql + " LIMIT ? OFFSET ?";
 
         List<Map<String, Object>> rows = jdbcTemplate.queryForList(listSql, listParams.toArray());
 
@@ -98,6 +99,13 @@ public class WorkOrderRepository extends WorkOrderRepositorySupport {
 
         saveCache(cacheKey, root);
         return root;
+    }
+
+    private String buildListOrderBySql(String sortBy) {
+        if ("created_at_asc".equals(sortBy)) {
+            return " ORDER BY w.created_at ASC, w.id ASC";
+        }
+        return " ORDER BY w.updated_at DESC, w.id DESC";
     }
 
     public ObjectNode getWorkorder(String id) {
@@ -1376,11 +1384,12 @@ public class WorkOrderRepository extends WorkOrderRepositorySupport {
             String createdFrom,
             String createdTo,
             String keyword,
+            String sortBy,
             int page,
             Integer limit
     ) {
         public String cacheKey() {
-            return type + "|" + status + "|" + area + "|" + pipelineMedium + "|" + priority + "|" + nodeId + "|" + segmentId + "|" + buildingId + "|" + assignee + "|" + createdFrom + "|" + createdTo + "|" + keyword + "|" + page + "|" + limit;
+            return type + "|" + status + "|" + area + "|" + pipelineMedium + "|" + priority + "|" + nodeId + "|" + segmentId + "|" + buildingId + "|" + assignee + "|" + createdFrom + "|" + createdTo + "|" + keyword + "|" + sortBy + "|" + page + "|" + limit;
         }
     }
 

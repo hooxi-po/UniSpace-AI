@@ -107,8 +107,18 @@
               >
                 {{ actionText[getPrimaryAction(item.status)!] }}
               </button>
-              <div v-if="getSecondaryActions(item.status).length > 0" class="ops-actions-dropdown">
-                <button class="ops-btn ops-btn--mini" :disabled="submitting">
+              <div
+                v-if="getSecondaryActions(item.status).length > 0"
+                class="ops-actions-dropdown"
+                :class="{ 'ops-actions-dropdown--open': openActionsFor === item.id }"
+              >
+                <button
+                  class="ops-btn ops-btn--mini"
+                  type="button"
+                  :disabled="submitting"
+                  :aria-expanded="openActionsFor === item.id"
+                  @click.stop="toggleSecondaryActions(item.id)"
+                >
                   ⋯
                 </button>
                 <div class="ops-actions-menu">
@@ -116,8 +126,9 @@
                     v-for="action in getSecondaryActions(item.status)"
                     :key="`${item.id}-${action}`"
                     class="ops-actions-menu-item"
+                    type="button"
                     :disabled="submitting"
-                    @click="emit('trigger-action', item, action)"
+                    @click.stop="triggerSecondaryAction(item, action)"
                   >
                     {{ actionText[action] }}
                   </button>
@@ -147,7 +158,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import type {
   PipelineMedium,
   PipelineOrderStatus,
@@ -157,6 +168,7 @@ import type {
 } from '~/types/pipeline-ops'
 
 const advancedFiltersOpen = ref(false)
+const openActionsFor = ref('')
 
 const pageModel = defineModel<number>('page', { required: true })
 const queryStatusModel = defineModel<PipelineOrderStatus | ''>('queryStatus', { default: '' })
@@ -212,15 +224,20 @@ function getPrimaryAction(status: PipelineOrderStatus): string | null {
     draft: 'submit',
     todo: 'start',
     assigned: 'start',
-    in_progress: 'complete',
+    in_progress: 'to_review',
     paused: 'resume',
     review: 'approve',
-    completed: null,
-    closed: null,
-    cancelled: null,
-    rejected: 'resubmit',
+    completed: 'close',
+    closed: 'reopen',
+    cancelled: 'reopen',
+    rejected: 'reopen',
   }
-  return primaryActionMap[status]
+  const primaryAction = primaryActionMap[status]
+  const available = props.availableActions(status)
+  if (primaryAction && available.includes(primaryAction)) {
+    return primaryAction
+  }
+  return available[0] || null
 }
 
 // 获取次要操作（收纳到更多菜单中）
@@ -229,5 +246,26 @@ function getSecondaryActions(status: PipelineOrderStatus): string[] {
   const primary = getPrimaryAction(status)
   return allActions.filter(action => action !== primary)
 }
+
+function toggleSecondaryActions(id: string) {
+  openActionsFor.value = openActionsFor.value === id ? '' : id
+}
+
+function triggerSecondaryAction(item: PipelineWorkOrder, action: string) {
+  openActionsFor.value = ''
+  emit('trigger-action', item, action)
+}
+
+function closeSecondaryActions() {
+  openActionsFor.value = ''
+}
+
+onMounted(() => {
+  document.addEventListener('click', closeSecondaryActions)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', closeSecondaryActions)
+})
 
 </script>

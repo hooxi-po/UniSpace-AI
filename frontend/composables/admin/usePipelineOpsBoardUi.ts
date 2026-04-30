@@ -13,6 +13,7 @@ import type {
 
 export function usePipelineOpsBoardUi(mode: PipelineOpsBoardMode) {
   const route = useRoute()
+  const router = useRouter()
   const board = usePipelineOpsBoard(mode)
   const {
     loading,
@@ -351,6 +352,10 @@ export function usePipelineOpsBoardUi(mode: PipelineOpsBoardMode) {
     detailOpen.value = true
   }
 
+  async function closeDetail() {
+    detailOpen.value = false
+  }
+
   async function submitImpactAdjust() {
     if (!detail.value) return
     const detailItem = detail.value
@@ -614,15 +619,44 @@ export function usePipelineOpsBoardUi(mode: PipelineOpsBoardMode) {
   watch(
     () => route.query.workorderId,
     async (workorderId) => {
-      if (typeof workorderId !== 'string' || !workorderId.trim()) return
+      const normalizedId = typeof workorderId === 'string' ? workorderId.trim() : ''
+      if (!normalizedId) {
+        detailOpen.value = false
+        return
+      }
+      if (detail.value?.id === normalizedId) {
+        detailOpen.value = true
+        return
+      }
       try {
-        await loadDetail(workorderId.trim())
+        await loadDetail(normalizedId)
         detailOpen.value = true
       } catch {
         // ignore invalid route workorder id
       }
     },
     { immediate: true },
+  )
+
+  watch(
+    [detailOpen, () => detail.value?.id || ''],
+    async ([open, detailId]) => {
+      if (mode !== 'linkage') return
+      const routeWorkorderId = typeof route.query.workorderId === 'string' ? route.query.workorderId.trim() : ''
+      if (!open || !detailId) {
+        if (!routeWorkorderId) return
+        const { workorderId: _ignored, ...restQuery } = route.query
+        await router.replace({ query: restQuery })
+        return
+      }
+      if (routeWorkorderId === detailId) return
+      await router.replace({
+        query: {
+          ...route.query,
+          workorderId: detailId,
+        },
+      })
+    },
   )
 
   onBeforeUnmount(() => {
@@ -659,6 +693,7 @@ export function usePipelineOpsBoardUi(mode: PipelineOpsBoardMode) {
     submitCreate,
     submitAutoCreate,
     openDetail,
+    closeDetail,
     submitImpactAdjust,
     submitLog,
     submitPumpControl,

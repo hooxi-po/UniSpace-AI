@@ -99,24 +99,27 @@
     <div class="ops-form__row">
       <div class="ops-field-with-action">
         <label>节点（逗号）
-          <input v-model="form.nodeIdsText" class="ops-input" placeholder="N-1001,N-1002" @blur="handleAnalyzeImpact" />
+          <input v-model="form.nodeIdsText" class="ops-input" placeholder="N-1001,N-1002" />
         </label>
       </div>
       <div class="ops-field-with-action">
         <label>管段（逗号）
-          <input v-model="form.segmentIdsText" class="ops-input" placeholder="S-2101,S-2102" @blur="handleAnalyzeImpact" />
+          <input v-model="form.segmentIdsText" class="ops-input" placeholder="S-2101,S-2102" />
         </label>
       </div>
       <button
         class="ops-btn ops-btn--mini"
         type="button"
-        :disabled="analyzingImpact"
+        :disabled="!impactAnalysisAvailable || analyzingImpact"
         @click="handleAnalyzeImpact"
       >
-        {{ analyzingImpact ? '分析中...' : '🔍 智能分析影响范围' }}
+        {{ impactAnalysisAvailable ? (analyzingImpact ? '分析中...' : '🔍 智能分析影响范围') : '影响分析接入中' }}
       </button>
+      <span v-if="!impactAnalysisAvailable" class="ops-form__analysis-hint">
+        真实 GIS 影响分析接口未接入，当前请手动填写关联楼宇信息。
+      </span>
     </div>
-    <div v-if="impactAnalysisResult" class="ops-impact-result">
+    <div v-if="impactAnalysisAvailable && impactAnalysisResult" class="ops-impact-result">
       <div class="ops-impact-result__header">
         <span class="ops-impact-result__title">📊 影响范围分析结果</span>
         <button class="ops-btn ops-btn--mini" type="button" @click="applyImpactResult">
@@ -241,21 +244,30 @@ const impactAnalysisResult = ref<ImpactAnalysisResponse | null>(null)
 const isRecommending = ref(false)
 const recommendedTemplate = ref<TemplateRecommendResponse | null>(null)
 const allowedTemplateType = computed<PipelineOrderType | null>(() => props.mode === 'linkage' ? null : props.mode)
+const impactAnalysisAvailable = false
 const workorderTypeLabel: Record<PipelineOrderType, string> = {
   inspection: '巡检',
   maintenance: '维修',
   retrofit: '改造',
   retire: '报废',
 }
+let impactAnalysisRequestId = 0
+let recommendRequestId = 0
 
 function clearValidationErrors() {
   validationErrors.value = []
 }
 
 function resetLocalUiState() {
+  impactAnalysisRequestId += 1
+  recommendRequestId += 1
   validationErrors.value = []
   templateSelectorOpen.value = false
   selectedTemplateName.value = ''
+  analyzingImpact.value = false
+  impactAnalysisResult.value = null
+  isRecommending.value = false
+  recommendedTemplate.value = null
 }
 
 watch(() => props.open, (open) => {
@@ -314,6 +326,12 @@ function handleSubmitAutoCreate() {
 
 // 智能分析影响范围
 async function handleAnalyzeImpact() {
+  if (!impactAnalysisAvailable) {
+    impactAnalysisResult.value = null
+    validationErrors.value = ['影响范围智能分析暂未接入后端，请手动填写关联楼宇信息']
+    return
+  }
+
   const nodeIds = props.form.nodeIdsText.split(',').map(s => s.trim()).filter(Boolean)
   const segmentIds = props.form.segmentIdsText.split(',').map(s => s.trim()).filter(Boolean)
 
@@ -321,15 +339,20 @@ async function handleAnalyzeImpact() {
     return
   }
 
+  const requestId = ++impactAnalysisRequestId
   analyzingImpact.value = true
   try {
     const result = await analyzeImpactScope({ nodeIds, segmentIds })
+    if (requestId !== impactAnalysisRequestId || !props.open) return
     impactAnalysisResult.value = result
   } catch (error) {
+    if (requestId !== impactAnalysisRequestId || !props.open) return
     console.error('影响范围分析失败:', error)
     validationErrors.value = ['影响范围分析失败，请稍后重试']
   } finally {
-    analyzingImpact.value = false
+    if (requestId === impactAnalysisRequestId) {
+      analyzingImpact.value = false
+    }
   }
 }
 
@@ -358,6 +381,7 @@ async function handleSmartRecommend() {
     return
   }
 
+  const requestId = ++recommendRequestId
   isRecommending.value = true
   try {
     const result = await recommendTemplate({
@@ -365,13 +389,18 @@ async function handleSmartRecommend() {
       segmentIds,
       area: props.form.area,
       medium: props.form.pipelineMedium,
+      allowedType: allowedTemplateType.value || undefined,
     })
+    if (requestId !== recommendRequestId || !props.open) return
     recommendedTemplate.value = result
   } catch (error) {
+    if (requestId !== recommendRequestId || !props.open) return
     console.error('智能推荐失败:', error)
     validationErrors.value = ['智能推荐失败，请稍后重试']
   } finally {
-    isRecommending.value = false
+    if (requestId === recommendRequestId) {
+      isRecommending.value = false
+    }
   }
 }
 

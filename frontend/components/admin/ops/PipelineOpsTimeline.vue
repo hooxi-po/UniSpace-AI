@@ -21,33 +21,53 @@
           <span class="timeline-chain__date">{{ formatDate(chain.startDate) }}</span>
         </div>
 
-        <div class="timeline-chain__items">
+        <div class="timeline-chain__levels">
           <div
-            v-for="(item, index) in chain.items"
-            :key="item.workorderId"
-            class="timeline-item"
-            :class="`timeline-item--${item.status}`"
-            @click="$emit('open-workorder', item.workorderId)"
+            v-for="(level, index) in chain.levels"
+            :key="level.id"
+            class="timeline-level-block"
           >
-            <div class="timeline-item__connector" v-if="index > 0">
-              <div class="timeline-item__arrow">↓</div>
-              <div class="timeline-item__trigger">{{ item.triggerReason }}</div>
+            <div v-if="index > 0" class="timeline-level__connector">
+              <div class="timeline-level__arrow">↓</div>
+              <div v-if="getLevelHint(level)" class="timeline-level__hint">
+                {{ getLevelHint(level) }}
+              </div>
             </div>
 
-            <div class="timeline-item__card">
-              <div class="timeline-item__icon">{{ getTypeIcon(item.type) }}</div>
-              <div class="timeline-item__content">
-                <div class="timeline-item__title">
-                  <span class="timeline-item__type">{{ getTypeLabel(item.type) }}</span>
-                  <span class="timeline-item__id">{{ item.workorderId }}</span>
+            <div class="timeline-level" :class="{ 'timeline-level--branch': level.items.length > 1 }">
+              <div
+                v-for="item in level.items"
+                :key="item.workorderId"
+                class="timeline-item"
+                :class="`timeline-item--${item.status}`"
+                @click="$emit('open-workorder', item.workorderId)"
+              >
+                <div v-if="getTriggerReasons(item).length > 0" class="timeline-item__triggers">
+                  <div
+                    v-for="reason in getTriggerReasons(item)"
+                    :key="`${item.workorderId}-${reason}`"
+                    class="timeline-item__trigger"
+                  >
+                    {{ reason }}
+                  </div>
                 </div>
-                <div class="timeline-item__desc">{{ item.title }}</div>
-                <div class="timeline-item__meta">
-                  <span class="timeline-item__status-badge" :class="`status-badge--${item.status}`">
-                    {{ getStatusLabel(item.status) }}
-                  </span>
-                  <span class="timeline-item__date">{{ formatTime(item.createdAt) }}</span>
-                  <span v-if="item.assignee" class="timeline-item__assignee">👤 {{ item.assignee }}</span>
+
+                <div class="timeline-item__card">
+                  <div class="timeline-item__icon">{{ getTypeIcon(item.type) }}</div>
+                  <div class="timeline-item__content">
+                    <div class="timeline-item__title">
+                      <span class="timeline-item__type">{{ getTypeLabel(item.type) }}</span>
+                      <span class="timeline-item__id">{{ item.workorderId }}</span>
+                    </div>
+                    <div class="timeline-item__desc">{{ item.title }}</div>
+                    <div class="timeline-item__meta">
+                      <span class="timeline-item__status-badge" :class="`status-badge--${item.status}`">
+                        {{ getStatusLabel(item.status) }}
+                      </span>
+                      <span class="timeline-item__date">{{ formatTime(item.createdAt) }}</span>
+                      <span v-if="item.assignee" class="timeline-item__assignee">👤 {{ item.assignee }}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -70,12 +90,18 @@ interface TimelineItem {
   createdAt: string
   assignee?: string
   triggerReason?: string
+  triggerReasons?: string[]
+}
+
+interface TimelineLevel {
+  id: string
+  items: TimelineItem[]
 }
 
 interface TimelineChain {
   id: string
   startDate: string
-  items: TimelineItem[]
+  levels: TimelineLevel[]
 }
 
 const props = defineProps<{
@@ -130,6 +156,19 @@ function formatDate(dateStr: string): string {
 
 function formatTime(dateStr: string): string {
   return dateStr.slice(5, 16).replace('T', ' ')
+}
+
+function getTriggerReasons(item: TimelineItem) {
+  if (Array.isArray(item.triggerReasons) && item.triggerReasons.length > 0) {
+    return item.triggerReasons
+  }
+  return item.triggerReason ? [item.triggerReason] : []
+}
+
+function getLevelHint(level: TimelineLevel) {
+  if (level.items.length > 1) return '并行分支'
+  if (level.items.some(item => getTriggerReasons(item).length > 1)) return '多源汇聚'
+  return ''
 }
 </script>
 
@@ -211,31 +250,62 @@ function formatTime(dateStr: string): string {
   color: #68727d;
 }
 
-.timeline-chain__items {
+.timeline-chain__levels {
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 12px;
+}
+
+.timeline-level-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.timeline-level__connector {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.timeline-level__arrow {
+  font-size: 20px;
+  color: #8a929b;
+}
+
+.timeline-level__hint {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #eef3f8;
+  color: #51606f;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.timeline-level {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
 }
 
 .timeline-item {
   position: relative;
   cursor: pointer;
-}
-
-.timeline-item__connector {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  padding: 8px 0;
+  gap: 6px;
 }
 
-.timeline-item__arrow {
-  font-size: 20px;
-  color: #8a929b;
+.timeline-item__triggers {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 4px;
 }
 
 .timeline-item__trigger {
-  margin-top: 4px;
   padding: 4px 8px;
   background: #fff7e6;
   color: #8f5a00;
@@ -252,12 +322,13 @@ function formatTime(dateStr: string): string {
   border: 1px solid #e2e6ea;
   border-radius: 8px;
   transition: all 0.2s;
+  min-height: 100%;
 }
 
 .timeline-item__card:hover {
   border-color: #1967ff;
   box-shadow: 0 2px 8px rgba(25, 103, 255, 0.15);
-  transform: translateX(4px);
+  transform: translateY(-2px);
 }
 
 .timeline-item__icon {
@@ -336,7 +407,6 @@ function formatTime(dateStr: string): string {
   color: #8a929b;
 }
 
-/* 状态指示 */
 .timeline-item--completed .timeline-item__card {
   border-left: 3px solid #22c55e;
 }
@@ -347,5 +417,17 @@ function formatTime(dateStr: string): string {
 
 .timeline-item--todo .timeline-item__card {
   border-left: 3px solid #f59e0b;
+}
+
+@media (max-width: 720px) {
+  .timeline-chain__header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .timeline-level {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

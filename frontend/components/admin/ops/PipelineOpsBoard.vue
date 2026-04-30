@@ -94,7 +94,7 @@
       :priority-label="priorityLabel"
       :medium-label="mediumLabel"
       :format-time="formatTime"
-      @close="detailOpen = false"
+      @close="closeDetail"
       @locate="locateOnMap"
       @locate-building="locateBuildingOnMap"
       @submit-impact-adjust="submitImpactAdjust"
@@ -127,7 +127,13 @@ import {
   pipelineOpsTypeLabel,
 } from './pipeline-ops-view-constants'
 
-const props = defineProps<{ mode: PipelineOpsBoardMode }>()
+const props = defineProps<{
+  mode: PipelineOpsBoardMode
+  realtimeEnabled?: boolean
+}>()
+const emit = defineEmits<{
+  (e: 'update:realtimeEnabled', enabled: boolean): void
+}>()
 const mode = computed(() => props.mode)
 const meta = computed(() => pipelineOpsMetaMap[props.mode])
 
@@ -168,6 +174,7 @@ const {
   timelineEntries,
   dismissFeedback,
   closeActionDialog,
+  closeDetail,
   availableActions,
   triggerAction,
   submitActionDialog,
@@ -186,7 +193,17 @@ const {
 } = usePipelineOpsBoardUi(props.mode)
 
 const reportOpen = ref(false)
-const realtimeEnabled = ref(false)
+const localRealtimeEnabled = ref(false)
+const realtimeEnabled = computed({
+  get: () => typeof props.realtimeEnabled === 'boolean' ? props.realtimeEnabled : localRealtimeEnabled.value,
+  set: (enabled: boolean) => {
+    if (typeof props.realtimeEnabled === 'boolean') {
+      emit('update:realtimeEnabled', enabled)
+      return
+    }
+    localRealtimeEnabled.value = enabled
+  },
+})
 
 // 实时更新功能
 const { lastUpdateTime } = usePipelineOpsRealtime({

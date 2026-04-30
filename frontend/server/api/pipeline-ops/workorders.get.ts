@@ -1,6 +1,7 @@
 import type {
   PipelineMedium,
   PipelineOrderListQuery,
+  PipelineOrderListSort,
   PipelineOrderStatus,
   PipelineOrderType,
   PipelinePriority,
@@ -24,6 +25,7 @@ export default defineEventHandler(async (event) => {
     createdFrom: query.createdFrom ? String(query.createdFrom) : undefined,
     createdTo: query.createdTo ? String(query.createdTo) : undefined,
     q: query.q ? String(query.q) : undefined,
+    sortBy: query.sortBy ? String(query.sortBy) as PipelineOrderListSort : undefined,
     page: Number.isFinite(page) ? page : undefined,
     limit: Number.isFinite(limit) ? limit : undefined,
   }

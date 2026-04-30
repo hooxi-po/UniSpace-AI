@@ -1,6 +1,7 @@
 package com.jolt.workflow.util;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -25,12 +26,15 @@ public class DataSeeder implements CommandLineRunner {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Value("${seed.enabled:false}")
+    private boolean seedEnabledFromConfig;
+
     @Override
     public void run(String... args) throws Exception {
         // 检查是否启用数据填充
-        boolean seedEnabled = false;
+        boolean seedEnabled = seedEnabledFromConfig;
         for (String arg : args) {
-            if (arg.equals("--seed.enabled=true") || arg.equals("--seed")) {
+            if (arg.equals("--seed")) {
                 seedEnabled = true;
                 break;
             }

@@ -1,4 +1,5 @@
-import type { ImpactedBuildingRef, PipelineMedium } from '~/types/pipeline-ops'
+import { pipelineOpsService } from './pipeline-ops'
+import type { ImpactedBuildingRef, PipelineMedium, PipelineOrderType, PipelinePriority } from '~/types/pipeline-ops'
 import type { PipelineWorkOrderTemplate } from '~/types/pipeline-ops-template'
 
 export interface ImpactAnalysisRequest {
@@ -17,6 +18,7 @@ export interface TemplateRecommendRequest {
   nodeIds?: string[]
   area?: string
   medium?: PipelineMedium
+  allowedType?: PipelineOrderType
 }
 
 export interface TemplateRecommendResponse extends PipelineWorkOrderTemplate {
@@ -29,56 +31,9 @@ export interface TemplateRecommendResponse extends PipelineWorkOrderTemplate {
  * 调用后端 GIS 空间分析接口
  */
 export async function analyzeImpactScope(
-  request: ImpactAnalysisRequest
+  _request: ImpactAnalysisRequest
 ): Promise<ImpactAnalysisResponse> {
-  // TODO: 实际调用后端接口
-  // const response = await $fetch('/api/pipeline/analyze-impact', {
-  //   method: 'POST',
-  //   body: request,
-  // })
-
-  // 模拟返回数据
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      const mockBuildings: ImpactedBuildingRef[] = []
-
-      // 如果有管段或节点，模拟返回受影响楼宇
-      if ((request.segmentIds && request.segmentIds.length > 0) ||
-          (request.nodeIds && request.nodeIds.length > 0)) {
-        mockBuildings.push({
-          buildingId: 'BLD-001',
-          buildingName: '博学楼',
-          floors: [1, 2, 3],
-          rooms: [
-            { buildingId: 'BLD-001', buildingName: '博学楼', floorNo: 1, roomNo: '101', roomId: 'R-101', equipmentIds: [] },
-            { buildingId: 'BLD-001', buildingName: '博学楼', floorNo: 2, roomNo: '201', roomId: 'R-201', equipmentIds: [] },
-            { buildingId: 'BLD-001', buildingName: '博学楼', floorNo: 3, roomNo: '301', roomId: 'R-301', equipmentIds: [] },
-          ],
-        })
-
-        mockBuildings.push({
-          buildingId: 'BLD-002',
-          buildingName: '图书馆',
-          floors: [1, 2],
-          rooms: [
-            { buildingId: 'BLD-002', buildingName: '图书馆', floorNo: 1, roomNo: 'L101', roomId: 'R-L101', equipmentIds: [] },
-            { buildingId: 'BLD-002', buildingName: '图书馆', floorNo: 2, roomNo: 'L201', roomId: 'R-L201', equipmentIds: [] },
-          ],
-        })
-      }
-
-      const totalUsers = mockBuildings.reduce(
-        (sum, b) => sum + b.rooms.length * 50, // 假设每个房间50人
-        0
-      )
-
-      resolve({
-        impactedBuildings: mockBuildings,
-        estimatedImpactHours: 2.5,
-        affectedUserCount: totalUsers,
-      })
-    }, 500)
-  })
+  throw new Error('影响范围智能分析暂未接入后端服务')
 }
 
 /**
@@ -96,7 +51,7 @@ export async function recommendTemplate(
   // 模拟智能推荐逻辑
   return new Promise((resolve) => {
     setTimeout(() => {
-      const { segmentIds = [], nodeIds = [], area = '', medium = 'water' } = request
+      const { segmentIds = [], nodeIds = [], area = '', medium = 'water', allowedType } = request
 
       // 基于上下文的推荐逻辑
       let recommendedTemplate: TemplateRecommendResponse
@@ -212,6 +167,10 @@ export async function recommendTemplate(
         }
       }
 
+      if (allowedType && recommendedTemplate.preset.type !== allowedType) {
+        recommendedTemplate = buildAllowedTypeRecommendation(allowedType, medium, area)
+      }
+
       resolve(recommendedTemplate)
     }, 800)
   })
@@ -226,16 +185,144 @@ export async function createAlertWorkorder(params: {
   threshold: number
   currentValue: number
 }): Promise<string> {
-  // TODO: 实际调用后端接口
-  // const response = await $fetch('/api/pipeline/auto-create-workorder', {
-  //   method: 'POST',
-  //   body: params,
-  // })
-
-  // 模拟创建工单
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve('WO-AUTO-' + Date.now())
-    }, 500)
+  const priority = deriveAlertPriority(params.currentValue, params.threshold)
+  const workorderType: PipelineOrderType = params.alertType === 'quality' ? 'inspection' : 'maintenance'
+  const alertLabel = getAlertTypeLabel(params.alertType)
+  const response = await pipelineOpsService.autoCreate({
+    trigger: 'telemetry_alert',
+    reason: `${params.nodeId} ${alertLabel}异常，当前值 ${params.currentValue}，阈值 ${params.threshold}`,
+    base: {
+      title: `${params.nodeId} ${alertLabel}异常自动建单`,
+      description: `${alertLabel}监测异常。当前值 ${params.currentValue}，阈值 ${params.threshold}。`,
+      type: workorderType,
+      pipelineMedium: 'water',
+      area: '未分区',
+      nodeIds: [params.nodeId],
+      segmentIds: [],
+      buildingId: '',
+      buildingName: '',
+      assignee: '',
+      reviewer: '',
+      priority,
+      plannedDate: '',
+      deadlineAt: '',
+      createdBy: 'system',
+    },
   })
+  return response.workorder.id
+}
+
+function buildAllowedTypeRecommendation(
+  allowedType: PipelineOrderType,
+  medium: PipelineMedium,
+  area: string,
+): TemplateRecommendResponse {
+  const areaText = area || '未分区'
+  switch (allowedType) {
+    case 'maintenance':
+      return {
+        id: `tpl-${medium}-maintenance-recommended`,
+        name: '异常管段抢修',
+        description: '基于当前看板类型，建议直接进入维修处置流程',
+        icon: '🔧',
+        category: 'maintenance',
+        preset: {
+          title: `${areaText}${medium === 'drainage' ? '排水' : medium === 'sewage' ? '污水' : '供水'}异常维修`,
+          description: '根据智能分析结果，建议执行维修处置。',
+          type: 'maintenance',
+          pipelineMedium: medium,
+          priority: 'high',
+          area: areaText,
+          assignee: '值班维修组',
+          reviewer: '调度主管',
+        },
+        reason: '当前看板限定为维修工单，已按该类型给出可直接应用的推荐。',
+        confidence: 0.7,
+      }
+    case 'retrofit':
+      return {
+        id: `tpl-${medium}-retrofit-recommended`,
+        name: '异常管段改造评估',
+        description: '建议发起改造评估与方案论证',
+        icon: '🏗️',
+        category: 'retrofit',
+        preset: {
+          title: `${areaText}异常管段改造评估`,
+          description: '根据智能分析结果，建议进入改造评估流程。',
+          type: 'retrofit',
+          pipelineMedium: medium,
+          priority: 'medium',
+          area: areaText,
+          assignee: '改造项目组',
+          reviewer: '工程主管',
+        },
+        reason: '当前看板限定为改造工单，已提供同类型推荐。',
+        confidence: 0.66,
+      }
+    case 'retire':
+      return {
+        id: `tpl-${medium}-retire-recommended`,
+        name: '异常设施报废评估',
+        description: '建议评估是否需要报废处置',
+        icon: '🗑️',
+        category: 'retire',
+        preset: {
+          title: `${areaText}异常设施报废评估`,
+          description: '根据智能分析结果，建议进入报废评估流程。',
+          type: 'retire',
+          pipelineMedium: medium,
+          priority: 'medium',
+          area: areaText,
+          assignee: '资产运维组',
+          reviewer: '资产主管',
+        },
+        reason: '当前看板限定为报废工单，已提供同类型推荐。',
+        confidence: 0.62,
+      }
+    case 'inspection':
+    default:
+      return {
+        id: `tpl-${medium}-inspection-recommended`,
+        name: '异常节点复核巡检',
+        description: '建议先发起巡检复核，确认问题范围和严重程度',
+        icon: '🔍',
+        category: 'inspection',
+        preset: {
+          title: `${areaText}异常节点复核巡检`,
+          description: '根据智能分析结果，建议先进行现场巡检复核。',
+          type: 'inspection',
+          pipelineMedium: medium,
+          priority: 'medium',
+          area: areaText,
+          assignee: '巡检班组',
+          reviewer: '值班主管',
+        },
+        reason: '当前看板限定为巡检工单，已提供同类型推荐。',
+        confidence: 0.69,
+      }
+  }
+}
+
+function deriveAlertPriority(currentValue: number, threshold: number): PipelinePriority {
+  if (!Number.isFinite(currentValue) || !Number.isFinite(threshold) || threshold <= 0) {
+    return 'medium'
+  }
+  const ratio = currentValue / threshold
+  if (ratio >= 1.5) return 'urgent'
+  if (ratio >= 1.2) return 'high'
+  if (ratio >= 1) return 'medium'
+  return 'low'
+}
+
+function getAlertTypeLabel(alertType: 'pressure' | 'flow' | 'quality') {
+  switch (alertType) {
+    case 'pressure':
+      return '压力'
+    case 'flow':
+      return '流量'
+    case 'quality':
+      return '水质'
+    default:
+      return '监测'
+  }
 }

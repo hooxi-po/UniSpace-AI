@@ -185,6 +185,8 @@ export type PipelineWorkOrder = {
   updatedAt: string
 }
 
+export type PipelineOrderListSort = 'updated_at_desc' | 'created_at_asc'
+
 export type PipelineOrderListQuery = {
   type?: PipelineOrderType
   status?: PipelineOrderStatus
@@ -198,6 +200,7 @@ export type PipelineOrderListQuery = {
   createdFrom?: string
   createdTo?: string
   q?: string
+  sortBy?: PipelineOrderListSort
   page?: number
   limit?: number
 }

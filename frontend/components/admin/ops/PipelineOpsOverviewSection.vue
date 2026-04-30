@@ -21,7 +21,7 @@
       </button>
       <button class="ops-btn" type="button" @click="emit('refresh')" :disabled="loading">刷新</button>
       <button class="ops-btn ops-btn--primary" type="button" @click="emit('toggle-form')">
-        {{ formOpen ? '收起新建' : '新建工单' }}
+        {{ formOpen ? '关闭新建' : '新建工单' }}
       </button>
     </div>
   </div>

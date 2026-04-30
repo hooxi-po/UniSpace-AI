@@ -33,15 +33,20 @@
       @auto-create-success="handleAlertAutoCreateSuccess"
     />
 
-    <PipelineOpsCreateSection
-      :open="formOpen"
-      :mode="mode"
-      :submitting="submitting"
-      :form="form"
-      :auto-form="autoForm"
-      @submit-create="submitCreate"
-      @submit-auto-create="submitAutoCreate"
-    />
+    <div v-if="formOpen" class="detail-mask detail-mask--center" @click.self="formOpen = false">
+      <div class="ops-create-dialog">
+        <PipelineOpsCreateSection
+          :open="formOpen"
+          :mode="mode"
+          :submitting="submitting"
+          :form="form"
+          :auto-form="autoForm"
+          @close="formOpen = false"
+          @submit-create="submitCreate"
+          @submit-auto-create="submitAutoCreate"
+        />
+      </div>
+    </div>
 
     <PipelineOpsListSection
       v-model:page="page"

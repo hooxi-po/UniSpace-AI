@@ -205,6 +205,7 @@
 
 .ops-board :deep(.detail-mask) { position: fixed; inset: 0; background: rgba(10, 12, 16, 0.35); z-index: 3000; display: flex; justify-content: flex-end; }
 .ops-board :deep(.detail-mask--center) { justify-content: center; align-items: center; }
+.ops-board :deep(.ops-create-dialog) { width: min(1240px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto; border-radius: 22px; box-shadow: 0 28px 64px rgba(15, 23, 42, 0.18); }
 .ops-board :deep(.detail-panel) { width: min(1240px, 96vw); height: 100%; background: linear-gradient(180deg, #f4f7fb 0%, #edf2f7 100%); border-left: 1px solid #dce3ea; overflow: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; box-shadow: -18px 0 48px rgba(15, 23, 42, 0.12); }
 .ops-board :deep(.detail-panel__hero) { display: flex; flex-direction: column; gap: 14px; padding: 18px; border-radius: 18px; background:
   radial-gradient(circle at top right, rgba(58, 130, 246, 0.16), transparent 28%),
@@ -553,6 +554,7 @@
 @media (max-width: 960px) {
   .ops-board :deep(.ops-board__header) { flex-direction: column; }
   .ops-board :deep(.detail-panel) { width: 100vw; padding: 14px; }
+  .ops-board :deep(.ops-create-dialog) { width: calc(100vw - 16px); max-height: calc(100vh - 16px); }
   .ops-board :deep(.detail-panel__hero-header) { flex-direction: column; }
   .ops-board :deep(.detail-meta-grid),
   .ops-board :deep(.detail-summary-grid),

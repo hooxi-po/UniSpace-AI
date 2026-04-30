@@ -17,6 +17,7 @@
       @toggle-report="reportOpen = !reportOpen"
       @toggle-realtime="realtimeEnabled = $event"
       @dismiss-feedback="dismissFeedback"
+      @filter-by-status="handleFilterByStatus"
     />
 
     <!-- 报表区域 -->
@@ -24,6 +25,12 @@
       v-if="reportOpen"
       :stats="stats"
       :dashboard="dashboard"
+    />
+
+    <!-- 异常预警监控 -->
+    <PipelineOpsAlertMonitor
+      :format-time="formatTime"
+      @auto-create-success="handleAlertAutoCreateSuccess"
     />
 
     <PipelineOpsCreateSection
@@ -87,7 +94,7 @@
       :priority-label="priorityLabel"
       :medium-label="mediumLabel"
       :format-time="formatTime"
-      @close="detailOpen = false"
+      @close="closeDetail"
       @locate="locateOnMap"
       @locate-building="locateBuildingOnMap"
       @submit-impact-adjust="submitImpactAdjust"
@@ -120,7 +127,13 @@ import {
   pipelineOpsTypeLabel,
 } from './pipeline-ops-view-constants'
 
-const props = defineProps<{ mode: PipelineOpsBoardMode }>()
+const props = defineProps<{
+  mode: PipelineOpsBoardMode
+  realtimeEnabled?: boolean
+}>()
+const emit = defineEmits<{
+  (e: 'update:realtimeEnabled', enabled: boolean): void
+}>()
 const mode = computed(() => props.mode)
 const meta = computed(() => pipelineOpsMetaMap[props.mode])
 
@@ -161,6 +174,7 @@ const {
   timelineEntries,
   dismissFeedback,
   closeActionDialog,
+  closeDetail,
   availableActions,
   triggerAction,
   submitActionDialog,
@@ -175,10 +189,21 @@ const {
   locateOnMap,
   locateBuildingOnMap,
   formatTime,
+  showNotice,
 } = usePipelineOpsBoardUi(props.mode)
 
 const reportOpen = ref(false)
-const realtimeEnabled = ref(false)
+const localRealtimeEnabled = ref(false)
+const realtimeEnabled = computed({
+  get: () => typeof props.realtimeEnabled === 'boolean' ? props.realtimeEnabled : localRealtimeEnabled.value,
+  set: (enabled: boolean) => {
+    if (typeof props.realtimeEnabled === 'boolean') {
+      emit('update:realtimeEnabled', enabled)
+      return
+    }
+    localRealtimeEnabled.value = enabled
+  },
+})
 
 // 实时更新功能
 const { lastUpdateTime } = usePipelineOpsRealtime({
@@ -203,5 +228,15 @@ const statusLabel = pipelineOpsStatusLabel
 const mediumLabel = pipelineOpsMediumLabel
 const priorityLabel = pipelineOpsPriorityLabel
 const actionText = pipelineOpsActionText
+
+function handleFilterByStatus(status: string) {
+  queryStatus.value = status as any
+  page.value = 1
+}
+
+function handleAlertAutoCreateSuccess(workorderId: string) {
+  showNotice('success', `已自动创建工单: ${workorderId}`)
+  refresh()
+}
 </script>
 <style scoped src="./pipeline-ops-board.css"></style>

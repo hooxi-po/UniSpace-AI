@@ -13,6 +13,7 @@ import type {
 } from '~/types/pipeline-ops'
 
 export type PipelineOpsBoardMode = PipelineOrderType | 'linkage'
+const WORKORDERS_UPDATED_EVENT = 'pipeline:workorders-updated'
 
 function modeToType(mode: PipelineOpsBoardMode): PipelineOrderType | undefined {
   if (mode === 'linkage') return undefined
@@ -92,6 +93,11 @@ export function usePipelineOpsBoard(mode: PipelineOpsBoardMode) {
     createdTo: queryCreatedTo.value || undefined,
     q: queryKeyword.value || undefined,
   }))
+
+  function notifyWorkordersUpdated() {
+    if (typeof window === 'undefined') return
+    window.dispatchEvent(new CustomEvent(WORKORDERS_UPDATED_EVENT))
+  }
 
   async function refresh() {
     const requestId = ++refreshRequestId
@@ -184,6 +190,7 @@ export function usePipelineOpsBoard(mode: PipelineOpsBoardMode) {
       })
       await refresh()
       detail.value = res.workorder
+      notifyWorkordersUpdated()
     } catch (err: any) {
       error.value = err?.data?.statusMessage || err?.message || '创建工单失败'
       throw err
@@ -203,6 +210,7 @@ export function usePipelineOpsBoard(mode: PipelineOpsBoardMode) {
       const res = await pipelineOpsService.autoCreate(payload)
       await refresh()
       detail.value = res.workorder
+      notifyWorkordersUpdated()
     } catch (err: any) {
       error.value = err?.data?.statusMessage || err?.message || '自动创建工单失败'
       throw err
@@ -230,6 +238,7 @@ export function usePipelineOpsBoard(mode: PipelineOpsBoardMode) {
       })
       detail.value = res.workorder
       await refresh()
+      notifyWorkordersUpdated()
     } catch (err: any) {
       error.value = err?.data?.statusMessage || err?.message || '工单状态更新失败'
       throw err
@@ -268,6 +277,7 @@ export function usePipelineOpsBoard(mode: PipelineOpsBoardMode) {
       })
       detail.value = res.workorder
       await refresh()
+      notifyWorkordersUpdated()
     } catch (err: any) {
       error.value = err?.data?.statusMessage || err?.message || '新增执行日志失败'
       throw err
@@ -289,6 +299,7 @@ export function usePipelineOpsBoard(mode: PipelineOpsBoardMode) {
       const res = await pipelineOpsService.adjustImpact(params)
       detail.value = res.workorder
       await refresh()
+      notifyWorkordersUpdated()
     } catch (err: any) {
       error.value = err?.data?.statusMessage || err?.message || '调整影响范围失败'
       throw err
@@ -310,6 +321,7 @@ export function usePipelineOpsBoard(mode: PipelineOpsBoardMode) {
       const res = await pipelineOpsService.pumpControl(params)
       detail.value = res.workorder
       await refresh()
+      notifyWorkordersUpdated()
     } catch (err: any) {
       error.value = err?.data?.statusMessage || err?.message || '热水泵控制失败'
       throw err
@@ -348,6 +360,7 @@ export function usePipelineOpsBoard(mode: PipelineOpsBoardMode) {
       })
       detail.value = res.workorder
       await refresh()
+      notifyWorkordersUpdated()
     } catch (err: any) {
       error.value = err?.data?.statusMessage || err?.message || '上传巡检记录失败'
       throw err
@@ -367,6 +380,7 @@ export function usePipelineOpsBoard(mode: PipelineOpsBoardMode) {
       })
       await refresh()
       detail.value = res.maintenanceWorkorder
+      notifyWorkordersUpdated()
     } catch (err: any) {
       error.value = err?.data?.statusMessage || err?.message || '巡检转维修失败'
       throw err

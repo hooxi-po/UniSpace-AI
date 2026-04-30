@@ -40,6 +40,7 @@ public class PipelineOpsController {
             @RequestParam(name = "createdFrom", required = false) String createdFrom,
             @RequestParam(name = "createdTo", required = false) String createdTo,
             @RequestParam(name = "q", required = false) String keyword,
+            @RequestParam(name = "sortBy", required = false) String sortBy,
             @RequestParam(name = "page", defaultValue = "1") Integer page,
             @RequestParam(name = "limit", required = false) Integer limit
     ) {
@@ -56,6 +57,7 @@ public class PipelineOpsController {
                 createdFrom,
                 createdTo,
                 keyword,
+                sortBy,
                 page,
                 limit
         ));
@@ -155,6 +157,7 @@ public class PipelineOpsController {
                 createdFrom,
                 createdTo,
                 keyword,
+                null,
                 1,
                 null
         )));
@@ -190,6 +193,7 @@ public class PipelineOpsController {
                 createdFrom,
                 createdTo,
                 keyword,
+                null,
                 1,
                 null
         )));
@@ -249,6 +253,7 @@ public class PipelineOpsController {
             String createdFrom,
             String createdTo,
             String keyword,
+            String sortBy,
             Integer page,
             Integer limit
     ) {
@@ -265,6 +270,7 @@ public class PipelineOpsController {
                 text(createdFrom),
                 text(createdTo),
                 text(keyword),
+                text(sortBy),
                 page == null ? 1 : page,
                 limit
         );

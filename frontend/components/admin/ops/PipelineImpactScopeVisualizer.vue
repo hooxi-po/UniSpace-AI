@@ -143,28 +143,36 @@ const stats = computed(() => {
 /* 统计概览 */
 .impact-stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
 }
 
 .impact-stat-item {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 8px;
-  padding: 12px;
+  border-radius: 12px;
+  padding: 14px 12px;
   text-align: center;
-  color: white;
+  color: #11304d;
+  border: 1px solid rgba(80, 132, 255, 0.14);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(239, 245, 255, 0.94) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .impact-stat-item:nth-child(2) {
-  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  color: #5e2a10;
+  border-color: rgba(243, 149, 73, 0.18);
+  background: linear-gradient(180deg, #fffdf8 0%, #fff1de 100%);
 }
 
 .impact-stat-item:nth-child(3) {
-  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  color: #0f4e56;
+  border-color: rgba(35, 171, 186, 0.16);
+  background: linear-gradient(180deg, #f8fffe 0%, #e0f7f7 100%);
 }
 
 .impact-stat-item:nth-child(4) {
-  background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+  color: #4b3810;
+  border-color: rgba(222, 176, 55, 0.2);
+  background: linear-gradient(180deg, #fffef7 0%, #fff4ce 100%);
 }
 
 .impact-stat-value {
@@ -187,10 +195,11 @@ const stats = computed(() => {
 }
 
 .impact-building-card {
-  background: #f8f9fa;
-  border: 1px solid #e1e4e8;
-  border-radius: 8px;
-  padding: 12px;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
+  border: 1px solid #dde5f0;
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.04);
 }
 
 .impact-building-header {
@@ -327,10 +336,10 @@ const stats = computed(() => {
 
 /* 避让要求 */
 .impact-bypass {
-  background: #fffbf0;
-  border: 1px solid #ffd666;
-  border-radius: 6px;
-  padding: 10px;
+  background: linear-gradient(180deg, #fffef7 0%, #fff7dc 100%);
+  border: 1px solid #efd47c;
+  border-radius: 10px;
+  padding: 12px;
 }
 
 .impact-bypass-content {
@@ -341,10 +350,10 @@ const stats = computed(() => {
 
 /* 调整记录 */
 .impact-adjustments {
-  background: #f0f7ff;
-  border: 1px solid #b3d9ff;
-  border-radius: 6px;
-  padding: 10px;
+  background: linear-gradient(180deg, #f8fbff 0%, #e9f2ff 100%);
+  border: 1px solid #c7dcff;
+  border-radius: 10px;
+  padding: 12px;
 }
 
 .impact-adjusted-badge {

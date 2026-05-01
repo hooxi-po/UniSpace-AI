@@ -243,6 +243,7 @@
         :initial-priority="pendingWorkorderPrompt?.initialPriority || 'medium'"
         :available-types="workorderPromptTypeOptions"
         :related-workorders="relatedWorkorders"
+        :source-workorder-id="sourceWorkorderId || undefined"
         :impact-summary="workorderPromptImpactSummary"
         :recommendation="workorderPromptRecommendationView"
         :insight-loading="workorderPromptInsightLoading"
@@ -297,6 +298,7 @@ const props = defineProps<{
   open: boolean
   backendBaseUrl: string
   initialFeatureId?: string | null
+  sourceWorkorderId?: string | null
   onRequestClose?: () => void
   standalone?: boolean
 }>()
@@ -381,6 +383,7 @@ type PostSaveWorkorderPrompt = {
 }
 
 const pendingWorkorderPrompt = ref<PostSaveWorkorderPrompt | null>(null)
+const sourceWorkorderId = computed(() => String(props.sourceWorkorderId || '').trim())
 
 const selectedFeature = computed(() => {
   return pipes.value.find(item => String(item.id) === selectedFeatureId.value) || null
@@ -1252,10 +1255,18 @@ function workorderMatchesCurrentSelection(item: PipelineWorkOrder) {
   return searchTexts.some(text => text.includes(featureId) || text.includes(displayPipeName.value))
 }
 
+function sortRelatedWorkorders(items: PipelineWorkOrder[]) {
+  return [...items].sort((a, b) => {
+    const aPriority = a.id === sourceWorkorderId.value ? 0 : 1
+    const bPriority = b.id === sourceWorkorderId.value ? 0 : 1
+    if (aPriority !== bPriority) return aPriority - bPriority
+    return String(b.updatedAt).localeCompare(String(a.updatedAt))
+  })
+}
+
 function upsertRelatedWorkorder(item: PipelineWorkOrder, force = false) {
   if (!force && !workorderMatchesCurrentSelection(item)) return
-  relatedWorkorders.value = [item, ...relatedWorkorders.value.filter(existing => existing.id !== item.id)]
-    .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
+  relatedWorkorders.value = sortRelatedWorkorders([item, ...relatedWorkorders.value.filter(existing => existing.id !== item.id)])
     .slice(0, 8)
 }
 
@@ -1298,9 +1309,18 @@ async function loadRelatedWorkorders() {
     }
   }
 
-  relatedWorkorders.value = [...workorderMap.values()]
-    .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
-    .slice(0, 8)
+  if (sourceWorkorderId.value && !workorderMap.has(sourceWorkorderId.value)) {
+    try {
+      const detail = await pipelineOpsService.fetchWorkorder(sourceWorkorderId.value)
+      if (requestId !== relatedWorkorderRequestId) return
+      workorderMap.set(detail.workorder.id, detail.workorder)
+      hasSuccess = true
+    } catch {
+      // Source workorder fetch is best-effort. The editor can still work with the related list.
+    }
+  }
+
+  relatedWorkorders.value = sortRelatedWorkorders([...workorderMap.values()]).slice(0, 8)
 
   if (!hasSuccess) {
     relatedWorkordersError.value = '关联工单加载失败'
@@ -2195,11 +2215,12 @@ watch(
 watch(
   [
     () => props.open,
+    sourceWorkorderId,
     () => selectedFeature.value?.id ?? '',
     () => linkedBuildingIds.value.join(','),
     () => linkedBuildingNames.value.join(','),
   ],
-  ([opened, featureId]) => {
+  ([opened, , featureId]) => {
     if (!opened || !featureId) {
       relatedWorkorders.value = []
       relatedWorkordersError.value = null

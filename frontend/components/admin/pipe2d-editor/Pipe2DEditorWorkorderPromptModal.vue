@@ -51,6 +51,7 @@ const props = defineProps<{
   initialPriority: PipelinePriority
   availableTypes: WorkorderTypeOption[]
   relatedWorkorders: PipelineWorkOrder[]
+  sourceWorkorderId?: string | null
   impactSummary?: PromptImpactSummary | null
   recommendation?: PromptRecommendation | null
   insightLoading?: boolean
@@ -77,7 +78,16 @@ const form = reactive<WorkorderPromptPayload>({
 
 const selectedExistingWorkorderId = ref('')
 
-const hasExistingWorkorders = computed(() => props.relatedWorkorders.length > 0)
+const sourceWorkorderId = computed(() => String(props.sourceWorkorderId || '').trim())
+const orderedRelatedWorkorders = computed(() => {
+  return [...props.relatedWorkorders].sort((a, b) => {
+    const aPriority = a.id === sourceWorkorderId.value ? 0 : 1
+    const bPriority = b.id === sourceWorkorderId.value ? 0 : 1
+    if (aPriority !== bPriority) return aPriority - bPriority
+    return String(b.updatedAt).localeCompare(String(a.updatedAt))
+  })
+})
+const hasExistingWorkorders = computed(() => orderedRelatedWorkorders.value.length > 0)
 const canConfirm = computed(() => {
   if (form.action === 'link') return Boolean(selectedExistingWorkorderId.value)
   return Boolean(form.title?.trim())
@@ -110,11 +120,17 @@ const mediumLabel = computed(() => {
   return '混合'
 })
 
+function resolvePreferredExistingWorkorderId() {
+  return orderedRelatedWorkorders.value.find(item => item.id === sourceWorkorderId.value)?.id
+    || orderedRelatedWorkorders.value[0]?.id
+    || ''
+}
+
 watch(
   () => props.open,
   (open) => {
     if (!open) return
-    form.action = props.relatedWorkorders.length ? 'link' : 'create'
+    form.action = orderedRelatedWorkorders.value.length ? 'link' : 'create'
     form.type = props.availableTypes[0]?.value || 'retrofit'
     form.title = props.initialTitle
     form.description = props.initialDescription
@@ -124,7 +140,29 @@ watch(
     form.reviewer = ''
     form.plannedDate = ''
     form.deadlineAt = ''
-    selectedExistingWorkorderId.value = props.relatedWorkorders[0]?.id || ''
+    selectedExistingWorkorderId.value = resolvePreferredExistingWorkorderId()
+  },
+  { immediate: true },
+)
+
+watch(
+  [
+    () => props.open,
+    () => form.action,
+    () => orderedRelatedWorkorders.value.map(item => item.id).join(','),
+    sourceWorkorderId,
+  ],
+  ([open, action]) => {
+    if (!open || action !== 'link') return
+    const nextId = resolvePreferredExistingWorkorderId()
+    if (!nextId) {
+      selectedExistingWorkorderId.value = ''
+      return
+    }
+    const hasCurrentSelection = orderedRelatedWorkorders.value.some(item => item.id === selectedExistingWorkorderId.value)
+    if (!hasCurrentSelection || nextId === sourceWorkorderId.value) {
+      selectedExistingWorkorderId.value = nextId
+    }
   },
   { immediate: true },
 )
@@ -256,11 +294,12 @@ function applyRecommendation() {
         </div>
 
         <template v-if="form.action === 'link'">
-          <div v-if="relatedWorkorders.length" class="workorder-prompt__existing-list">
+          <div v-if="orderedRelatedWorkorders.length" class="workorder-prompt__existing-list">
             <label
-              v-for="item in relatedWorkorders"
+              v-for="item in orderedRelatedWorkorders"
               :key="item.id"
               class="workorder-prompt__existing-item"
+              :class="{ 'workorder-prompt__existing-item--source': item.id === sourceWorkorderId }"
             >
               <input
                 v-model="selectedExistingWorkorderId"
@@ -269,7 +308,10 @@ function applyRecommendation() {
                 :value="item.id"
               >
               <span class="workorder-prompt__existing-body">
-                <strong>{{ item.id }} · {{ item.title }}</strong>
+                <strong>
+                  {{ item.id }} · {{ item.title }}
+                  <span v-if="item.id === sourceWorkorderId" class="workorder-prompt__source-badge">当前来源工单</span>
+                </strong>
                 <span>{{ workorderTypeLabel[item.type] }} · {{ workorderStatusLabel[item.status] }} · {{ item.updatedAt }}</span>
               </span>
             </label>
@@ -634,13 +676,35 @@ function applyRecommendation() {
   background: rgba(15, 23, 42, 0.72);
 }
 
+.workorder-prompt__existing-item--source {
+  border-color: rgba(34, 211, 238, 0.32);
+  box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.18);
+}
+
 .workorder-prompt__existing-body {
   display: grid;
   gap: 4px;
 }
 
 .workorder-prompt__existing-body strong {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
   font-size: 13px;
+}
+
+.workorder-prompt__source-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: rgba(8, 47, 73, 0.88);
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  color: #7dd3fc;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .workorder-prompt__existing-body span,

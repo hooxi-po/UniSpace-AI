@@ -34,6 +34,7 @@
       standalone
       :backend-base-url="backendBaseUrl"
       :initial-feature-id="initialFeatureId"
+      :source-workorder-id="currentWorkorderId || undefined"
       @close="closeEditor"
       @saved="handleSaved"
     />
@@ -64,8 +65,13 @@ const backendBaseUrl = normalizeBackendBaseUrl(runtimeConfig.public.backendBaseU
 const typeLabel = pipelineOpsTypeLabel
 const statusLabel = pipelineOpsStatusLabel
 const mediumLabel = pipelineOpsMediumLabel
+const WORKORDER_BOARD_QUERY = {
+  tab: 'ops',
+  sub: 'ops_linkage',
+  third: 'ops_linkage_board',
+} as const
 
-const initialFeatureId = computed(() => {
+const routeFeatureId = computed(() => {
   const raw = route.query.featureId
   if (typeof raw !== 'string') return null
   const trimmed = raw.trim()
@@ -78,6 +84,20 @@ const currentWorkorderId = computed(() => {
   const trimmed = raw.trim()
   return trimmed || ''
 })
+
+const workorderFeatureId = computed(() => {
+  const item = workorderDetail.value
+  if (!item) return null
+  const directSegment = item.segmentIds[0]
+  if (directSegment) return directSegment
+  const fallbackSegment = item.topologyChain.find(id => {
+    const normalized = String(id || '').trim()
+    return normalized.length > 0 && !normalized.startsWith('N-')
+  })
+  return fallbackSegment || null
+})
+
+const initialFeatureId = computed(() => routeFeatureId.value || workorderFeatureId.value)
 
 watch(
   currentWorkorderId,
@@ -111,11 +131,21 @@ watch(
 function closeEditor() {
   if (closing.value) return
   closing.value = true
+  const target = currentWorkorderId.value
+    ? {
+      path: '/admin',
+      query: {
+        ...WORKORDER_BOARD_QUERY,
+        workorderId: currentWorkorderId.value,
+      },
+    }
+    : { path: '/admin' }
   if (typeof window !== 'undefined') {
-    window.location.assign('/admin')
+    const query = target.query ? `?${new URLSearchParams(target.query as Record<string, string>).toString()}` : ''
+    window.location.assign(`${target.path}${query}`)
     return
   }
-  void router.replace({ path: '/admin' }).finally(() => {
+  void router.replace(target).finally(() => {
     closing.value = false
   })
 }
@@ -129,9 +159,7 @@ function openWorkorderBoard() {
   void router.push({
     path: '/admin',
     query: {
-      tab: 'ops',
-      sub: 'ops_linkage',
-      third: 'ops_linkage_board',
+      ...WORKORDER_BOARD_QUERY,
       workorderId: currentWorkorderId.value || undefined,
     },
   })

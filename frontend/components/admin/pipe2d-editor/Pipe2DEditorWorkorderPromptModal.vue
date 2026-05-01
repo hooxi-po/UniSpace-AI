@@ -1,17 +1,25 @@
 <script setup lang="ts">
-import { computed, reactive, watch } from 'vue'
-import type { PipelineMedium, PipelineOrderType, PipelinePriority } from '~/types/pipeline-ops'
+import { computed, reactive, ref, watch } from 'vue'
+import type { PipelineMedium, PipelineOrderType, PipelinePriority, PipelineWorkOrder } from '~/types/pipeline-ops'
 
 type WorkorderPromptPayload = {
-  type: Extract<PipelineOrderType, 'maintenance' | 'retrofit'>
+  action: 'create' | 'link'
+  workorderId?: string
+  type?: PipelineOrderType
+  title?: string
+  description?: string
+  area?: string
+  priority?: PipelinePriority
+  assignee?: string
+  reviewer?: string
+  plannedDate?: string
+  deadlineAt?: string
+}
+
+type WorkorderTypeOption = {
+  value: PipelineOrderType
   title: string
   description: string
-  area: string
-  priority: PipelinePriority
-  assignee: string
-  reviewer: string
-  plannedDate: string
-  deadlineAt: string
 }
 
 const props = defineProps<{
@@ -25,6 +33,8 @@ const props = defineProps<{
   initialTitle: string
   initialDescription: string
   initialPriority: PipelinePriority
+  availableTypes: WorkorderTypeOption[]
+  relatedWorkorders: PipelineWorkOrder[]
 }>()
 
 const emit = defineEmits<{
@@ -33,6 +43,7 @@ const emit = defineEmits<{
 }>()
 
 const form = reactive<WorkorderPromptPayload>({
+  action: 'create',
   type: 'retrofit',
   title: '',
   description: '',
@@ -43,6 +54,34 @@ const form = reactive<WorkorderPromptPayload>({
   plannedDate: '',
   deadlineAt: '',
 })
+
+const selectedExistingWorkorderId = ref('')
+
+const hasExistingWorkorders = computed(() => props.relatedWorkorders.length > 0)
+const canConfirm = computed(() => {
+  if (form.action === 'link') return Boolean(selectedExistingWorkorderId.value)
+  return Boolean(form.title?.trim())
+})
+
+const workorderTypeLabel: Record<PipelineOrderType, string> = {
+  inspection: '巡检',
+  maintenance: '维修',
+  retrofit: '改造',
+  retire: '报废',
+}
+
+const workorderStatusLabel: Record<PipelineWorkOrder['status'], string> = {
+  draft: '草稿',
+  todo: '待办',
+  assigned: '已分派',
+  in_progress: '处理中',
+  paused: '暂停',
+  review: '待审核',
+  completed: '已完成',
+  closed: '已关闭',
+  cancelled: '已取消',
+  rejected: '已驳回',
+}
 
 const mediumLabel = computed(() => {
   if (props.pipelineMedium === 'water') return '供水'
@@ -55,7 +94,8 @@ watch(
   () => props.open,
   (open) => {
     if (!open) return
-    form.type = 'retrofit'
+    form.action = props.relatedWorkorders.length ? 'link' : 'create'
+    form.type = props.availableTypes[0]?.value || 'retrofit'
     form.title = props.initialTitle
     form.description = props.initialDescription
     form.area = props.area
@@ -64,18 +104,31 @@ watch(
     form.reviewer = ''
     form.plannedDate = ''
     form.deadlineAt = ''
+    selectedExistingWorkorderId.value = props.relatedWorkorders[0]?.id || ''
   },
   { immediate: true },
 )
 
 function handleConfirm() {
+  if (form.action === 'link') {
+    emit('confirm', {
+      action: 'link',
+      workorderId: selectedExistingWorkorderId.value,
+    })
+    return
+  }
+
   emit('confirm', {
-    ...form,
-    title: form.title.trim(),
-    description: form.description.trim(),
-    area: form.area.trim(),
-    assignee: form.assignee.trim(),
-    reviewer: form.reviewer.trim(),
+    action: 'create',
+    type: form.type,
+    title: form.title?.trim(),
+    description: form.description?.trim(),
+    area: form.area?.trim(),
+    priority: form.priority,
+    assignee: form.assignee?.trim(),
+    reviewer: form.reviewer?.trim(),
+    plannedDate: form.plannedDate,
+    deadlineAt: form.deadlineAt,
   })
 }
 </script>
@@ -104,85 +157,124 @@ function handleConfirm() {
           </div>
         </div>
 
-        <div class="workorder-prompt__choice-grid">
+        <div class="workorder-prompt__action-switch">
           <button
-            class="workorder-prompt__type"
-            :class="{ 'workorder-prompt__type--active': form.type === 'maintenance' }"
+            class="workorder-prompt__action-btn"
+            :class="{ 'workorder-prompt__action-btn--active': form.action === 'create' }"
             type="button"
-            @click="form.type = 'maintenance'"
+            @click="form.action = 'create'"
           >
-            <strong>维修工单</strong>
-            <span>适合故障修复、应急处置和恢复执行</span>
+            创建新工单
           </button>
           <button
-            class="workorder-prompt__type"
-            :class="{ 'workorder-prompt__type--active': form.type === 'retrofit' }"
+            class="workorder-prompt__action-btn"
+            :class="{ 'workorder-prompt__action-btn--active': form.action === 'link' }"
             type="button"
-            @click="form.type = 'retrofit'"
+            :disabled="!hasExistingWorkorders"
+            @click="form.action = 'link'"
           >
-            <strong>改造工单</strong>
-            <span>适合线路调整、结构变更和台账回写</span>
+            关联已有工单
           </button>
         </div>
 
-        <div class="ops-form__row ops-form__row--aligned">
-          <label class="ops-create-field">
-            <span class="ops-create-field__label">工单标题</span>
-            <input v-model="form.title" class="ops-input" placeholder="请输入工单标题" />
-          </label>
-          <label class="ops-create-field">
-            <span class="ops-create-field__label">优先级</span>
-            <select v-model="form.priority" class="ops-input">
-              <option value="low">低</option>
-              <option value="medium">中</option>
-              <option value="high">高</option>
-              <option value="urgent">紧急</option>
-            </select>
-          </label>
-        </div>
+        <template v-if="form.action === 'link'">
+          <div v-if="relatedWorkorders.length" class="workorder-prompt__existing-list">
+            <label
+              v-for="item in relatedWorkorders"
+              :key="item.id"
+              class="workorder-prompt__existing-item"
+            >
+              <input
+                v-model="selectedExistingWorkorderId"
+                class="workorder-prompt__radio"
+                type="radio"
+                :value="item.id"
+              >
+              <span class="workorder-prompt__existing-body">
+                <strong>{{ item.id }} · {{ item.title }}</strong>
+                <span>{{ workorderTypeLabel[item.type] }} · {{ workorderStatusLabel[item.status] }} · {{ item.updatedAt }}</span>
+              </span>
+            </label>
+          </div>
+          <div v-else class="workorder-prompt__empty-link">
+            当前没有可关联的工单，请切换为新建工单。
+          </div>
+        </template>
 
-        <label class="ops-create-field">
-          <span class="ops-create-field__label">工单描述</span>
-          <textarea
-            v-model="form.description"
-            class="ops-input workorder-prompt__textarea"
-            rows="4"
-            placeholder="补充本次变更原因、影响范围和处置目标"
-          />
-        </label>
+        <template v-else>
+          <div class="workorder-prompt__choice-grid">
+            <button
+              v-for="item in availableTypes"
+              :key="item.value"
+              class="workorder-prompt__type"
+              :class="{ 'workorder-prompt__type--active': form.type === item.value }"
+              type="button"
+              @click="form.type = item.value"
+            >
+              <strong>{{ item.title }}</strong>
+              <span>{{ item.description }}</span>
+            </button>
+          </div>
 
-        <div class="ops-form__row ops-form__row--aligned">
-          <label class="ops-create-field">
-            <span class="ops-create-field__label">区域</span>
-            <input v-model="form.area" class="ops-input" placeholder="教学区 / 生活区 / 实验区" />
-          </label>
-          <label class="ops-create-field">
-            <span class="ops-create-field__label">执行人</span>
-            <input v-model="form.assignee" class="ops-input" placeholder="班组或人员" />
-          </label>
-        </div>
+          <div class="ops-form__row ops-form__row--aligned">
+            <label class="ops-create-field">
+              <span class="ops-create-field__label">工单标题</span>
+              <input v-model="form.title" class="ops-input" placeholder="请输入工单标题" />
+            </label>
+            <label class="ops-create-field">
+              <span class="ops-create-field__label">优先级</span>
+              <select v-model="form.priority" class="ops-input">
+                <option value="low">低</option>
+                <option value="medium">中</option>
+                <option value="high">高</option>
+                <option value="urgent">紧急</option>
+              </select>
+            </label>
+          </div>
 
-        <div class="ops-form__row ops-form__row--aligned">
           <label class="ops-create-field">
-            <span class="ops-create-field__label">审核人</span>
-            <input v-model="form.reviewer" class="ops-input" placeholder="审核人" />
+            <span class="ops-create-field__label">工单描述</span>
+            <textarea
+              v-model="form.description"
+              class="ops-input workorder-prompt__textarea"
+              rows="4"
+              placeholder="补充本次变更原因、影响范围和处置目标"
+            />
           </label>
-          <label class="ops-create-field">
-            <span class="ops-create-field__label">计划日期</span>
-            <input v-model="form.plannedDate" class="ops-input" type="date" />
-          </label>
-        </div>
 
-        <label class="ops-create-field">
-          <span class="ops-create-field__label">截止时间</span>
-          <input v-model="form.deadlineAt" class="ops-input" type="datetime-local" />
-        </label>
+          <div class="ops-form__row ops-form__row--aligned">
+            <label class="ops-create-field">
+              <span class="ops-create-field__label">区域</span>
+              <input v-model="form.area" class="ops-input" placeholder="教学区 / 生活区 / 实验区" />
+            </label>
+            <label class="ops-create-field">
+              <span class="ops-create-field__label">执行人</span>
+              <input v-model="form.assignee" class="ops-input" placeholder="班组或人员" />
+            </label>
+          </div>
+
+          <div class="ops-form__row ops-form__row--aligned">
+            <label class="ops-create-field">
+              <span class="ops-create-field__label">审核人</span>
+              <input v-model="form.reviewer" class="ops-input" placeholder="审核人" />
+            </label>
+            <label class="ops-create-field">
+              <span class="ops-create-field__label">计划日期</span>
+              <input v-model="form.plannedDate" class="ops-input" type="date" />
+            </label>
+          </div>
+
+          <label class="ops-create-field">
+            <span class="ops-create-field__label">截止时间</span>
+            <input v-model="form.deadlineAt" class="ops-input" type="datetime-local" />
+          </label>
+        </template>
       </div>
 
       <div class="editor-modal__foot">
         <button class="btn btn--sm" type="button" :disabled="submitting" @click="emit('close')">仅保存拓扑</button>
-        <button class="btn btn--primary" type="button" :disabled="submitting || !form.title.trim()" @click="handleConfirm">
-          {{ submitting ? '创建中...' : '创建联动工单' }}
+        <button class="btn btn--primary" type="button" :disabled="submitting || !canConfirm" @click="handleConfirm">
+          {{ submitting ? '处理中...' : form.action === 'link' ? '关联到工单' : '创建联动工单' }}
         </button>
       </div>
     </div>
@@ -342,6 +434,27 @@ function handleConfirm() {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.workorder-prompt__action-switch {
+  display: flex;
+  gap: 10px;
+}
+
+.workorder-prompt__action-btn {
+  flex: 1;
+  min-height: 40px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(15, 23, 42, 0.72);
+  color: #cbd5e1;
+  font-size: 13px;
+}
+
+.workorder-prompt__action-btn--active {
+  border-color: rgba(34, 211, 238, 0.56);
+  color: #f8fafc;
+  box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.24);
+}
+
 .workorder-prompt__type {
   display: grid;
   gap: 6px;
@@ -373,6 +486,37 @@ function handleConfirm() {
   resize: vertical;
 }
 
+.workorder-prompt__existing-list {
+  display: grid;
+  gap: 10px;
+}
+
+.workorder-prompt__existing-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.workorder-prompt__existing-body {
+  display: grid;
+  gap: 4px;
+}
+
+.workorder-prompt__existing-body strong {
+  font-size: 13px;
+}
+
+.workorder-prompt__existing-body span,
+.workorder-prompt__empty-link {
+  color: rgba(148, 163, 184, 0.92);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 @media (max-width: 720px) {
   .editor-modal__head,
   .editor-modal__foot {
@@ -382,6 +526,10 @@ function handleConfirm() {
 
   .workorder-prompt__choice-grid {
     grid-template-columns: 1fr;
+  }
+
+  .workorder-prompt__action-switch {
+    flex-direction: column;
   }
 
   .ops-form__row {

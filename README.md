@@ -1,438 +1,729 @@
 # UniSpace-AI
 
-**基于 GIS 和数字孪生技术的校园地下管网智能运维系统**
+基于 GIS、数字孪生和工单闭环的校园地下管网智能运维系统。
 
-一个集成了空间数据可视化、拓扑关系管理、实时监测告警、工单全生命周期管理的完整数字孪生平台。
+UniSpace-AI 不是单纯的地图展示项目，也不是孤立的工单系统。它的目标是把校园地下管网相关的核心对象统一到同一个平台里：
 
-## 技术栈
+- 建筑
+- 管道
+- 管网节点
+- 资产关系
+- 楼层与房间
+- 实时测点
+- 工单
+- 建筑模型
 
-- **前端**：Nuxt 3 + Vue 3 + Cesium（3D地图）+ Mars3D（2D编辑器）+ TailwindCSS
-- **后端**：Spring Boot 4 + PostgreSQL/PostGIS + Flyway + JdbcTemplate
-- **AI**：Gemini 流式对话（`/api/chat`）
-- **数据层**：空间要素（GeoJSON）、Twin 拓扑、实时测点、工单系统、房产管理
+系统当前已经形成一套可运行的前后端一体化实现，重点覆盖：
 
-## 核心功能
+- 三维地图与空间要素展示
+- 管道二维编辑器与拓扑维护
+- 工单系统与影响范围分析
+- 房产 / 楼宇 / 房间数据联动
+- 建筑模型摆放与可视化配置
 
-### 1. 三维地图可视化
-- **Cesium 三维引擎**：校园全景三维展示
-- **多图层管理**：建筑、管道（供水/排水/污水）、管网节点、绿地
-- **动态加载优化**：按视口 bbox 分页加载（800条/页，最多5页），防抖350ms
-- **实时高亮**：点击实体自动高亮并显示详情
-- **工单热力图**：叠加显示进行中的工单位置
+---
 
-### 2. 拓扑关系管理
-- **drilldown 穿透查询**：点击管段自动查询关联的节点、阀门、建筑、房间、设备
-- **trace 上下游追踪**：基于 BFS 算法追踪管网上游/下游完整路径
-- **影响范围自动计算**：工单创建时自动计算受影响的建筑和房间
-- **拓扑数据模型**：`pipe_nodes`（节点）、`pipe_segments`（管段）、`asset_relations`（关系）
+## 目录
 
-### 3. 实时监测与告警
-- **测点数据采集**：支持压力、流量、浊度、余氯等多指标
-- **阈值规则引擎**：自动评估数据并触发 warning/critical 告警
-- **双表存储**：`m2_metric_latest`（最新值）+ `m2_metric_history`（历史数据）
-- **告警事件管理**：`m2_alert_events` 记录所有告警，支持状态流转
+- [项目定位](#项目定位)
+- [核心能力](#核心能力)
+- [系统架构](#系统架构)
+- [核心业务对象](#核心业务对象)
+- [业务模块](#业务模块)
+- [二维编辑器与工单联动](#二维编辑器与工单联动)
+- [建筑轮廓、建筑模型、楼层数据的区别](#建筑轮廓建筑模型楼层数据的区别)
+- [数据模型与数据库结构](#数据模型与数据库结构)
+- [关键接口](#关键接口)
+- [运行与启动](#运行与启动)
+- [开发方式](#开发方式)
+- [关键代码入口](#关键代码入口)
+- [当前实现边界](#当前实现边界)
 
-### 4. 工单全生命周期管理
-- **四类工单**：巡检（inspection）、维修（maintenance）、改造（retrofit）、报废（retire）
-- **状态机流转**：draft → todo → assigned → in_progress → review → completed → closed
-- **热水泵联动控制**：批量控制受影响建筑的热水泵开关，支持定时恢复
-- **执行日志**：支持照片、语音、GPS 定位上传
-- **影响范围调整**：手动调整工单影响的建筑和房间
-- **统计与看板**：工单状态统计、效率分析、影响范围 Top 10
+---
 
-### 5. 管道二维编辑器
-- **Mars3D 引擎**：支持 2D/2.5D/3D 视图切换
-- **可视化编辑**：节点拖拽、线段插点/删点、右键菜单
-- **草稿自动保存**：800ms 防抖 + 8s 定时保存到 localStorage
-- **撤销/重做**：支持无限次撤销和重做（最多保留50条历史）
-- **Twin 数据洞察**：实时查看 drilldown、trace、telemetry、audit 数据
-- **快捷报修**：编辑器内直接创建维修工单
+## 项目定位
 
-### 6. 建筑 3D 模型管理
-- **GLB 模型加载**：支持上传和配置 GLB 格式的建筑模型
-- **可视化坐标编辑**：在地图上点击或拖拽设置模型位置
-- **姿态调整**：滑杆实时预览 Heading/Pitch/Roll 旋转
-- **自动缩放**：根据建筑底面自动估算模型缩放比例
+传统校园管网管理通常存在几个断层：
 
-### 7. 房产管理（部分实现）
-- **转固管理**：资产转固申请、审核、库存管理
-- **调配管理**：公用房归口调配、临时借用
-- **收费管理**：公房收费标准、缴费记录
-- **经营管理**：经营性用房租赁管理
-- **人员管理**：人员信息维护
+- 地图系统负责“看”，但不负责“改”和“追踪”
+- 工单系统负责“填单”，但不直接绑定真实资产
+- 房产系统管理楼宇和房间，但和地下管线影响关系脱节
+- 运维人员要自己判断“一条管道异常会影响哪栋楼、哪几层、哪些房间”
 
-### 8. AI 智能助手
-- **Gemini 集成**：基于 Google Gemini API 的对话式 AI
-- **SSE 流式输出**：实时流式返回 AI 回复
-- **业务查询**：支持管网状态查询、工单进度查询等（需进一步完善）
+UniSpace-AI 试图把这些链路打通，让操作路径变成：
+
+1. 在地图或二维编辑器中选中真实管段
+2. 直接看到它关联的节点、建筑、房间、测点、历史工单
+3. 直接新建或关联工单
+4. 自动计算影响范围
+5. 在日志、泵控、通知、复核中持续沿同一资产链路流转
+
+所以这个项目本质上是一个“空间资产 + 拓扑关系 + 运维工单闭环”的平台。
+
+---
+
+## 核心能力
+
+### 地图与数字孪生
+
+- 基于 `Cesium` 的三维地图主视图
+- 基于 `Mars3D` 的二维 / 2.5D / 3D 管道编辑器
+- `geo_features` 统一承载建筑、管道、绿地等空间要素
+- 支持 bbox、图层、分页读取空间数据
+- 支持 drilldown 穿透查询
+- 支持 trace 上下游追踪
+- 支持实时测点和编辑审计日志
+
+### 二维管道编辑器
+
+- 直接新建管道草稿
+- 选中管道后修改名称
+- 节点拖拽、插点、删点
+- 撤销 / 重做
+- 草稿自动保存
+- 两条管道共用节点
+- 第二条管道吸附到第一条管道已有节点继续连线
+- 显示建筑轮廓作为空间参照
+- 查看当前管道相关工单、楼宇、节点、链路和测点
+
+### 建筑显示与模型
+
+- 二维编辑器主视图可显示建筑 `2D 轮廓`
+- 当前主编辑视图默认是轮廓显示，不做大面积填充
+- 支持单独配置建筑模型：
+  - `modelEnabled`
+  - `modelUrl`
+  - `modelScaleMode`
+  - `modelScale`
+  - `modelHeading`
+  - `modelPitch`
+  - `modelRoll`
+  - `modelLongitude`
+  - `modelLatitude`
+- 支持“建筑模型摆放”弹窗进行可视化调整
+
+### 工单系统
+
+- 四类工单：
+  - `inspection` 巡检
+  - `maintenance` 维修
+  - `retrofit` 改造
+  - `retire` 报废
+- 工单列表、详情、状态流转
+- 执行日志
+- 影响范围调整
+- 自动建单
+- 快捷报修
+- 泵控联动
+- 支持按 `segmentId / nodeId / buildingId` 精确查工单
+
+### 房产与楼宇数据
+
+- 建筑基础数据已接入
+- 房间数据已接入
+- 楼层数据已接入
+- 工单影响范围会读取楼宇、楼层、房间信息
+
+---
 
 ## 系统架构
 
-### 整体架构
+### 总体架构
+
+```text
+┌──────────────────────────────────────────────────────────────┐
+│                           浏览器                              │
+│   三维地图 / 二维编辑器 / 后台业务页面 / 工单页面 / 房产页面   │
+└──────────────────────────────────────────────────────────────┘
+                               │
+                               │ HTTP
+                               ▼
+┌──────────────────────────────────────────────────────────────┐
+│                       前端层（Nuxt 3）                        │
+│ Pages + Components + Composables + Services + Server API    │
+└──────────────────────────────────────────────────────────────┘
+                               │
+                               │ HTTP REST
+                               ▼
+┌──────────────────────────────────────────────────────────────┐
+│                    后端层（Spring Boot 4）                    │
+│ Controller + Repository + JdbcTemplate + Flyway + Security  │
+└──────────────────────────────────────────────────────────────┘
+                               │
+                               │ JDBC
+                               ▼
+┌──────────────────────────────────────────────────────────────┐
+│                PostgreSQL / PostGIS 数据层                    │
+│ geo_features + twin tables + building tables + work_order   │
+└──────────────────────────────────────────────────────────────┘
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        浏览器层                              │
-│  主地图（3D Cesium）+ 后台管理（资产/工单/房产）             │
-└─────────────────────────────────────────────────────────────┘
-                              ↓ HTTP/WebSocket
-┌─────────────────────────────────────────────────────────────┐
-│                      前端层（Nuxt 3）                         │
-│  Pages + Components + Composables + Nuxt Server API         │
-└─────────────────────────────────────────────────────────────┘
-                              ↓ HTTP REST
-┌─────────────────────────────────────────────────────────────┐
-│                   后端层（Spring Boot 4）                     │
-│  Controllers + Repositories（JdbcTemplate）                  │
-└─────────────────────────────────────────────────────────────┘
-                              ↓ JDBC
-┌─────────────────────────────────────────────────────────────┐
-│                数据库层（PostgreSQL + PostGIS）               │
-│  空间要素 + 拓扑关系 + 测点数据 + 工单系统                    │
-└─────────────────────────────────────────────────────────────┘
+
+### 前端架构
+
+前端采用 `页面 + 组件 + composable + service` 的结构：
+
+- `pages/`：页面入口
+- `components/`：可视化组件
+- `composables/`：复杂业务逻辑与状态组织
+- `services/`：对 Nuxt server API 和 backend API 的调用
+- `server/`：Nuxt 侧中间层接口、mock 数据和数据库辅助逻辑
+
+这让二维编辑器、工单、资产弹窗等复杂逻辑可以从页面模板中拆开。
+
+### 后端架构
+
+后端主要使用：
+
+- `Spring Boot 4`
+- `JdbcTemplate`
+- `Spring Security`
+- `Flyway`
+- `PostgreSQL + PostGIS`
+
+当前项目里很多业务逻辑集中在 `Repository` 层，而不是传统的 `Controller -> Service -> Repository` 三层拆分。  
+这种结构的特点是：
+
+- SQL 和业务装配逻辑更靠近
+- 拓扑、影响范围、楼宇关系等逻辑更直观
+- 阅读代码时通常需要直接进入 Repository 理解数据生成过程
+
+### 仓库结构
+
+```text
+UniSpace-AI/
+├── backend/           Spring Boot 后端
+├── frontend/          Nuxt 前端
+├── docs/              预留文档目录
+├── docker-compose.yml PostGIS 容器
+├── start.sh           一键启动脚本
+└── README.md
 ```
 
-### 核心数据表
+前端重点目录：
 
-| 表名 | 用途 | 关键字段 |
-|------|------|---------|
-| `geo_features` | 空间要素（建筑/管道/绿地） | id, layer, geom, properties, visible |
-| `pipe_nodes` | 管网节点 | id, feature_id, node_type, properties |
-| `pipe_segments` | 管段 | id, feature_id, from_node_id, to_node_id, diameter_mm, material |
-| `asset_relations` | 资产关系 | source_id, source_type, target_id, target_type, relation_type |
-| `telemetry_latest` | 实时测点数据 | point_id, feature_id, metric, value, sampled_at |
-| `m2_metric_history` | 历史测点数据 | point_id, metric, value, sampled_at |
-| `m2_alert_events` | 告警事件 | point_id, metric, severity, status |
-| `work_order` | 工单 | id, order_type, status, node_ids, segment_ids, impact_scope |
-| `pump_control_log` | 热水泵控制日志 | work_order_id, building_id, pump_id, action, result |
+```text
+frontend/
+├── components/admin/
+├── components/admin/pipe2d-editor/
+├── composables/admin/
+├── pages/
+├── public/models/
+├── server/
+├── services/
+└── types/
+```
 
-### 技术特点
+后端重点目录：
 
-1. **数据库端 JSON 构造**：利用 PostgreSQL 的 `jsonb_build_object` 和 `ST_AsGeoJSON` 在数据库层直接生成 GeoJSON，性能提升 6 倍
-2. **Controller-Repository 模式**：无 Service 层，Repository 直接处理业务逻辑
-3. **按需动态加载**：按视口 bbox 分页拉取，单次 800 条，最多 5 页，帧率稳定在 55-60 FPS
-4. **拓扑图算法**：基于 BFS 的上下游追踪，支持复杂管网结构
-5. **草稿自动保存**：800ms 防抖 + 8s 定时保存，避免数据丢失
-6. **审计日志完整**：所有编辑操作记录 before/after payload，可回溯
+```text
+backend/src/main/java/com/jolt/workflow/
+├── geo/           空间要素、Twin、审计、几何更新
+├── pipelineops/   管网工单、影响范围、资产查询、泵控
+├── property/      房产相关接口
+└── ...
+```
 
-## 文档导航
+---
 
-- 项目总览：当前这份 [`README.md`](./README.md)
-- 开发指南：[`CLAUDE.md`](./CLAUDE.md)（项目架构、约定和最佳实践）
-- 模块导航：[`docs/README.md`](./docs/README.md)
-- 前端手册：[`docs/frontend.md`](./docs/frontend.md)
-- 后端手册：[`docs/backend.md`](./docs/backend.md)
-- 数据与 API 手册：[`docs/data-and-api.md`](./docs/data-and-api.md)
-- 业务模块手册：[`docs/business-modules.md`](./docs/business-modules.md)
+## 核心业务对象
 
-## 快速开始
+### 建筑
+
+表示校园楼宇、建筑轮廓、模型配置和部分楼宇台账信息。
+
+### 管道
+
+表示空间管线几何，是地图和二维编辑器里最直接操作的对象。
+
+### 节点
+
+表示管网节点，是拓扑连接、节点复用、上下游追踪和工单定位的重要基础。
+
+### 管段
+
+表示拓扑意义上的边，通常对应一段真实管线。工单定位常落在 `segmentIds` 上。
+
+### 资产关系
+
+由 `asset_relations` 承载，用于表达：
+
+- 管段与建筑
+- 节点与建筑
+- 建筑与房间
+- 其他资产之间
+
+的关系网络。
+
+### 楼层与房间
+
+是工单影响范围里最重要的受影响对象层。
+
+### 工单
+
+是整个业务闭环的执行中心。当前工单不是纯文本记录，而是绑定真实资产的结构化业务对象。
+
+---
+
+## 业务模块
+
+### 三维地图主视图
+
+负责“全局感知”而非精细编辑。
+
+主要职责：
+
+- 展示建筑、管线、节点等整体空间分布
+- 承担全局定位、浏览和高亮
+- 为 drilldown、trace、测点查看提供入口
+
+### 二维管道编辑器
+
+这是当前项目最重的交互模块之一。
+
+它不仅负责画线，还承担：
+
+- 几何编辑
+- 拓扑编辑
+- 节点复用
+- 建筑绑定
+- 工单联动
+- 局部运维洞察
+
+更像一个“运维操作工作台”。
+
+### 工单模块
+
+工单模块覆盖巡检、维修、改造、报废四类业务。
+
+当前的核心方向不是“做一个列表页”，而是：
+
+- 工单绑定真实资产
+- 工单可从二维编辑器直接发起
+- 工单可自动推导影响范围
+- 工单可进入后续日志、泵控、复核、通知流程
+
+### 房产 / 楼宇 / 房间模块
+
+这部分既服务房产业务，也服务管网运维。
+
+例如：
+
+- 哪栋楼受影响
+- 影响了哪些楼层
+- 影响了哪些房间
+
+都依赖楼宇和房间数据。
+
+### 建筑模型模块
+
+负责为建筑轮廓之上的三维表达能力提供配置入口。
+
+当前主要场景：
+
+- 为建筑配置 GLB 模型
+- 调整模型位置和姿态
+- 将模型表现与二维轮廓显示分开管理
+
+### 实时测点与告警
+
+系统已具备：
+
+- 实时测点数据读取
+- 历史数据保留
+- 告警事件支撑
+- 自动建单入口
+
+虽然这部分不是最近迭代的主线，但它是后续自动化运维的基础。
+
+---
+
+## 二维编辑器与工单联动
+
+这是当前最有“业务闭环”意味的一条链路。
+
+### 联动入口
+
+在二维编辑器中选中当前管道后，用户可以直接：
+
+- 新建工单
+- 关联已有工单
+
+不需要先跳转到工单列表页再手动查资产。
+
+### 自动带入内容
+
+联动弹窗会自动带入当前上下文：
+
+- 当前管段
+- 当前解析到的节点
+- 当前管道介质
+- 当前区域
+- 当前已绑定楼宇
+- 当前影响范围预分析结果
+
+### 影响范围预分析
+
+预分析会基于：
+
+- `segmentIds`
+- `nodeIds`
+- `buildingId`
+- `asset_relations`
+
+推导受影响楼宇、楼层、房间，并估算：
+
+- 影响楼宇数
+- 影响人数
+- 预计影响时长
+
+### 关联已有工单
+
+如果当前选中管道已经存在相关工单，弹窗允许直接把当前资产上下文补到已有工单里，而不是强制新建。
+
+### 设计意义
+
+这条链路真正把：
+
+- 空间编辑
+- 拓扑资产
+- 工单闭环
+
+连接成了一体。
+
+---
+
+## 建筑轮廓、建筑模型、楼层数据的区别
+
+这三者很容易混淆，但在当前系统里职责完全不同。
+
+### 建筑轮廓
+
+- 来源：`geo_features(layer='buildings')`
+- 表现：二维编辑器里的 `2D 轮廓线`
+- 用途：对齐管道、做建筑绑定、做空间参照
+
+当前二维编辑器主视图里显示的是这个。
+
+### 建筑模型
+
+- 来源：建筑要素 `properties`
+- 关键字段：
+  - `modelEnabled`
+  - `modelUrl`
+  - `modelScaleMode`
+  - `modelScale`
+  - `modelHeading`
+  - `modelPitch`
+  - `modelRoll`
+  - `modelLongitude`
+  - `modelLatitude`
+- 用途：建筑模型摆放、预览和三维表现
+
+当前“建筑模型摆放”弹窗管理的是这个，不是楼层。
+
+### 建筑楼层
+
+- 来源：`buildings`、`building_floors`、`building_rooms`
+- 用途：工单影响范围、楼宇房间影响显示、上层房产业务
+
+楼层不是在二维编辑器里设置的，也不是在建筑模型摆放弹窗里设置的。
+
+---
+
+## 数据模型与数据库结构
+
+### 空间与拓扑表
+
+| 表名 | 用途 |
+| --- | --- |
+| `geo_features` | 建筑、管道、绿地等空间要素 |
+| `pipe_nodes` | 管网节点 |
+| `pipe_segments` | 管段 |
+| `pipe_valves` | 阀门 |
+| `pipe_manholes` | 检查井 |
+| `pump_stations` | 泵站 |
+| `asset_relations` | 资产关系网络 |
+| `telemetry_latest` | 最新测点数据 |
+| `edit_audit_log` | 编辑审计 |
+
+### 建筑与房间表
+
+| 表名 | 用途 |
+| --- | --- |
+| `buildings` | 建筑基础表 |
+| `building_floors` | 建筑楼层 |
+| `building_rooms` | 房间与楼层关系 |
+| `rooms` | 兼容旧房间表 |
+
+说明：
+
+- `buildings.floor_count` 表示楼栋总层数
+- `building_rooms.floor_id` 对应 `building_floors.id`
+- `building_floors.floor_no` 才是实际楼层号
+
+### 工单表
+
+| 表名 | 用途 |
+| --- | --- |
+| `work_order` | 主工单表 |
+| `order_building_link` | 工单影响楼宇关系 |
+| `work_order_log` | 工单执行日志 |
+| `pump_control_log` | 泵控日志 |
+
+### 影响范围是怎么构造的
+
+后端在构造工单影响范围时，会优先看：
+
+- 工单显式绑定的楼宇
+- 管段、节点关联到的楼宇
+- 楼宇下的房间与楼层
+
+最终生成：
+
+- `impactedBuildings`
+- `floors`
+- `rooms`
+- `equipmentIds`
+
+---
+
+## 关键接口
+
+### Twin / 地图 / 编辑器
+
+| 接口 | 方法 | 说明 |
+| --- | --- | --- |
+| `/api/v1/features` | GET | 查询空间要素 |
+| `/api/v1/features` | POST / PUT / DELETE | 增删改空间要素 |
+| `/api/v1/features/visibility` | PUT | 更新要素可见性 |
+| `/api/v1/twin/drilldown/{featureId}` | GET | 穿透查询 |
+| `/api/v1/twin/trace` | GET | 管网追踪 |
+| `/api/v1/twin/nodes` | GET | 查询节点 |
+| `/api/v1/twin/telemetry/latest` | GET | 查询最新测点 |
+| `/api/v1/twin/pipes/{id}/geometry` | PUT | 更新管道几何 |
+| `/api/v1/twin/pipes/{id}/properties` | PUT | 更新管道属性 |
+| `/api/v1/twin/pipes/{id}/buildings` | PUT | 更新管道绑定楼宇 |
+| `/api/v1/twin/audit/{featureId}` | GET | 查询编辑审计 |
+
+### 工单
+
+| 接口 | 方法 | 说明 |
+| --- | --- | --- |
+| `/api/v1/pipeline-ops/workorders` | GET | 工单列表 |
+| `/api/v1/pipeline-ops/workorder` | GET | 单个工单详情 |
+| `/api/v1/pipeline-ops/workorders` | POST | 创建或更新工单 |
+| `/api/v1/pipeline-ops/workorders` | PATCH | 工单状态流转 |
+| `/api/v1/pipeline-ops/workorders-related` | GET | 按 segment / node / building 查相关工单 |
+| `/api/v1/pipeline-ops/assets` | GET | 查询可选节点 / 管段 / 楼宇资产 |
+| `/api/v1/pipeline-ops/impact-analysis` | POST | 影响范围预分析 |
+| `/api/v1/pipeline-ops/auto-create` | POST | 自动建单 |
+| `/api/v1/pipeline-ops/quick-report` | POST | 快捷报修 |
+| `/api/v1/pipeline-ops/action` | POST | 日志、泵控、影响范围调整等动作 |
+| `/api/v1/pipeline-ops/stats` | GET | 工单统计 |
+| `/api/v1/pipeline-ops/dashboard` | GET | 工单看板 |
+
+### 房产 / 建筑
+
+| 接口 | 方法 | 说明 |
+| --- | --- | --- |
+| `/api/v1/property/buildings` | GET | 查询建筑列表 |
+| `/api/v1/property/rooms` | GET | 查询房间列表 |
+| `/api/v1/property/overview` | GET | 房产概览 |
+
+---
+
+## 运行与启动
 
 ### 环境要求
 
-- Node.js >= 18
-- JDK 21
-- PostgreSQL/PostGIS 或 Docker
+- `Node.js >= 18`
+- `JDK 21`
+- `Docker`（推荐）
 
-### 1. 准备环境变量
+### 环境变量
+
+根目录 `.env`：
 
 ```bash
-cp .env.example .env
+POSTGRES_PASSWORD=replace-with-a-strong-password
+DB_PASSWORD=replace-with-a-strong-password
+
+APP_SECURITY_WRITE_AUTH_ENABLED=true
+APP_ADMIN_USER=admin
+APP_ADMIN_PASSWORD=replace-with-a-strong-password
+
+BACKEND_WRITE_AUTH_ENABLED=true
+BACKEND_ADMIN_USER=admin
+BACKEND_ADMIN_PASSWORD=replace-with-a-strong-password
+
+GEMINI_API_KEY=replace-with-your-gemini-key
 ```
 
-至少需要配置：
+前端 `frontend/.env`：
 
-- `POSTGRES_PASSWORD` 或 `DB_PASSWORD`
-- `APP_ADMIN_PASSWORD`（当后端写鉴权开启时）
-- `GEMINI_API_KEY`（使用 AI 对话时需要）
+```bash
+GEMINI_API_KEY=replace-with-your-gemini-key
+NUXT_PUBLIC_BACKEND_BASE_URL=http://localhost:8080
 
-### 2. 一键启动
+BACKEND_WRITE_AUTH_ENABLED=true
+BACKEND_ADMIN_USER=admin
+BACKEND_ADMIN_PASSWORD=replace-with-a-strong-password
+```
+
+### 一键启动
 
 ```bash
 chmod +x start.sh
 ./start.sh
 ```
 
-`start.sh` 会自动：
-- 解析根目录 `.env`
-- 校验 Java / Node 环境
-- 若本地没有 PostgreSQL，自动启动 Docker 容器
-- 清理遗留的 3000/8080 端口进程
-- 安装前端依赖
+脚本会自动：
+
+- 读取根目录 `.env`
+- 检查 Java / Node
+- 检查 `docker compose`
+- 在缺少本地数据库时自动拉起 `postgis`
+- 清理本项目残留端口
 - 启动后端和前端
 
-启动后访问：
+默认端口：
+
 - 前端：`http://localhost:3000`
 - 后端：`http://localhost:8080`
+- 数据库：`localhost:5432`
 
-### 3. 手动启动
+### 手动启动
+
+启动数据库：
 
 ```bash
-# 启动数据库
-docker compose up -d
+docker compose up -d postgis
+```
 
-# 启动后端
+启动后端：
+
+```bash
 cd backend
 ./gradlew bootRun
+```
 
-# 启动前端
+启动前端：
+
+```bash
 cd frontend
 npm ci
 npm run dev
 ```
 
-## 核心 API
+---
 
-### 空间要素与拓扑关系
+## 开发方式
 
-| 接口 | 方法 | 说明 |
-|------|------|------|
-| `/api/v1/features` | GET | 查询空间要素（支持 bbox、图层、分页） |
-| `/api/v1/features/{id}` | GET | 查询单个要素 |
-| `/api/v1/features` | POST | 创建要素 |
-| `/api/v1/features` | PUT | 更新要素 |
-| `/api/v1/features` | DELETE | 删除要素 |
-| `/api/v1/features/visibility` | PUT | 更新可见性 |
-| `/api/v1/twin/drilldown/{featureId}` | GET | 穿透查询（节点/建筑/房间/设备） |
-| `/api/v1/twin/trace` | GET | 上下游追踪 |
-| `/api/v1/twin/nodes` | GET | 查询管网节点 |
-| `/api/v1/twin/telemetry/latest` | GET | 查询最新测点数据 |
-| `/api/v1/twin/pipes/{id}/geometry` | PUT | 更新管道几何 |
-| `/api/v1/twin/pipes/{id}/properties` | PUT | 更新管道属性 |
-| `/api/v1/twin/audit/{featureId}` | GET | 查询编辑审计日志 |
+### 常用命令
 
-### 实时监测与告警
+前端：
 
-| 接口 | 方法 | 说明 |
-|------|------|------|
-| `/api/v1/module2/telemetry/ingest` | POST | 上报测点数据 |
-| `/api/v1/module2/telemetry/thresholds` | PUT | 设置阈值规则 |
-| `/api/v1/module2/telemetry/latest` | GET | 查询最新测点数据 |
-| `/api/v1/module2/telemetry/history` | GET | 查询历史测点数据 |
-
-### 工单系统
-
-| 接口 | 方法 | 说明 |
-|------|------|------|
-| `/api/v1/pipeline-ops/workorders` | GET | 查询工单列表 |
-| `/api/v1/pipeline-ops/workorder` | GET | 查询单个工单 |
-| `/api/v1/pipeline-ops/workorders` | POST | 创建/更新工单 |
-| `/api/v1/pipeline-ops/workorders` | PATCH | 工单状态流转 |
-| `/api/v1/pipeline-ops/auto-create` | POST | 自动创建工单（告警触发） |
-| `/api/v1/pipeline-ops/quick-report` | POST | 快捷报修 |
-| `/api/v1/pipeline-ops/action` | POST | 执行工单操作（泵控/日志/调整） |
-| `/api/v1/pipeline-ops/stats` | GET | 工单统计 |
-| `/api/v1/pipeline-ops/dashboard` | GET | 工单看板数据 |
-
-### 房产管理
-
-| 接口 | 方法 | 说明 |
-|------|------|------|
-| `/api/v1/property/buildings` | GET | 查询建筑列表 |
-| `/api/v1/property/rooms` | GET | 查询房间列表 |
-| `/api/v1/property/overview` | GET | 房产概览统计 |
-
-## 数据库迁移
-
-当前 Flyway 迁移版本：`V1 ~ V10`
-
-| 版本 | 说明 |
-|------|------|
-| V1 | 初始化 PostGIS + `geo_features` 表 |
-| V2 | 添加 `visible` 字段 |
-| V3 | Twin 拓扑表（`pipe_nodes`、`pipe_segments`、`asset_relations`、`telemetry_latest`、`edit_audit_log`） |
-| V4 | Twin 拓扑种子数据 |
-| V5 | Twin 实体表（`pipe_valves`、`pump_stations`、`pipe_manholes`、`building_floors`、`building_rooms`） |
-| V6 | Module2 测点系统表 |
-| V7 | 扩展拓扑实体种子数据 |
-| V8 | 房产基础表（`buildings`、`rooms`） |
-| V9 | 房产种子数据 |
-| V10 | 工单系统表（`work_order`、`order_building_link`、`work_order_log`、`pump_control_log`） |
-
-## 环境变量
-
-| 变量 | 用途 | 默认值 / 说明 |
-| --- | --- | --- |
-| `POSTGRES_PASSWORD` | Docker/Postgres 密码 | 必填 |
-| `DB_URL` | Spring 数据库地址 | `jdbc:postgresql://localhost:5432/unispace` |
-| `DB_USER` | Spring 数据库用户 | `postgres` |
-| `DB_PASSWORD` | Spring 数据库密码 | 为空时回退 `POSTGRES_PASSWORD` |
-| `APP_SECURITY_WRITE_AUTH_ENABLED` | Spring 写接口鉴权开关 | `true` |
-| `APP_ADMIN_USER` | Spring Basic 用户名 | `admin` |
-| `APP_ADMIN_PASSWORD` | Spring Basic 密码 | 写鉴权开启时必填 |
-| `BACKEND_WRITE_AUTH_ENABLED` | Nuxt 写代理鉴权开关 | 默认继承后端语义，建议保持 `true` |
-| `BACKEND_ADMIN_USER` | Nuxt 代理转发时附加的用户名 | `admin` |
-| `BACKEND_ADMIN_PASSWORD` | Nuxt 代理转发时附加的密码 | 写代理开启时必填 |
-| `BACKEND_BASE_URL` / `NUXT_PUBLIC_BACKEND_BASE_URL` | Nuxt 访问后端的基地址 | `http://localhost:8080` |
-| `GEMINI_API_KEY` | `/api/chat` 使用的 Gemini Key | 未配置时聊天接口返回 500 |
-| `CORS_ALLOWED_ORIGINS` | 后端 CORS 白名单 | `http://localhost:3000,http://127.0.0.1:3000` |
-| `JPA_SHOW_SQL` | 是否打印 SQL | `false` |
-
-## 环境变量
-
-| 变量 | 用途 | 默认值 / 说明 |
-| --- | --- | --- |
-| `POSTGRES_PASSWORD` | Docker/Postgres 密码 | 必填 |
-| `DB_URL` | Spring 数据库地址 | `jdbc:postgresql://localhost:5432/unispace` |
-| `DB_USER` | Spring 数据库用户 | `postgres` |
-| `DB_PASSWORD` | Spring 数据库密码 | 为空时回退 `POSTGRES_PASSWORD` |
-| `APP_SECURITY_WRITE_AUTH_ENABLED` | Spring 写接口鉴权开关 | `true` |
-| `APP_ADMIN_USER` | Spring Basic 用户名 | `admin` |
-| `APP_ADMIN_PASSWORD` | Spring Basic 密码 | 写鉴权开启时必填 |
-| `BACKEND_WRITE_AUTH_ENABLED` | Nuxt 写代理鉴权开关 | 默认继承后端语义 |
-| `BACKEND_ADMIN_USER` | Nuxt 代理转发用户名 | `admin` |
-| `BACKEND_ADMIN_PASSWORD` | Nuxt 代理转发密码 | 写代理开启时必填 |
-| `BACKEND_BASE_URL` | Nuxt 访问后端的基地址 | `http://localhost:8080` |
-| `GEMINI_API_KEY` | AI 对话 API Key | 未配置时聊天接口返回 500 |
-| `CORS_ALLOWED_ORIGINS` | 后端 CORS 白名单 | `http://localhost:3000,http://127.0.0.1:3000` |
-
-## 验证与测试
-
-### 仓库级验证
-
-```bash
-./scripts/verify-local.sh
-```
-
-支持：
-- `./scripts/verify-local.sh full` - 完整验证（后端测试 + 前端类型检查 + 前端构建）
-- `./scripts/verify-local.sh frontend` - 仅前端验证
-- `./scripts/verify-local.sh backend` - 仅后端验证
-- `./scripts/verify-local.sh guardrails` - 代码规模检查
-
-### 其他脚本
-
-```bash
-# 检查大文件阈值
-./scripts/check-size-guardrails.sh
-
-# 生成性能基线报告
-./scripts/perf-baseline.sh
-
-# 前端类型检查
-cd frontend
-npm run typecheck
-
-# 前端生产构建
-npm run build
-
-# 迁移工单数据到 Postgres
-npm run migrate:pipeline-ops
-
-# 创建测试建筑（带 GLB 模型）
-npm run seed:test-building
-```
-
-### 测试现状
-
-后端已有测试：
-- `WorkflowApplicationTests` - 应用启动测试
-- `SecurityConfigTest` - 安全配置测试
-- `WorkOrderRepositoryTest` - 工单仓储测试
-
-前端当前以 `npm run typecheck` 和 `npm run build` 作为主要验证手段。
-
-## 目录结构
-
-```text
-UniSpace-AI/
-├── .env.example                    # 环境变量模板
-├── docker-compose.yml              # Docker 配置
-├── start.sh                        # 一键启动脚本
-├── CLAUDE.md                       # 项目架构与开发指南
-├── scripts/
-│   ├── verify-local.sh            # 仓库级验证
-│   ├── check-size-guardrails.sh   # 代码规模检查
-│   └── perf-baseline.sh           # 性能基线测试
-├── backend/
-│   ├── build.gradle.kts
-│   ├── src/main/java/com/jolt/workflow/
-│   │   ├── config/                # CORS / 安全 / RequestId / 异常处理
-│   │   ├── geo/                   # GeoJSON / Twin / 遥测
-│   │   ├── pipelineops/           # 管网工单
-│   │   └── property/              # 房产基础接口
-│   ├── src/main/resources/
-│   │   ├── application.properties
-│   │   └── db/migration/          # Flyway 迁移脚本 V1~V10
-│   └── src/test/
-└── frontend/
-    ├── pages/
-    │   ├── index.vue              # 主地图
-    │   ├── admin.vue              # 后台管理
-    │   └── admin-pipe-editor.vue  # 管道编辑器
-    ├── components/
-    │   ├── MapView.vue            # Cesium 地图组件
-    │   ├── ChatInterface.vue      # AI 对话组件
-    │   └── admin/
-    │       ├── AssetFeatureDialog.vue           # 资产表单
-    │       ├── ModelCoordinatePickerDialog.vue  # 模型坐标编辑器
-    │       ├── Pipe2DEditorDialog.vue           # 管道编辑器主容器
-    │       └── ops/                             # 工单看板组件
-    ├── composables/
-    │   ├── admin/                 # 后台管理逻辑
-    │   ├── property/              # 房产管理逻辑
-    │   └── shared/                # 共享逻辑
-    ├── services/                  # API 服务层
-    ├── server/
-    │   ├── api/                   # Nuxt Server API 路由
-    │   ├── data/                  # 本地 JSON 数据
-    │   └── utils/                 # 服务端工具
-    ├── public/
-    │   ├── map/                   # GeoJSON 样例数据
-    │   └── models/                # GLB 3D 模型
-    └── views/admin/               # 后台页面视图
-```
-
-## 开发提示
-
-1. **写操作鉴权**：浏览器端的建筑与管道写操作统一走 Nuxt `/api/backend/*` 代理，并通过全局 Basic 鉴权弹层补充凭据
-2. **管道图层映射**：Spring Boot 对外 API 名称是 `pipes`，实际数据库层复用 `geo_features.layer='roads'`
-3. **房产模块状态**：房产业务大量是文件型原型实现（JSON 文件），”已实现”指页面与读写链路存在，不代表都已切到后端数据库
-4. **性能优化**：地图采用按视口 bbox 分页加载，单次 800 条，最多 5 页，相机移动后 350ms 防抖加载
-5. **草稿机制**：管道编辑器支持本地草稿自动保存（800ms 防抖 + 8s 定时），避免数据丢失
-6. **审计日志**：所有编辑操作记录在 `edit_audit_log` 表，包含 before/after payload
-
-## 常见问题
-
-### 1. 后端启动失败：数据库连接错误
-检查 `.env` 中的数据库配置，确保 PostgreSQL 已启动：
-```bash
-docker compose up -d
-```
-
-### 2. 前端启动失败：端口被占用
-清理占用的端口：
-```bash
-lsof -ti:3000 | xargs kill -9
-```
-
-### 3. AI 对话返回 500 错误
-检查 `.env` 中是否配置了 `GEMINI_API_KEY`
-
-### 4. 写操作返回 401/403 错误
-检查后端和前端的写鉴权配置是否一致：
-- `APP_SECURITY_WRITE_AUTH_ENABLED`
-- `BACKEND_WRITE_AUTH_ENABLED`
-- `APP_ADMIN_PASSWORD` / `BACKEND_ADMIN_PASSWORD`
-
-### 5. Mars3D 加载失败
-检查 `node_modules/mars3d` 是否存在，清除 `.nuxt` 缓存重新构建：
 ```bash
 cd frontend
-rm -rf .nuxt
 npm run dev
+npm run build
+npm run typecheck
 ```
 
-## 贡献指南
+后端：
 
-1. Fork 本仓库
-2. 创建特性分支：`git checkout -b feature/your-feature-name`
-3. 提交更改：`git commit -m “feat: your message”`
-4. 推送到分支：`git push origin feature/your-feature-name`
-5. 提交 Pull Request
+```bash
+cd backend
+./gradlew bootRun
+./gradlew test
+```
 
-## 许可证
+数据库：
 
-[MIT License](LICENSE)
+```bash
+docker compose up -d postgis
+docker exec -it unispace-postgis psql -U postgres -d unispace
+```
 
-## 联系方式
+### Flyway 迁移
 
-如有问题或建议，请提交 Issue 或 Pull Request。
+当前迁移重点大致如下：
+
+- `V1` 基础空间表
+- `V3-V7` Twin 拓扑、实体、测点体系
+- `V8-V9` 建筑与房间种子
+- `V10` 工单体系
+
+迁移目录：
+
+- [`backend/src/main/resources/db/migration`](backend/src/main/resources/db/migration)
+
+### 推荐的阅读顺序
+
+当前项目很多核心逻辑不在文档里，而在具体实现文件里。建议用下面顺序接手：
+
+1. 看页面入口
+2. 看 composable
+3. 看 service
+4. 看 backend repository
+
+因为：
+
+- 前端复杂状态组织主要在 composable
+- 接口拼接主要在 service
+- 核心业务生成逻辑主要在 repository
+
+---
+
+## 关键代码入口
+
+### 二维编辑器
+
+- [`frontend/components/admin/Pipe2DEditorDialog.vue`](frontend/components/admin/Pipe2DEditorDialog.vue)
+- [`frontend/components/admin/pipe2d-editor/Pipe2DEditorRightPanelSection.vue`](frontend/components/admin/pipe2d-editor/Pipe2DEditorRightPanelSection.vue)
+- [`frontend/components/admin/pipe2d-editor/Pipe2DEditorWorkorderPromptModal.vue`](frontend/components/admin/pipe2d-editor/Pipe2DEditorWorkorderPromptModal.vue)
+- [`frontend/composables/admin/usePipe2DEditorMap.ts`](frontend/composables/admin/usePipe2DEditorMap.ts)
+- [`frontend/composables/admin/pipe2d-editor/usePipe2DEditorMapGraphics.ts`](frontend/composables/admin/pipe2d-editor/usePipe2DEditorMapGraphics.ts)
+
+### 工单
+
+- [`frontend/components/admin/ops/PipelineOpsBoard.vue`](frontend/components/admin/ops/PipelineOpsBoard.vue)
+- [`frontend/components/admin/ops/PipelineOpsCreateSection.vue`](frontend/components/admin/ops/PipelineOpsCreateSection.vue)
+- [`frontend/components/admin/ops/PipelineOpsListSection.vue`](frontend/components/admin/ops/PipelineOpsListSection.vue)
+- [`frontend/composables/admin/usePipelineOpsBoard.ts`](frontend/composables/admin/usePipelineOpsBoard.ts)
+- [`frontend/composables/admin/usePipelineOpsBoardUi.ts`](frontend/composables/admin/usePipelineOpsBoardUi.ts)
+- [`backend/src/main/java/com/jolt/workflow/pipelineops/WorkOrderRepository.java`](backend/src/main/java/com/jolt/workflow/pipelineops/WorkOrderRepository.java)
+- [`backend/src/main/java/com/jolt/workflow/pipelineops/WorkOrderRepositorySupport.java`](backend/src/main/java/com/jolt/workflow/pipelineops/WorkOrderRepositorySupport.java)
+
+### 建筑模型与楼宇
+
+- [`frontend/components/admin/pipe2d-editor/Pipe2DEditorBuildingModelModal.vue`](frontend/components/admin/pipe2d-editor/Pipe2DEditorBuildingModelModal.vue)
+- [`frontend/components/admin/ModelCoordinatePickerDialog.vue`](frontend/components/admin/ModelCoordinatePickerDialog.vue)
+- [`backend/src/main/java/com/jolt/workflow/geo/TwinController.java`](backend/src/main/java/com/jolt/workflow/geo/TwinController.java)
+
+---
+
+## 当前实现边界
+
+这份 README 尽量按“当前真实实现”来写，但仍有一些边界需要明确：
+
+- 二维编辑器主视图当前显示的是建筑轮廓，不是直接把所有 GLB 模型都渲染到主编辑层
+- 建筑楼层数据来自建筑 / 房间基础表，不是在二维编辑器里编辑
+- 工单影响范围已经基于真实资产关系推导，但还不是完整仿真级水力分析
+- `docs/` 目录当前不是完整文档中心，很多实现细节仍以代码为准
+
+---
+
+## 总结
+
+如果只用一句话概括这个项目：
+
+**UniSpace-AI 是一个把地下管网空间数据、拓扑关系、建筑楼宇、房间楼层、实时测点和工单闭环真正连接起来的校园运维平台。**
+
+如果你刚接手这个仓库，优先看懂三条线：
+
+1. 二维编辑器如何维护真实管网资产
+2. 工单如何绑定真实资产并生成影响范围
+3. 建筑、楼层、房间如何成为工单影响对象
+
+把这三条线看懂，基本就看懂了整个项目的核心。  

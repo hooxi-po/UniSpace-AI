@@ -110,6 +110,9 @@
           :traced-segment-count="tracedSegmentCount"
           :traced-node-count="tracedNodeCount"
           :linked-building-labels="linkedBuildingLabels"
+          :related-workorders="relatedWorkorders"
+          :related-workorders-loading="relatedWorkordersLoading"
+          :related-workorders-error="relatedWorkordersError"
           :insight-error="insightError"
           :add-point-mode="addPointMode"
           :delete-point-mode="deletePointMode"
@@ -152,6 +155,7 @@
           @toggle-snap="snapEnabled = !snapEnabled"
           @toggle-scene-mode="toggleSceneModeByPanel"
           @update:relation-active-names="relationActiveNames = $event"
+          @open-workorder="openRelatedWorkorder"
           @reset-draft="handleResetDraft"
           @create-pipe="createDraftPipe"
           @save-geometry="saveGeometry"
@@ -215,6 +219,21 @@
         @close="buildingModelModalOpen = false"
         @saved="handleBuildingModelSaved"
       />
+
+      <Pipe2DEditorWorkorderPromptModal
+        :open="workorderPromptVisible && Boolean(pendingWorkorderPrompt)"
+        :submitting="workorderPromptSubmitting"
+        :feature-name="pendingWorkorderPrompt?.featureName || displayPipeName"
+        :pipeline-medium="workorderPromptMedium"
+        :area="pendingWorkorderPrompt?.area || ''"
+        :linked-building-names="pendingWorkorderPrompt?.linkedBuildingNames || []"
+        :summary-lines="pendingWorkorderPrompt?.summaryLines || []"
+        :initial-title="pendingWorkorderPrompt?.initialTitle || ''"
+        :initial-description="pendingWorkorderPrompt?.initialDescription || ''"
+        :initial-priority="pendingWorkorderPrompt?.initialPriority || 'medium'"
+        @close="closeWorkorderPrompt"
+        @confirm="submitLinkedWorkorder"
+      />
     </div>
   </div>
 </template>
@@ -222,7 +241,7 @@
 <script setup lang="ts">
 import * as Cesium from 'cesium'
 import { PanelRightOpen } from 'lucide-vue-next'
-import { computed, nextTick, onBeforeUnmount, ref, toRef, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, toRef, watch } from 'vue'
 import {
   defaultPanelSectionCollapsed,
   toolItems,
@@ -236,6 +255,7 @@ import type { QuickReportDraft } from '~/components/admin/pipe2d-editor/Pipe2DEd
 import Pipe2DEditorSaveConfirmModal from '~/components/admin/pipe2d-editor/Pipe2DEditorSaveConfirmModal.vue'
 import Pipe2DEditorShortcutHelp from '~/components/admin/pipe2d-editor/Pipe2DEditorShortcutHelp.vue'
 import Pipe2DEditorBuildingModelModal from '~/components/admin/pipe2d-editor/Pipe2DEditorBuildingModelModal.vue'
+import Pipe2DEditorWorkorderPromptModal from '~/components/admin/pipe2d-editor/Pipe2DEditorWorkorderPromptModal.vue'
 import Pipe2DEditorStageSection from '~/components/admin/pipe2d-editor/Pipe2DEditorStageSection.vue'
 import Pipe2DEditorStatusbarSection from '~/components/admin/pipe2d-editor/Pipe2DEditorStatusbarSection.vue'
 import Pipe2DEditorToolbarSection from '~/components/admin/pipe2d-editor/Pipe2DEditorToolbarSection.vue'
@@ -250,6 +270,7 @@ import { useMindmapEditorEvents } from '~/composables/admin/useMindmapEditorEven
 import { geoFeatureService, type GeoJsonFeature } from '~/services/geo-features'
 import { pipelineOpsService } from '~/services/pipeline-ops'
 import { twinService } from '~/services/twin'
+import type { PipelineMedium, PipelineOrderUpsertPayload, PipelinePriority, PipelineWorkOrder } from '~/types/pipeline-ops'
 import { geometryToLines, type Lines } from '~/utils/pipe2d-geometry'
 import { cloneGraph, createEmptyGraph, diffGraphs, linesToGraph, normalizeLegacyMidPointEdges, type EdgeAttributes, type GraphDiff, type NodeAttributes, type NodeType, type PipeGraph } from '~/utils/pipe2d-graph'
 import { validateTopology, type ValidationIssue } from '~/utils/pipe2d-topology-validation'
@@ -263,11 +284,20 @@ const props = defineProps<{
 }>()
 
 const standalone = computed(() => Boolean(props.standalone))
+const route = useRoute()
+const router = useRouter()
 
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'saved', id: string): void
 }>()
+
+const WORKORDERS_UPDATED_EVENT = 'pipeline:workorders-updated'
+const LINKAGE_ROUTE_QUERY = {
+  tab: 'ops',
+  sub: 'ops_linkage',
+  third: 'ops_linkage_board',
+} as const
 
 const mapContainerRef = ref<HTMLDivElement | null>(null)
 
@@ -285,6 +315,11 @@ const buildingModelModalOpen = ref(false)
 const saveConfirmVisible = ref(false)
 const pendingSaveDiff = ref<GraphDiff | null>(null)
 const validationResults = ref<ValidationIssue[]>([])
+const workorderPromptVisible = ref(false)
+const workorderPromptSubmitting = ref(false)
+const relatedWorkorders = ref<PipelineWorkOrder[]>([])
+const relatedWorkordersLoading = ref(false)
+const relatedWorkordersError = ref<string | null>(null)
 
 const pipes = ref<GeoJsonFeature[]>([])
 const buildings = ref<GeoJsonFeature[]>([])
@@ -300,6 +335,25 @@ const relationActiveNames = ref<string[]>([])
 
 let saveCloseTimer: ReturnType<typeof setTimeout> | null = null
 const hasInitiallyRendered = ref(false)
+let relatedWorkorderRequestId = 0
+
+type PostSaveWorkorderPrompt = {
+  featureId: string
+  featureName: string
+  pipelineMedium: PipelineMedium
+  area: string
+  linkedBuildingIds: string[]
+  linkedBuildingNames: string[]
+  nodeIds: string[]
+  segmentIds: string[]
+  topologyChain: string[]
+  summaryLines: string[]
+  initialTitle: string
+  initialDescription: string
+  initialPriority: PipelinePriority
+}
+
+const pendingWorkorderPrompt = ref<PostSaveWorkorderPrompt | null>(null)
 
 const selectedFeature = computed(() => {
   return pipes.value.find(item => String(item.id) === selectedFeatureId.value) || null
@@ -786,6 +840,10 @@ const currentPipeMedium = computed(() => {
   return 'water'
 })
 
+const workorderPromptMedium = computed<PipelineMedium>(() => {
+  return pendingWorkorderPrompt.value?.pipelineMedium || (currentPipeMedium.value as PipelineMedium)
+})
+
 const selectedPointLabel = computed(() => {
   const sel = editorGraph.selected.value
   if (!sel) return '无'
@@ -889,6 +947,20 @@ const linkedBuildingLabels = computed(() => {
   return drilldown.value.linkedBuildings.slice(0, 6).map(toRecordLabel)
 })
 
+const linkedBuildingIds = computed(() => {
+  if (!Array.isArray(drilldown.value?.linkedBuildings)) return []
+  return drilldown.value.linkedBuildings
+    .map((item) => String((item as Record<string, unknown>)?.id || '').trim())
+    .filter(Boolean)
+})
+
+const linkedBuildingNames = computed(() => {
+  if (!Array.isArray(drilldown.value?.linkedBuildings)) return []
+  return drilldown.value.linkedBuildings
+    .map((item) => String((item as Record<string, unknown>)?.name || (item as Record<string, unknown>)?.buildingName || '').trim())
+    .filter(Boolean)
+})
+
 const preferredBuildingIds = computed(() => {
   if (!Array.isArray(drilldown.value?.linkedBuildings)) return []
   return drilldown.value.linkedBuildings
@@ -965,6 +1037,233 @@ function quickReportFaultLabel(faultType: QuickReportDraft['faultType']) {
   if (faultType === 'burst') return '破裂'
   if (faultType === 'blockage') return '堵塞'
   return '故障'
+}
+
+function notifyWorkordersUpdated() {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent(WORKORDERS_UPDATED_EVENT))
+}
+
+function resolveCurrentArea() {
+  const properties = selectedFeature.value?.properties || {}
+  const area = properties.area || properties.zone || properties.campus || properties.region || ''
+  return String(area || '').trim()
+}
+
+function buildTopologySummaryLines(diff: GraphDiff) {
+  const lines: string[] = []
+  if (diff.addedNodes.length) lines.push(`新增节点 ${diff.addedNodes.length} 个`)
+  if (diff.removedNodes.length) lines.push(`删除节点 ${diff.removedNodes.length} 个`)
+  if (diff.modifiedNodes.length) lines.push(`修改节点 ${diff.modifiedNodes.length} 个`)
+  if (diff.addedEdges.length) lines.push(`新增管段 ${diff.addedEdges.length} 条`)
+  if (diff.removedEdges.length) lines.push(`删除管段 ${diff.removedEdges.length} 条`)
+  if (diff.modifiedEdges.length) lines.push(`修改管段 ${diff.modifiedEdges.length} 条`)
+  return lines.length ? lines : ['本次保存包含管道拓扑调整']
+}
+
+function buildPostSaveWorkorderPrompt(diff: GraphDiff): PostSaveWorkorderPrompt | null {
+  if (!selectedFeature.value) return null
+
+  const featureId = String(selectedFeature.value.id)
+  const featureName = displayPipeName.value
+  const nodeIds = Array.from(new Set([
+    ...diff.addedNodes.map(item => item.id),
+    ...diff.removedNodes.map(item => item.id),
+    ...diff.modifiedNodes.map(item => item.id),
+  ]))
+  const segmentIds = Array.from(new Set([
+    featureId,
+    ...diff.addedEdges.map(item => item.id),
+    ...diff.removedEdges.map(item => item.id),
+    ...diff.modifiedEdges.map(item => item.id),
+  ]))
+  const topologyChain = Array.from(new Set([...nodeIds, ...segmentIds])).slice(0, 20)
+  const summaryLines = buildTopologySummaryLines(diff)
+  const buildingText = linkedBuildingNames.value.length
+    ? `关联楼宇：${linkedBuildingNames.value.slice(0, 3).join('、')}`
+    : '当前未识别到关联楼宇'
+  const descriptionLines = [
+    `${featureName} 已在二维编辑器中完成拓扑调整。`,
+    ...summaryLines.map(line => `- ${line}`),
+    `- ${buildingText}`,
+    '- 建议结合现场核查结果继续执行维修或改造闭环。',
+  ]
+
+  return {
+    featureId,
+    featureName,
+    pipelineMedium: currentPipeMedium.value as PipelineMedium,
+    area: resolveCurrentArea(),
+    linkedBuildingIds: linkedBuildingIds.value,
+    linkedBuildingNames: linkedBuildingNames.value,
+    nodeIds,
+    segmentIds,
+    topologyChain,
+    summaryLines,
+    initialTitle: `${featureName}拓扑调整复核`,
+    initialDescription: descriptionLines.join('\n'),
+    initialPriority: diff.removedEdges.length || diff.removedNodes.length || diff.totalChanges >= 5 ? 'high' : 'medium',
+  }
+}
+
+function workorderMatchesCurrentSelection(item: PipelineWorkOrder) {
+  const featureId = String(selectedFeature.value?.id || '').trim()
+  if (!featureId) return false
+
+  if (item.segmentIds.includes(featureId) || item.topologyChain.includes(featureId)) {
+    return true
+  }
+
+  const buildingIdSet = new Set(linkedBuildingIds.value)
+  const buildingNameSet = new Set(linkedBuildingNames.value)
+  if (item.buildingId && buildingIdSet.has(item.buildingId)) return true
+  if (item.buildingName && buildingNameSet.has(item.buildingName)) return true
+  if (item.impactScope?.impactedBuildings?.some(building => buildingIdSet.has(building.buildingId) || buildingNameSet.has(building.buildingName))) {
+    return true
+  }
+
+  const searchTexts = [
+    item.id,
+    item.title,
+    item.description,
+    item.buildingName || '',
+    ...item.segmentIds,
+    ...item.nodeIds,
+    ...item.topologyChain,
+  ].map(text => String(text || ''))
+
+  return searchTexts.some(text => text.includes(featureId) || text.includes(displayPipeName.value))
+}
+
+function upsertRelatedWorkorder(item: PipelineWorkOrder, force = false) {
+  if (!force && !workorderMatchesCurrentSelection(item)) return
+  relatedWorkorders.value = [item, ...relatedWorkorders.value.filter(existing => existing.id !== item.id)]
+    .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
+    .slice(0, 8)
+}
+
+async function loadRelatedWorkorders() {
+  if (!props.open || !selectedFeature.value) {
+    relatedWorkorders.value = []
+    relatedWorkordersError.value = null
+    relatedWorkordersLoading.value = false
+    return
+  }
+
+  const requestId = ++relatedWorkorderRequestId
+  relatedWorkordersLoading.value = true
+  relatedWorkordersError.value = null
+
+  const featureId = String(selectedFeature.value.id)
+  const queries: Array<Parameters<typeof pipelineOpsService.fetchWorkorders>[0]> = [
+    { pipelineMedium: currentPipeMedium.value as PipelineMedium, segmentId: featureId, limit: 10 },
+    { pipelineMedium: currentPipeMedium.value as PipelineMedium, q: featureId, limit: 10 },
+    ...linkedBuildingIds.value.slice(0, 3).map(buildingId => ({
+      pipelineMedium: currentPipeMedium.value as PipelineMedium,
+      buildingId,
+      limit: 10,
+    })),
+  ]
+
+  const results = await Promise.allSettled(queries.map(query => pipelineOpsService.fetchWorkorders(query)))
+
+  if (requestId !== relatedWorkorderRequestId) return
+
+  const workorderMap = new Map<string, PipelineWorkOrder>()
+  let hasSuccess = false
+  for (const result of results) {
+    if (result.status !== 'fulfilled') continue
+    hasSuccess = true
+    for (const item of result.value.list) {
+      if (workorderMatchesCurrentSelection(item)) {
+        workorderMap.set(item.id, item)
+      }
+    }
+  }
+
+  relatedWorkorders.value = [...workorderMap.values()]
+    .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
+    .slice(0, 8)
+
+  if (!hasSuccess) {
+    relatedWorkordersError.value = '关联工单加载失败'
+  } else if (results.some(result => result.status === 'rejected')) {
+    relatedWorkordersError.value = workorderMap.size ? '部分关联工单数据加载失败' : null
+  } else {
+    relatedWorkordersError.value = null
+  }
+
+  relatedWorkordersLoading.value = false
+}
+
+function closeWorkorderPrompt(force = false) {
+  if (workorderPromptSubmitting.value && !force) return
+  workorderPromptVisible.value = false
+  pendingWorkorderPrompt.value = null
+}
+
+async function submitLinkedWorkorder(payload: {
+  type: 'maintenance' | 'retrofit'
+  title: string
+  description: string
+  area: string
+  priority: PipelinePriority
+  assignee: string
+  reviewer: string
+  plannedDate: string
+  deadlineAt: string
+}) {
+  const prompt = pendingWorkorderPrompt.value
+  if (!prompt) return
+
+  workorderPromptSubmitting.value = true
+  try {
+    const request: PipelineOrderUpsertPayload = {
+      title: payload.title,
+      description: payload.description,
+      type: payload.type,
+      source: 'manual',
+      pipelineMedium: prompt.pipelineMedium,
+      area: payload.area || prompt.area || '未分区',
+      topologyChain: prompt.topologyChain,
+      nodeIds: prompt.nodeIds,
+      segmentIds: prompt.segmentIds,
+      buildingId: prompt.linkedBuildingIds[0],
+      buildingName: prompt.linkedBuildingNames[0],
+      assignee: payload.assignee || undefined,
+      reviewer: payload.reviewer || undefined,
+      priority: payload.priority,
+      plannedDate: payload.plannedDate || undefined,
+      deadlineAt: payload.deadlineAt || undefined,
+      createdBy: 'admin-2d-editor',
+    }
+
+    const result = await pipelineOpsService.createWorkorder(request)
+    notifyWorkordersUpdated()
+    await loadRelatedWorkorders()
+    upsertRelatedWorkorder(result.workorder, true)
+    actionMessage.value = {
+      type: 'ok',
+      text: `联动工单已创建：${result.workorder.id}`,
+    }
+    closeWorkorderPrompt(true)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '联动工单创建失败'
+    actionMessage.value = { type: 'error', text: message || '联动工单创建失败' }
+  } finally {
+    workorderPromptSubmitting.value = false
+  }
+}
+
+async function openRelatedWorkorder(workorderId: string) {
+  await router.push({
+    query: {
+      ...route.query,
+      ...LINKAGE_ROUTE_QUERY,
+      workorderId,
+    },
+  })
+  requestDialogClose()
 }
 
 function formatMeters(meters: number) {
@@ -1315,6 +1614,9 @@ async function submitQuickReport(payload: QuickReportDraft) {
     if (activeTool.value === 'reportFault') {
       quickReportMode.value = true
     }
+    notifyWorkordersUpdated()
+    await loadRelatedWorkorders()
+    upsertRelatedWorkorder(result.workorder, true)
     actionMessage.value = {
       type: 'ok',
       text: `故障工单已创建：${result.workorder.id}`,
@@ -1329,6 +1631,7 @@ async function submitQuickReport(payload: QuickReportDraft) {
 
 async function saveGeometryNow() {
   const featureId = selectedFeature.value ? String(selectedFeature.value.id) : ''
+  const postSavePrompt = pendingSaveDiff.value?.hasChanges ? buildPostSaveWorkorderPrompt(pendingSaveDiff.value) : null
   await persistGeometry()
   if (!featureId) return false
   if (actionMessage.value?.type === 'ok') {
@@ -1348,6 +1651,8 @@ async function saveGeometryNow() {
       saveCloseTimer = null
     }, 620)
     clearValidationResults()
+    pendingWorkorderPrompt.value = postSavePrompt
+    workorderPromptVisible.value = Boolean(postSavePrompt)
     return true
   }
   return false
@@ -1396,9 +1701,15 @@ watch(
       saveSuccessVisible.value = false
       saveConfirmVisible.value = false
       pendingSaveDiff.value = null
+      pendingWorkorderPrompt.value = null
+      workorderPromptVisible.value = false
+      workorderPromptSubmitting.value = false
       quickReportVisible.value = false
       quickReportMode.value = false
       pendingQuickReportLocation.value = null
+      relatedWorkorders.value = []
+      relatedWorkordersError.value = null
+      relatedWorkordersLoading.value = false
       clearValidationResults()
       clearSaveCloseTimer()
       stopDraftTimers()
@@ -1440,6 +1751,9 @@ watch(selectedFeature, () => {
   actionMessage.value = null
   saveConfirmVisible.value = false
   pendingSaveDiff.value = null
+  pendingWorkorderPrompt.value = null
+  workorderPromptVisible.value = false
+  workorderPromptSubmitting.value = false
   quickReportVisible.value = false
   pendingQuickReportLocation.value = null
   clearValidationResults()
@@ -1473,6 +1787,25 @@ watch(
 )
 
 watch(
+  [
+    () => props.open,
+    () => selectedFeature.value?.id ?? '',
+    () => linkedBuildingIds.value.join(','),
+    () => linkedBuildingNames.value.join(','),
+  ],
+  ([opened, featureId]) => {
+    if (!opened || !featureId) {
+      relatedWorkorders.value = []
+      relatedWorkordersError.value = null
+      relatedWorkordersLoading.value = false
+      return
+    }
+    void loadRelatedWorkorders()
+  },
+  { immediate: true },
+)
+
+watch(
   editorGraphValue,
   () => {
     if (validationResults.value.length) {
@@ -1481,6 +1814,16 @@ watch(
   },
   { deep: true },
 )
+
+function handleWorkordersUpdated() {
+  void loadRelatedWorkorders()
+}
+
+onMounted(() => {
+  if (typeof window !== 'undefined') {
+    window.addEventListener(WORKORDERS_UPDATED_EVENT, handleWorkordersUpdated)
+  }
+})
 
 // 图结构事件处理器（类型明确）
 function handleUpdateNode(id: string, attrs: NodeAttributes) {
@@ -1496,6 +1839,9 @@ function handleUpdateEdge(id: string, attrs: EdgeAttributes) {
 }
 
 onBeforeUnmount(() => {
+  if (typeof window !== 'undefined') {
+    window.removeEventListener(WORKORDERS_UPDATED_EVENT, handleWorkordersUpdated)
+  }
   clearSaveCloseTimer()
   stopDraftTimers()
   stopWorkspaceListeners()

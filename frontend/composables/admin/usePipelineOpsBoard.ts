@@ -1,4 +1,4 @@
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { pipelineOpsService, type PipelineOpsStats } from '~/services/pipeline-ops'
 import type {
   ImpactedBuildingRef,
@@ -97,6 +97,10 @@ export function usePipelineOpsBoard(mode: PipelineOpsBoardMode) {
   function notifyWorkordersUpdated() {
     if (typeof window === 'undefined') return
     window.dispatchEvent(new CustomEvent(WORKORDERS_UPDATED_EVENT))
+  }
+
+  function handleWorkordersUpdated() {
+    void refresh()
   }
 
   async function refresh() {
@@ -390,8 +394,18 @@ export function usePipelineOpsBoard(mode: PipelineOpsBoardMode) {
   }
 
   onMounted(() => {
+    if (typeof window !== 'undefined') {
+      window.addEventListener(WORKORDERS_UPDATED_EVENT, handleWorkordersUpdated)
+    }
     void refresh()
   })
+
+  onBeforeUnmount(() => {
+    if (typeof window !== 'undefined') {
+      window.removeEventListener(WORKORDERS_UPDATED_EVENT, handleWorkordersUpdated)
+    }
+  })
+
   watch(query, () => {
     void refresh()
   })

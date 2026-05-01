@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { ChevronDown, ChevronRight, House, PanelRightClose } from 'lucide-vue-next'
+import { ArrowUpRight, ChevronDown, ChevronRight, ClipboardList, House, PanelRightClose } from 'lucide-vue-next'
 import type { SelectedElement } from '~/composables/admin/usePipe2DEditorGraph'
+import type { PipelinePriority, PipelineOrderStatus, PipelineOrderType } from '~/types/pipeline-ops'
 import type { EdgeAttributes, NodeAttributes, NodeType, PipeGraph } from '~/utils/pipe2d-graph'
 import Pipe2DEditorGraphPanel from './Pipe2DEditorGraphPanel.vue'
 
-type PanelSectionKey = 'basic' | 'relation' | 'control' | 'realtime' | 'timeline' | 'runtime'
+type PanelSectionKey = 'basic' | 'relation' | 'workorders' | 'control' | 'realtime' | 'timeline' | 'runtime'
 
 type PipeFeature = {
   id: string | number
@@ -26,6 +27,15 @@ type AuditLog = {
   action: string
   changedAt: string
   changedBy?: string | null
+}
+
+type RelatedWorkorder = {
+  id: string
+  title: string
+  type: PipelineOrderType
+  status: PipelineOrderStatus
+  priority: PipelinePriority
+  updatedAt: string
 }
 
 const props = defineProps<{
@@ -49,6 +59,9 @@ const props = defineProps<{
   tracedSegmentCount: number
   tracedNodeCount: number
   linkedBuildingLabels: string[]
+  relatedWorkorders: RelatedWorkorder[]
+  relatedWorkordersLoading: boolean
+  relatedWorkordersError: string | null
   insightError: string | null
   addPointMode: boolean
   deletePointMode: boolean
@@ -96,6 +109,7 @@ const emit = defineEmits<{
   (e: 'toggle-snap'): void
   (e: 'toggle-scene-mode'): void
   (e: 'update:relation-active-names', value: string[]): void
+  (e: 'open-workorder', workorderId: string): void
   (e: 'reset-draft'): void
   (e: 'create-pipe'): void
   (e: 'save-geometry'): void
@@ -134,6 +148,33 @@ function formatDateTime(value: string) {
   const ts = new Date(value)
   if (Number.isNaN(ts.getTime())) return value || '-'
   return `${ts.getFullYear()}-${String(ts.getMonth() + 1).padStart(2, '0')}-${String(ts.getDate()).padStart(2, '0')} ${String(ts.getHours()).padStart(2, '0')}:${String(ts.getMinutes()).padStart(2, '0')}`
+}
+
+const workorderTypeLabel: Record<PipelineOrderType, string> = {
+  inspection: '巡检',
+  maintenance: '维修',
+  retrofit: '改造',
+  retire: '报废',
+}
+
+const workorderStatusLabel: Record<PipelineOrderStatus, string> = {
+  draft: '草稿',
+  todo: '待办',
+  assigned: '已分派',
+  in_progress: '处理中',
+  paused: '暂停',
+  review: '待审核',
+  completed: '已完成',
+  closed: '已关闭',
+  cancelled: '已取消',
+  rejected: '已驳回',
+}
+
+const workorderPriorityLabel: Record<PipelinePriority, string> = {
+  low: '低',
+  medium: '中',
+  high: '高',
+  urgent: '紧急',
 }
 
 function handleUpdateNode(nodeId: string, attrs: NodeAttributes) {
@@ -288,6 +329,38 @@ function handleRemoveEdge(edgeId: string) {
           <div>暂无数据</div>
           <div class="tip">点击左侧工具栏开始绑定房产</div>
         </div>
+      </div>
+    </section>
+
+    <section v-if="showPipeInsightPanels" class="panel-card">
+      <button class="panel-collapse-toggle" type="button" @click="emit('toggle-section', 'workorders')">
+        <span>关联工单</span>
+        <component :is="panelSectionCollapsed.workorders ? ChevronRight : ChevronDown" :size="16" />
+      </button>
+      <div v-show="!panelSectionCollapsed.workorders" class="panel-section-body">
+        <div v-if="relatedWorkordersLoading" class="inline-empty">正在加载关联工单...</div>
+        <div v-else-if="relatedWorkordersError" class="panel-empty-state">
+          <ClipboardList class="empty-icon" :size="18" />
+          <div>{{ relatedWorkordersError }}</div>
+        </div>
+        <ul v-else-if="relatedWorkorders.length" class="workorder-list">
+          <li v-for="item in relatedWorkorders.slice(0, 6)" :key="item.id" class="workorder-item">
+            <button class="workorder-item__button" type="button" @click="emit('open-workorder', item.id)">
+              <div class="workorder-item__top">
+                <strong>{{ item.id }}</strong>
+                <span class="token token--soft">{{ workorderStatusLabel[item.status] }}</span>
+              </div>
+              <div class="workorder-item__title">{{ item.title }}</div>
+              <div class="workorder-item__meta">
+                <span>{{ workorderTypeLabel[item.type] }}</span>
+                <span>优先级 {{ workorderPriorityLabel[item.priority] }}</span>
+                <span>{{ formatDateTime(item.updatedAt) }}</span>
+                <ArrowUpRight :size="14" />
+              </div>
+            </button>
+          </li>
+        </ul>
+        <div v-else class="inline-empty">当前管道暂无关联工单</div>
       </div>
     </section>
 

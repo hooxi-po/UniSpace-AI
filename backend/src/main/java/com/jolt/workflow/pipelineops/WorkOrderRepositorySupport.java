@@ -45,20 +45,6 @@ abstract class WorkOrderRepositorySupport {
     protected final ObjectMapper objectMapper;
     private final ConcurrentHashMap<String, CacheEntry> cache = new ConcurrentHashMap<>();
 
-    protected static final Map<String, List<BuildingSeed>> TOPOLOGY_IMPACT_INDEX = Map.ofEntries(
-            Map.entry("N-1001", List.of(new BuildingSeed("BLD-001", "博学楼"))),
-            Map.entry("N-1002", List.of(new BuildingSeed("BLD-001", "博学楼"))),
-            Map.entry("N-2301", List.of(new BuildingSeed("BLD-002", "综合实验楼"))),
-            Map.entry("N-5011", List.of(new BuildingSeed("BLD-003", "学生宿舍楼"))),
-            Map.entry("N-5012", List.of(new BuildingSeed("BLD-003", "学生宿舍楼"))),
-            Map.entry("N-8801", List.of(new BuildingSeed("BLD-004", "创新创业中心"))),
-            Map.entry("S-2101", List.of(new BuildingSeed("BLD-001", "博学楼"))),
-            Map.entry("S-4302", List.of(new BuildingSeed("BLD-002", "综合实验楼"))),
-            Map.entry("S-4303", List.of(new BuildingSeed("BLD-002", "综合实验楼"))),
-            Map.entry("S-6101", List.of(new BuildingSeed("BLD-003", "学生宿舍楼"))),
-            Map.entry("S-9921", List.of(new BuildingSeed("BLD-004", "创新创业中心")))
-    );
-
     protected WorkOrderRepositorySupport(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
@@ -255,12 +241,40 @@ abstract class WorkOrderRepositorySupport {
 
         normalized.put("area", defaultText(text(body.get("area")), existing == null ? "未分区" : existing.path("area").asText("未分区")));
 
-        normalized.set("topologyChain", arrayOrDefault(body.get("topologyChain"), existing == null ? null : existing.get("topologyChain")));
-        normalized.set("nodeIds", arrayOrDefault(body.get("nodeIds"), existing == null ? null : existing.get("nodeIds")));
-        normalized.set("segmentIds", arrayOrDefault(body.get("segmentIds"), existing == null ? null : existing.get("segmentIds")));
+        List<String> rawTopologyChain = toTextList(arrayOrDefault(body.get("topologyChain"), existing == null ? null : existing.get("topologyChain")));
+        List<String> rawNodeIds = toTextList(arrayOrDefault(body.get("nodeIds"), existing == null ? null : existing.get("nodeIds")));
+        List<String> rawSegmentIds = toTextList(arrayOrDefault(body.get("segmentIds"), existing == null ? null : existing.get("segmentIds")));
+        validateExplicitAssetReferences(
+                body.has("nodeIds") ? toTextList(body.get("nodeIds")) : List.of(),
+                body.has("segmentIds") ? toTextList(body.get("segmentIds")) : List.of(),
+                body.has("buildingId") ? defaultText(text(body.get("buildingId")), "") : "",
+                body.has("buildingName") ? defaultText(text(body.get("buildingName")), "") : ""
+        );
+        List<String> canonicalNodeIds = resolveCanonicalNodeIds(rawNodeIds);
+        List<SegmentAssetRef> canonicalSegments = resolveSegmentAssets(rawSegmentIds);
+        List<String> canonicalSegmentIds = new ArrayList<>();
+        LinkedHashSet<String> canonicalTopologyChain = new LinkedHashSet<>();
 
-        normalized.put("buildingId", defaultText(text(body.get("buildingId")), existing == null ? "" : existing.path("buildingId").asText("")));
-        normalized.put("buildingName", defaultText(text(body.get("buildingName")), existing == null ? "" : existing.path("buildingName").asText("")));
+        canonicalTopologyChain.addAll(normalizeDistinctIds(rawTopologyChain));
+        for (String nodeId : canonicalNodeIds) {
+            canonicalTopologyChain.add(nodeId);
+        }
+        for (SegmentAssetRef segment : canonicalSegments) {
+            if (!isBlank(segment.id())) {
+                canonicalSegmentIds.add(segment.id());
+                canonicalTopologyChain.add(segment.id());
+            }
+            if (!isBlank(segment.featureId())) canonicalTopologyChain.add(segment.featureId());
+        }
+        normalized.set("topologyChain", textArray(new ArrayList<>(canonicalTopologyChain)));
+        normalized.set("nodeIds", textArray(canonicalNodeIds));
+        normalized.set("segmentIds", textArray(canonicalSegmentIds));
+
+        String rawBuildingId = defaultText(text(body.get("buildingId")), existing == null ? "" : existing.path("buildingId").asText(""));
+        String rawBuildingName = defaultText(text(body.get("buildingName")), existing == null ? "" : existing.path("buildingName").asText(""));
+        BuildingSeed canonicalBuilding = resolveBuildingSeed(rawBuildingId, rawBuildingName);
+        normalized.put("buildingId", canonicalBuilding == null ? "" : canonicalBuilding.id());
+        normalized.put("buildingName", canonicalBuilding == null ? rawBuildingName : canonicalBuilding.name());
 
         normalized.set("roomIds", arrayOrDefault(body.get("roomIds"), existing == null ? null : existing.get("roomIds")));
         normalized.set("equipmentIds", arrayOrDefault(body.get("equipmentIds"), existing == null ? null : existing.get("equipmentIds")));
@@ -334,68 +348,32 @@ abstract class WorkOrderRepositorySupport {
     }
 
     protected ObjectNode inferImpactScope(String buildingId, String buildingName, List<String> nodeIds, List<String> segmentIds, String medium) {
+        List<String> normalizedNodeIds = normalizeDistinctIds(nodeIds);
+        List<String> normalizedSegmentInputs = normalizeDistinctIds(segmentIds);
+        List<SegmentAssetRef> resolvedSegments = resolveSegmentAssets(normalizedSegmentInputs);
+        LinkedHashSet<String> relationCandidateIds = new LinkedHashSet<>(normalizedSegmentInputs);
+        LinkedHashSet<String> relationNodeIds = new LinkedHashSet<>(normalizedNodeIds);
+        for (SegmentAssetRef segment : resolvedSegments) {
+            relationCandidateIds.add(segment.id());
+            if (!isBlank(segment.featureId())) relationCandidateIds.add(segment.featureId());
+            if (!isBlank(segment.fromNodeId())) relationNodeIds.add(segment.fromNodeId());
+            if (!isBlank(segment.toNodeId())) relationNodeIds.add(segment.toNodeId());
+        }
+        relationCandidateIds.addAll(relationNodeIds);
+
         LinkedHashMap<String, BuildingSeed> candidates = new LinkedHashMap<>();
-
-        if (!isBlank(buildingId) || !isBlank(buildingName)) {
-            String id = isBlank(buildingId) ? buildingName : buildingId;
-            String name = isBlank(buildingName) ? id : buildingName;
-            candidates.put(id, new BuildingSeed(id, name));
+        BuildingSeed directBuilding = resolveBuildingSeed(buildingId, buildingName);
+        if (directBuilding != null) {
+            candidates.put(directBuilding.id(), directBuilding);
         }
-
-        for (String nodeId : nodeIds) {
-            List<BuildingSeed> seeds = TOPOLOGY_IMPACT_INDEX.getOrDefault(nodeId, List.of());
-            for (BuildingSeed seed : seeds) candidates.put(seed.id(), seed);
-        }
-        for (String segmentId : segmentIds) {
-            List<BuildingSeed> seeds = TOPOLOGY_IMPACT_INDEX.getOrDefault(segmentId, List.of());
-            for (BuildingSeed seed : seeds) candidates.put(seed.id(), seed);
-        }
-
-        ArrayNode impactedBuildings = objectMapper.createArrayNode();
-
-        for (BuildingSeed candidate : candidates.values()) {
-            List<Map<String, Object>> rooms = jdbcTemplate.queryForList(
-                    "SELECT id, room_no, floor FROM rooms WHERE building_code = ? ORDER BY floor, room_no LIMIT 5",
-                    candidate.id()
-            );
-            if (rooms.isEmpty()) {
-                rooms = jdbcTemplate.queryForList(
-                        "SELECT id, room_no, floor FROM rooms WHERE building_name = ? ORDER BY floor, room_no LIMIT 5",
-                        candidate.name()
-                );
+        for (String relatedBuildingId : resolveBuildingIdsByAssets(relationCandidateIds)) {
+            BuildingSeed seed = resolveBuildingSeed(relatedBuildingId, null);
+            if (seed != null) {
+                candidates.put(seed.id(), seed);
             }
-
-            ArrayNode roomArr = objectMapper.createArrayNode();
-            Set<Integer> floors = new HashSet<>();
-
-            for (Map<String, Object> room : rooms) {
-                ObjectNode r = objectMapper.createObjectNode();
-                r.put("buildingId", candidate.id());
-                r.put("buildingName", candidate.name());
-                if (room.get("floor") instanceof Number n) {
-                    floors.add(n.intValue());
-                    r.put("floorNo", n.intValue());
-                } else {
-                    r.set("floorNo", objectMapper.nullNode());
-                }
-                String roomNo = textValue(room.get("room_no"));
-                r.put("roomNo", roomNo);
-                r.put("roomId", textValue(room.get("id")));
-                ArrayNode equipmentIds = objectMapper.createArrayNode();
-                equipmentIds.add("PUMP-" + (isBlank(roomNo) ? "00" : roomNo));
-                r.set("equipmentIds", equipmentIds);
-                roomArr.add(r);
-            }
-
-            ObjectNode b = objectMapper.createObjectNode();
-            b.put("buildingId", candidate.id());
-            b.put("buildingName", candidate.name());
-            ArrayNode floorArr = objectMapper.createArrayNode();
-            floors.stream().sorted().forEach(floorArr::add);
-            b.set("floors", floorArr);
-            b.set("rooms", roomArr);
-            impactedBuildings.add(b);
         }
+
+        ArrayNode impactedBuildings = buildImpactedBuildings(candidates.values());
 
         ObjectNode scope = objectMapper.createObjectNode();
         scope.set("impactedBuildings", impactedBuildings);
@@ -403,6 +381,347 @@ abstract class WorkOrderRepositorySupport {
         scope.put("manualAdjusted", false);
         scope.set("adjustmentLogs", objectMapper.createArrayNode());
         return scope;
+    }
+
+    protected List<String> normalizeDistinctIds(List<String> rawIds) {
+        LinkedHashSet<String> ids = new LinkedHashSet<>();
+        for (String rawId : rawIds) {
+            String id = defaultText(rawId, "");
+            if (!id.isBlank()) ids.add(id);
+        }
+        return new ArrayList<>(ids);
+    }
+
+    protected ArrayNode textArray(List<String> values) {
+        ArrayNode array = objectMapper.createArrayNode();
+        for (String value : normalizeDistinctIds(values)) {
+            array.add(value);
+        }
+        return array;
+    }
+
+    protected List<String> resolveCanonicalNodeIds(List<String> rawNodeIds) {
+        List<String> ids = normalizeDistinctIds(rawNodeIds);
+        if (ids.isEmpty()) return List.of();
+        String placeholders = String.join(",", java.util.Collections.nCopies(ids.size(), "?"));
+        String sql = "SELECT id FROM pipe_nodes WHERE id IN (" + placeholders + ") OR feature_id IN (" + placeholders + ") ORDER BY id";
+        List<Object> params = new ArrayList<>(ids.size() * 2);
+        params.addAll(ids);
+        params.addAll(ids);
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, params.toArray());
+        LinkedHashSet<String> resolved = new LinkedHashSet<>();
+        for (Map<String, Object> row : rows) {
+            String id = textValue(row.get("id"));
+            if (!id.isBlank()) resolved.add(id);
+        }
+        return new ArrayList<>(resolved);
+    }
+
+    protected void validateExplicitAssetReferences(List<String> rawNodeIds, List<String> rawSegmentIds, String rawBuildingId, String rawBuildingName) {
+        rejectUnknownNodeIds(rawNodeIds);
+        rejectUnknownSegmentIds(rawSegmentIds);
+
+        String buildingId = defaultText(rawBuildingId, "");
+        String buildingName = defaultText(rawBuildingName, "");
+        if (buildingId.isBlank() && buildingName.isBlank()) {
+            return;
+        }
+
+        if (findExistingBuildingSeed(buildingId, buildingName) == null) {
+            throw badRequest("building_id_invalid");
+        }
+    }
+
+    protected void rejectUnknownNodeIds(List<String> rawNodeIds) {
+        List<String> ids = normalizeDistinctIds(rawNodeIds);
+        if (ids.isEmpty()) return;
+        String placeholders = String.join(",", java.util.Collections.nCopies(ids.size(), "?"));
+        String sql = "SELECT id, COALESCE(feature_id, '') AS feature_id FROM pipe_nodes " +
+                "WHERE id IN (" + placeholders + ") OR feature_id IN (" + placeholders + ")";
+        List<Object> params = new ArrayList<>(ids.size() * 2);
+        params.addAll(ids);
+        params.addAll(ids);
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, params.toArray());
+        Set<String> matched = new LinkedHashSet<>();
+        for (Map<String, Object> row : rows) {
+            String id = textValue(row.get("id"));
+            String featureId = textValue(row.get("feature_id"));
+            if (!id.isBlank()) matched.add(id);
+            if (!featureId.isBlank()) matched.add(featureId);
+        }
+        List<String> unknown = ids.stream().filter(id -> !matched.contains(id)).toList();
+        if (!unknown.isEmpty()) {
+            throw badRequest("node_ids_invalid");
+        }
+    }
+
+    protected void rejectUnknownSegmentIds(List<String> rawSegmentIds) {
+        List<String> ids = normalizeDistinctIds(rawSegmentIds);
+        if (ids.isEmpty()) return;
+        String placeholders = String.join(",", java.util.Collections.nCopies(ids.size(), "?"));
+        String sql = "SELECT id, COALESCE(feature_id, '') AS feature_id FROM pipe_segments " +
+                "WHERE id IN (" + placeholders + ") OR feature_id IN (" + placeholders + ")";
+        List<Object> params = new ArrayList<>(ids.size() * 2);
+        params.addAll(ids);
+        params.addAll(ids);
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, params.toArray());
+        Set<String> matched = new LinkedHashSet<>();
+        for (Map<String, Object> row : rows) {
+            String id = textValue(row.get("id"));
+            String featureId = textValue(row.get("feature_id"));
+            if (!id.isBlank()) matched.add(id);
+            if (!featureId.isBlank()) matched.add(featureId);
+        }
+        List<String> unknown = ids.stream().filter(id -> !matched.contains(id)).toList();
+        if (!unknown.isEmpty()) {
+            throw badRequest("segment_ids_invalid");
+        }
+    }
+
+    protected List<String> resolveCanonicalSegmentIds(List<String> rawSegmentIds) {
+        List<SegmentAssetRef> segments = resolveSegmentAssets(rawSegmentIds);
+        LinkedHashSet<String> resolved = new LinkedHashSet<>();
+        for (SegmentAssetRef segment : segments) {
+            if (!isBlank(segment.id())) resolved.add(segment.id());
+        }
+        return new ArrayList<>(resolved);
+    }
+
+    protected List<SegmentAssetRef> resolveSegmentAssets(List<String> rawSegmentIds) {
+        List<String> ids = normalizeDistinctIds(rawSegmentIds);
+        if (ids.isEmpty()) return List.of();
+        String placeholders = String.join(",", java.util.Collections.nCopies(ids.size(), "?"));
+        String sql = "SELECT ps.id, COALESCE(ps.feature_id, '') AS feature_id, COALESCE(ps.from_node_id, '') AS from_node_id, COALESCE(ps.to_node_id, '') AS to_node_id " +
+                "FROM pipe_segments ps " +
+                "WHERE ps.id IN (" + placeholders + ") OR ps.feature_id IN (" + placeholders + ") " +
+                "ORDER BY ps.id";
+        List<Object> params = new ArrayList<>(ids.size() * 2);
+        params.addAll(ids);
+        params.addAll(ids);
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, params.toArray());
+        LinkedHashMap<String, SegmentAssetRef> resolved = new LinkedHashMap<>();
+        for (Map<String, Object> row : rows) {
+            SegmentAssetRef ref = new SegmentAssetRef(
+                    textValue(row.get("id")),
+                    textValue(row.get("feature_id")),
+                    textValue(row.get("from_node_id")),
+                    textValue(row.get("to_node_id"))
+            );
+            if (!ref.id().isBlank()) {
+                resolved.put(ref.id(), ref);
+            }
+        }
+        return new ArrayList<>(resolved.values());
+    }
+
+    protected ObjectNode buildImpactAnalysisResponse(String buildingId, String buildingName, List<String> nodeIds, List<String> segmentIds, String medium) {
+        ObjectNode scope = inferImpactScope(buildingId, buildingName, nodeIds, segmentIds, medium);
+        ArrayNode impactedBuildings = array(scope.get("impactedBuildings"));
+        int roomCount = 0;
+        for (JsonNode building : impactedBuildings) {
+            roomCount += array(building.get("rooms")).size();
+        }
+
+        ObjectNode result = objectMapper.createObjectNode();
+        result.set("impactedBuildings", impactedBuildings.deepCopy());
+        result.put("estimatedImpactHours", inferImpactHours(defaultText(medium, "mixed"), impactedBuildings.size(), roomCount));
+        result.put("affectedUserCount", inferAffectedUsers(defaultText(medium, "mixed"), roomCount, impactedBuildings.size()));
+        return result;
+    }
+
+    protected int inferImpactHours(String medium, int buildingCount, int roomCount) {
+        int base = switch (defaultText(medium, "mixed")) {
+            case "sewage" -> 5;
+            case "water" -> 4;
+            case "drainage" -> 3;
+            default -> 4;
+        };
+        int load = Math.min(4, (int) Math.ceil(roomCount / 8.0)) + Math.max(0, buildingCount - 1);
+        return Math.max(1, base + load);
+    }
+
+    protected int inferAffectedUsers(String medium, int roomCount, int buildingCount) {
+        int perRoom = switch (defaultText(medium, "mixed")) {
+            case "water" -> 6;
+            case "sewage" -> 4;
+            case "drainage" -> 3;
+            default -> 5;
+        };
+        if (roomCount > 0) return roomCount * perRoom;
+        return buildingCount * perRoom * 6;
+    }
+
+    protected LinkedHashSet<String> resolveBuildingIdsByAssets(Set<String> assetIds) {
+        LinkedHashSet<String> buildingIds = new LinkedHashSet<>();
+        if (assetIds.isEmpty()) return buildingIds;
+        String placeholders = String.join(",", java.util.Collections.nCopies(assetIds.size(), "?"));
+        String sql = "SELECT DISTINCT CASE " +
+                "  WHEN source_type = 'building' THEN source_id " +
+                "  WHEN target_type = 'building' THEN target_id " +
+                "  ELSE NULL END AS building_id " +
+                "FROM asset_relations " +
+                "WHERE (source_id IN (" + placeholders + ") OR target_id IN (" + placeholders + ")) " +
+                "  AND (source_type = 'building' OR target_type = 'building')";
+        List<Object> params = new ArrayList<>(assetIds.size() * 2);
+        params.addAll(assetIds);
+        params.addAll(assetIds);
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, params.toArray());
+        for (Map<String, Object> row : rows) {
+            String buildingId = textValue(row.get("building_id"));
+            if (!buildingId.isBlank()) buildingIds.add(buildingId);
+        }
+        return buildingIds;
+    }
+
+    protected BuildingSeed findExistingBuildingSeed(String buildingId, String buildingName) {
+        String resolvedBuildingId = defaultText(buildingId, "");
+        String resolvedBuildingName = defaultText(buildingName, "");
+
+        if (!resolvedBuildingId.isBlank()) {
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                    "SELECT code AS building_id, building_name FROM buildings WHERE code = ? LIMIT 1",
+                    resolvedBuildingId
+            );
+            if (!rows.isEmpty()) {
+                return new BuildingSeed(
+                        textValue(rows.get(0).get("building_id")),
+                        defaultText(textValue(rows.get(0).get("building_name")), resolvedBuildingId)
+                );
+            }
+
+            rows = jdbcTemplate.queryForList(
+                    "SELECT id AS building_id, COALESCE(properties->>'name', properties->>'buildingName', id) AS building_name " +
+                            "FROM geo_features WHERE layer = 'buildings' AND id = ? LIMIT 1",
+                    resolvedBuildingId
+            );
+            if (!rows.isEmpty()) {
+                return new BuildingSeed(
+                        textValue(rows.get(0).get("building_id")),
+                        defaultText(textValue(rows.get(0).get("building_name")), resolvedBuildingId)
+                );
+            }
+        }
+
+        if (!resolvedBuildingName.isBlank()) {
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                    "SELECT code AS building_id, building_name FROM buildings WHERE LOWER(building_name) = LOWER(?) LIMIT 1",
+                    resolvedBuildingName
+            );
+            if (!rows.isEmpty()) {
+                return new BuildingSeed(
+                        textValue(rows.get(0).get("building_id")),
+                        defaultText(textValue(rows.get(0).get("building_name")), resolvedBuildingName)
+                );
+            }
+
+            rows = jdbcTemplate.queryForList(
+                    "SELECT id AS building_id, COALESCE(properties->>'name', properties->>'buildingName', id) AS building_name " +
+                            "FROM geo_features WHERE layer = 'buildings' AND LOWER(COALESCE(properties->>'name', properties->>'buildingName', id)) = LOWER(?) LIMIT 1",
+                    resolvedBuildingName
+            );
+            if (!rows.isEmpty()) {
+                return new BuildingSeed(
+                        textValue(rows.get(0).get("building_id")),
+                        defaultText(textValue(rows.get(0).get("building_name")), resolvedBuildingName)
+                );
+            }
+        }
+
+        return null;
+    }
+
+    protected BuildingSeed resolveBuildingSeed(String buildingId, String buildingName) {
+        BuildingSeed existing = findExistingBuildingSeed(buildingId, buildingName);
+        if (existing != null) {
+            return existing;
+        }
+
+        String resolvedBuildingId = defaultText(buildingId, "");
+        String resolvedBuildingName = defaultText(buildingName, "");
+        if (!resolvedBuildingId.isBlank()) {
+            return new BuildingSeed(resolvedBuildingId, resolvedBuildingName.isBlank() ? resolvedBuildingId : resolvedBuildingName);
+        }
+        if (!resolvedBuildingName.isBlank()) {
+            return new BuildingSeed(resolvedBuildingName, resolvedBuildingName);
+        }
+        return null;
+    }
+
+    protected ArrayNode buildImpactedBuildings(Iterable<BuildingSeed> seeds) {
+        ArrayNode impactedBuildings = objectMapper.createArrayNode();
+        for (BuildingSeed seed : seeds) {
+            ArrayNode roomArr = objectMapper.createArrayNode();
+            Set<Integer> floors = new HashSet<>();
+
+            List<Map<String, Object>> buildingRooms = jdbcTemplate.queryForList(
+                    "SELECT r.id, r.room_no, f.floor_no " +
+                            "FROM building_rooms r " +
+                            "LEFT JOIN building_floors f ON f.id = r.floor_id " +
+                            "WHERE r.building_id = ? " +
+                            "ORDER BY f.floor_no NULLS LAST, r.room_no LIMIT 24",
+                    seed.id()
+            );
+            for (Map<String, Object> room : buildingRooms) {
+                ObjectNode node = objectMapper.createObjectNode();
+                node.put("buildingId", seed.id());
+                node.put("buildingName", seed.name());
+                Object floorNo = room.get("floor_no");
+                if (floorNo instanceof Number number) {
+                    int floor = number.intValue();
+                    floors.add(floor);
+                    node.put("floorNo", floor);
+                } else {
+                    node.set("floorNo", objectMapper.nullNode());
+                }
+                String roomNo = textValue(room.get("room_no"));
+                node.put("roomNo", roomNo);
+                node.put("roomId", textValue(room.get("id")));
+                ArrayNode equipmentIds = objectMapper.createArrayNode();
+                if (!isBlank(roomNo)) {
+                    equipmentIds.add("PUMP-" + roomNo);
+                }
+                node.set("equipmentIds", equipmentIds);
+                roomArr.add(node);
+            }
+
+            if (roomArr.isEmpty()) {
+                List<Map<String, Object>> legacyRooms = jdbcTemplate.queryForList(
+                        "SELECT id, room_no, floor FROM rooms WHERE building_code = ? ORDER BY floor, room_no LIMIT 24",
+                        seed.id()
+                );
+                for (Map<String, Object> room : legacyRooms) {
+                    ObjectNode node = objectMapper.createObjectNode();
+                    node.put("buildingId", seed.id());
+                    node.put("buildingName", seed.name());
+                    if (room.get("floor") instanceof Number number) {
+                        int floor = number.intValue();
+                        floors.add(floor);
+                        node.put("floorNo", floor);
+                    } else {
+                        node.set("floorNo", objectMapper.nullNode());
+                    }
+                    String roomNo = textValue(room.get("room_no"));
+                    node.put("roomNo", roomNo);
+                    node.put("roomId", textValue(room.get("id")));
+                    ArrayNode equipmentIds = objectMapper.createArrayNode();
+                    if (!isBlank(roomNo)) {
+                        equipmentIds.add("PUMP-" + roomNo);
+                    }
+                    node.set("equipmentIds", equipmentIds);
+                    roomArr.add(node);
+                }
+            }
+
+            ObjectNode building = objectMapper.createObjectNode();
+            building.put("buildingId", seed.id());
+            building.put("buildingName", seed.name());
+            ArrayNode floorArr = objectMapper.createArrayNode();
+            floors.stream().sorted().forEach(floorArr::add);
+            building.set("floors", floorArr);
+            building.set("rooms", roomArr);
+            impactedBuildings.add(building);
+        }
+        return impactedBuildings;
     }
 
     protected String buildBypassRequirement(String medium, ArrayNode impactedBuildings) {
@@ -826,6 +1145,9 @@ abstract class WorkOrderRepositorySupport {
     }
 
     protected static record BuildingSeed(String id, String name) {
+    }
+
+    protected static record SegmentAssetRef(String id, String featureId, String fromNodeId, String toNodeId) {
     }
 
     private record CacheEntry(long expireAt, JsonNode data) {

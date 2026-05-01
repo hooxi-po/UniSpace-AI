@@ -3,6 +3,7 @@ import { pipelineOpsActionText, pipelineOpsStageLabel } from '~/components/admin
 import { usePipelineOpsBoard, type PipelineOpsBoardMode } from '~/composables/admin/usePipelineOpsBoard'
 import type {
   ImpactedBuildingRef,
+  PipelineAssetRef,
   PipelineMedium,
   PipelineOrderStatus,
   PipelineOrderType,
@@ -26,6 +27,7 @@ export function usePipelineOpsBoardUi(mode: PipelineOpsBoardMode) {
     queryMedium,
     queryPriority,
     queryNodeId,
+    querySegmentId,
     queryBuildingId,
     queryAssignee,
     queryCreatedFrom,
@@ -68,10 +70,9 @@ export function usePipelineOpsBoardUi(mode: PipelineOpsBoardMode) {
     type: (mode === 'linkage' ? 'inspection' : mode) as PipelineOrderType,
     pipelineMedium: 'water' as PipelineMedium,
     area: '',
-    buildingId: '',
-    buildingName: '',
-    nodeIdsText: '',
-    segmentIdsText: '',
+    building: null as PipelineAssetRef | null,
+    nodeAssets: [] as PipelineAssetRef[],
+    segmentAssets: [] as PipelineAssetRef[],
     assignee: '',
     reviewer: '',
     priority: 'medium' as PipelinePriority,
@@ -209,16 +210,36 @@ export function usePipelineOpsBoardUi(mode: PipelineOpsBoardMode) {
     form.description = ''
     form.pipelineMedium = 'water'
     form.area = ''
-    form.buildingId = ''
-    form.buildingName = ''
-    form.nodeIdsText = ''
-    form.segmentIdsText = ''
+    form.building = null
+    form.nodeAssets = []
+    form.segmentAssets = []
     form.assignee = ''
     form.reviewer = ''
     form.priority = 'medium'
     form.plannedDate = ''
     form.deadlineAt = ''
     form.type = (mode === 'linkage' ? 'inspection' : mode) as PipelineOrderType
+  }
+
+  function openCreateForm() {
+    resetCreateForm()
+    resetAutoCreateForm()
+    formOpen.value = true
+  }
+
+  function resetFilters() {
+    queryStatus.value = ''
+    queryArea.value = ''
+    queryMedium.value = ''
+    queryPriority.value = ''
+    queryNodeId.value = ''
+    querySegmentId.value = ''
+    queryBuildingId.value = ''
+    queryAssignee.value = ''
+    queryCreatedFrom.value = ''
+    queryCreatedTo.value = ''
+    queryKeyword.value = ''
+    page.value = 1
   }
 
   function resetAutoCreateForm() {
@@ -287,6 +308,13 @@ export function usePipelineOpsBoardUi(mode: PipelineOpsBoardMode) {
       showNotice('error', '请填写工单标题', 4200)
       return
     }
+    const nodeIds = form.nodeAssets.map(item => item.id)
+    const segmentIds = form.segmentAssets.map(item => item.id)
+    const topologyChain = [
+      ...form.segmentAssets.map(item => item.featureId || ''),
+      ...segmentIds,
+      ...nodeIds,
+    ].filter(Boolean)
     await runWithFeedback(
       () => createWorkorder({
         title: form.title,
@@ -294,10 +322,11 @@ export function usePipelineOpsBoardUi(mode: PipelineOpsBoardMode) {
         type: form.type,
         pipelineMedium: form.pipelineMedium,
         area: form.area || '未分区',
-        buildingId: form.buildingId,
-        buildingName: form.buildingName,
-        nodeIds: parseCsv(form.nodeIdsText),
-        segmentIds: parseCsv(form.segmentIdsText),
+        buildingId: form.building?.id || '',
+        buildingName: form.building?.label || '',
+        nodeIds,
+        segmentIds,
+        topologyChain,
         assignee: form.assignee,
         reviewer: form.reviewer,
         priority: form.priority,
@@ -324,6 +353,13 @@ export function usePipelineOpsBoardUi(mode: PipelineOpsBoardMode) {
       showNotice('error', '请填写触发原因', 4200)
       return
     }
+    const nodeIds = form.nodeAssets.map(item => item.id)
+    const segmentIds = form.segmentAssets.map(item => item.id)
+    const topologyChain = [
+      ...form.segmentAssets.map(item => item.featureId || ''),
+      ...segmentIds,
+      ...nodeIds,
+    ].filter(Boolean)
     await runWithFeedback(
       () => autoCreate({
         trigger: autoForm.trigger,
@@ -334,10 +370,11 @@ export function usePipelineOpsBoardUi(mode: PipelineOpsBoardMode) {
           type: form.type,
           pipelineMedium: form.pipelineMedium,
           area: form.area || '未分区',
-          buildingId: form.buildingId,
-          buildingName: form.buildingName,
-          nodeIds: parseCsv(form.nodeIdsText),
-          segmentIds: parseCsv(form.segmentIdsText),
+          buildingId: form.building?.id || '',
+          buildingName: form.building?.label || '',
+          nodeIds,
+          segmentIds,
+          topologyChain,
           assignee: form.assignee,
           reviewer: form.reviewer,
           priority: form.priority,
@@ -538,7 +575,7 @@ export function usePipelineOpsBoardUi(mode: PipelineOpsBoardMode) {
 
   function openPipeEditorFromWorkorder(item: PipelineWorkOrder) {
     if (typeof window === 'undefined') return
-    const featureId = item.segmentIds[0] || item.topologyChain.find(id => !String(id).startsWith('N-')) || ''
+    const featureId = item.topologyChain.find(id => !String(id).startsWith('N-')) || item.segmentIds[0] || ''
     const query = new URLSearchParams()
     if (featureId) {
       query.set('featureId', featureId)
@@ -627,6 +664,7 @@ export function usePipelineOpsBoardUi(mode: PipelineOpsBoardMode) {
     queryMedium,
     queryPriority,
     queryNodeId,
+    querySegmentId,
     queryBuildingId,
     queryAssignee,
     queryCreatedFrom,
@@ -712,6 +750,8 @@ export function usePipelineOpsBoardUi(mode: PipelineOpsBoardMode) {
     submitActionDialog,
     submitCreate,
     submitAutoCreate,
+    openCreateForm,
+    resetFilters,
     openDetail,
     closeDetail,
     submitImpactAdjust,

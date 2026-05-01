@@ -1,12 +1,71 @@
 <template>
   <div class="ops-board">
-    <div
-      v-if="feedbackText"
-      :class="['ops-notice', `ops-notice--${feedbackType}`]"
-    >
-      <span>{{ feedbackText }}</span>
-      <button class="ops-notice__close" type="button" @click="dismissFeedback">知道了</button>
-    </div>
+    <section class="panel ops-panel">
+      <div class="panel__header panel__header--row">
+        <div>
+          <div class="panel__title">{{ meta.title }}</div>
+          <div class="panel__subtitle">{{ meta.subtitle }}</div>
+        </div>
+        <div class="toolbar">
+          <input
+            v-model="queryKeyword"
+            class="admin-input"
+            placeholder="搜索工单号 / 标题 / 责任人 / 楼宇"
+          />
+          <button class="admin-btn admin-btn--primary" type="button" @click="openCreateForm">
+            新建工单
+          </button>
+          <button class="admin-btn" type="button" :disabled="loading" @click="refresh">
+            刷新
+          </button>
+        </div>
+      </div>
+
+      <div class="panel__body">
+        <div
+          v-if="feedbackText"
+          :class="['ops-notice', `ops-notice--${feedbackType}`]"
+        >
+          <span>{{ feedbackText }}</span>
+          <button class="ops-notice__close" type="button" @click="dismissFeedback">知道了</button>
+        </div>
+
+        <PipelineOpsListSection
+          v-model:page="page"
+          v-model:query-status="queryStatus"
+          v-model:query-area="queryArea"
+          v-model:query-medium="queryMedium"
+          v-model:query-priority="queryPriority"
+          v-model:query-node-id="queryNodeId"
+          v-model:query-segment-id="querySegmentId"
+          v-model:query-building-id="queryBuildingId"
+          v-model:query-assignee="queryAssignee"
+          v-model:query-created-from="queryCreatedFrom"
+          v-model:query-created-to="queryCreatedTo"
+          v-model:query-keyword="queryKeyword"
+          :show-keyword-search="false"
+          :loading="loading"
+          :submitting="submitting"
+          :list="list"
+          :total-pages="totalPages"
+          :total="total"
+          :type-label="typeLabel"
+          :medium-label="mediumLabel"
+          :source-label="sourceLabel"
+          :status-label="statusLabel"
+          :priority-label="priorityLabel"
+          :action-text="actionText"
+          :available-actions="availableActions"
+          :format-time="formatTime"
+          @open-detail="openDetail"
+          @trigger-action="triggerAction"
+          @locate-on-map="locateOnMap"
+          @reset-filters="resetFilters"
+        />
+
+        <div class="footer-note">当前显示：{{ list.length }} 条（{{ footerLabel }}）</div>
+      </div>
+    </section>
 
     <div v-if="formOpen" class="detail-mask detail-mask--center" @click.self="formOpen = false">
       <div class="ops-create-dialog">
@@ -22,35 +81,6 @@
         />
       </div>
     </div>
-
-    <PipelineOpsListSection
-      v-model:page="page"
-      v-model:query-status="queryStatus"
-      v-model:query-area="queryArea"
-      v-model:query-medium="queryMedium"
-      v-model:query-priority="queryPriority"
-      v-model:query-node-id="queryNodeId"
-      v-model:query-building-id="queryBuildingId"
-      v-model:query-assignee="queryAssignee"
-      v-model:query-created-from="queryCreatedFrom"
-      v-model:query-created-to="queryCreatedTo"
-      v-model:query-keyword="queryKeyword"
-      :loading="loading"
-      :submitting="submitting"
-      :list="list"
-      :total-pages="totalPages"
-      :total="total"
-      :type-label="typeLabel"
-      :source-label="sourceLabel"
-      :status-label="statusLabel"
-      :priority-label="priorityLabel"
-      :action-text="actionText"
-      :available-actions="availableActions"
-      :format-time="formatTime"
-      @open-detail="openDetail"
-      @trigger-action="triggerAction"
-      @locate-on-map="locateOnMap"
-    />
 
     <PipelineOpsActionDialog
       :dialog="actionDialog"
@@ -98,6 +128,7 @@ import type { PipelineOpsBoardMode } from '~/composables/admin/usePipelineOpsBoa
 import {
   pipelineOpsActionText,
   pipelineOpsMediumLabel,
+  pipelineOpsMetaMap,
   pipelineOpsPriorityLabel,
   pipelineOpsSourceLabel,
   pipelineOpsStatusLabel,
@@ -109,6 +140,8 @@ const props = defineProps<{
   realtimeEnabled?: boolean
 }>()
 const mode = computed(() => props.mode)
+const meta = computed(() => pipelineOpsMetaMap[props.mode])
+const footerLabel = computed(() => props.mode === 'linkage' ? '工单' : typeLabel[props.mode])
 
 const {
   loading,
@@ -123,6 +156,7 @@ const {
   queryMedium,
   queryPriority,
   queryNodeId,
+  querySegmentId,
   queryBuildingId,
   queryAssignee,
   queryCreatedFrom,
@@ -149,6 +183,8 @@ const {
   submitActionDialog,
   submitCreate,
   submitAutoCreate,
+  openCreateForm,
+  resetFilters,
   openDetail,
   submitImpactAdjust,
   submitLog,
@@ -159,6 +195,7 @@ const {
   openPipeEditorFromWorkorder,
   locateBuildingOnMap,
   formatTime,
+  refresh,
 } = usePipelineOpsBoardUi(props.mode)
 
 const typeLabel = pipelineOpsTypeLabel

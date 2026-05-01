@@ -142,27 +142,116 @@
         <div class="ops-create-card__header">
           <div>
             <div class="ops-create-card__title">管网定位与影响范围</div>
-            <div class="ops-create-card__desc">支持通过节点、管段或楼宇快速定位，并做预分析。</div>
+            <div class="ops-create-card__desc">只能从真实资产中选择节点、管段和楼宇，不再接受手填自由文本 ID。</div>
           </div>
           <div class="ops-create-card__meta">{{ locationSummary }}</div>
         </div>
 
-        <div class="ops-form__row">
-          <label>节点（逗号）
-            <input v-model="form.nodeIdsText" class="ops-input" placeholder="N-1001,N-1002" />
-          </label>
-          <label>管段（逗号）
-            <input v-model="form.segmentIdsText" class="ops-input" placeholder="S-2101,S-2102" />
-          </label>
+        <div class="ops-asset-grid">
+          <div class="ops-asset-picker">
+            <div class="ops-asset-picker__head">
+              <span>节点资产</span>
+              <span>已选 {{ form.nodeAssets.length }}</span>
+            </div>
+            <input
+              v-model="nodeSearch"
+              class="ops-input"
+              placeholder="搜索节点 ID / 名称"
+              @focus="handleAssetSearch('node')"
+              @input="handleAssetSearch('node')"
+            />
+            <div v-if="nodeOptions.length" class="ops-asset-picker__options">
+              <button
+                v-for="item in nodeOptions"
+                :key="`node-${item.id}`"
+                class="ops-asset-picker__option"
+                type="button"
+                @click="addNodeAsset(item)"
+              >
+                <strong>{{ item.id }}</strong>
+                <span>{{ item.label }}</span>
+              </button>
+            </div>
+            <div v-if="form.nodeAssets.length" class="ops-asset-picker__selected">
+              <button
+                v-for="item in form.nodeAssets"
+                :key="`node-selected-${item.id}`"
+                class="ops-asset-chip"
+                type="button"
+                @click="removeNodeAsset(item.id)"
+              >
+                {{ item.id }} · {{ item.label }}
+              </button>
+            </div>
+          </div>
+
+          <div class="ops-asset-picker">
+            <div class="ops-asset-picker__head">
+              <span>管段资产</span>
+              <span>已选 {{ form.segmentAssets.length }}</span>
+            </div>
+            <input
+              v-model="segmentSearch"
+              class="ops-input"
+              placeholder="搜索管段 ID / 管线名称"
+              @focus="handleAssetSearch('segment')"
+              @input="handleAssetSearch('segment')"
+            />
+            <div v-if="segmentOptions.length" class="ops-asset-picker__options">
+              <button
+                v-for="item in segmentOptions"
+                :key="`segment-${item.id}`"
+                class="ops-asset-picker__option"
+                type="button"
+                @click="addSegmentAsset(item)"
+              >
+                <strong>{{ item.id }}</strong>
+                <span>{{ item.label }}</span>
+              </button>
+            </div>
+            <div v-if="form.segmentAssets.length" class="ops-asset-picker__selected">
+              <button
+                v-for="item in form.segmentAssets"
+                :key="`segment-selected-${item.id}`"
+                class="ops-asset-chip"
+                type="button"
+                @click="removeSegmentAsset(item.id)"
+              >
+                {{ item.id }} · {{ item.label }}
+              </button>
+            </div>
+          </div>
         </div>
 
-        <div class="ops-form__row">
-          <label>关联楼宇编码
-            <input v-model="form.buildingId" class="ops-input" placeholder="BLD-001" />
-          </label>
-          <label>关联楼宇名称
-            <input v-model="form.buildingName" class="ops-input" placeholder="博学楼" />
-          </label>
+        <div class="ops-asset-picker">
+          <div class="ops-asset-picker__head">
+            <span>关联楼宇</span>
+            <span>{{ form.building ? '已选 1' : '未选择' }}</span>
+          </div>
+          <input
+            v-model="buildingSearch"
+            class="ops-input"
+            placeholder="搜索楼宇编码 / 名称"
+            @focus="handleAssetSearch('building')"
+            @input="handleAssetSearch('building')"
+          />
+          <div v-if="buildingOptions.length" class="ops-asset-picker__options">
+            <button
+              v-for="item in buildingOptions"
+              :key="`building-${item.id}`"
+              class="ops-asset-picker__option"
+              type="button"
+              @click="selectBuildingAsset(item)"
+            >
+              <strong>{{ item.id }}</strong>
+              <span>{{ item.label }}</span>
+            </button>
+          </div>
+          <div v-if="form.building" class="ops-asset-picker__selected">
+            <button class="ops-asset-chip" type="button" @click="clearBuildingAsset()">
+              {{ form.building.id }} · {{ form.building.label }}
+            </button>
+          </div>
         </div>
 
         <div class="ops-create__analysis-bar">
@@ -286,7 +375,8 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { PipelineMedium, PipelineOrderType, PipelinePriority } from '~/types/pipeline-ops'
+import { pipelineOpsService } from '~/services/pipeline-ops'
+import type { PipelineAssetRef, PipelineMedium, PipelineOrderType, PipelinePriority } from '~/types/pipeline-ops'
 import type { PipelineOpsBoardMode } from '~/composables/admin/usePipelineOpsBoard'
 import type { PipelineWorkOrderTemplate } from '~/types/pipeline-ops-template'
 import { analyzeImpactScope, recommendTemplate, type ImpactAnalysisResponse, type TemplateRecommendResponse } from '~/services/pipeline-intelligence'
@@ -298,10 +388,9 @@ type CreateFormState = {
   type: PipelineOrderType
   pipelineMedium: PipelineMedium
   area: string
-  buildingId: string
-  buildingName: string
-  nodeIdsText: string
-  segmentIdsText: string
+  building: PipelineAssetRef | null
+  nodeAssets: PipelineAssetRef[]
+  segmentAssets: PipelineAssetRef[]
   assignee: string
   reviewer: string
   priority: PipelinePriority
@@ -335,6 +424,12 @@ const analyzingImpact = ref(false)
 const impactAnalysisResult = ref<ImpactAnalysisResponse | null>(null)
 const isRecommending = ref(false)
 const recommendedTemplate = ref<TemplateRecommendResponse | null>(null)
+const nodeSearch = ref('')
+const segmentSearch = ref('')
+const buildingSearch = ref('')
+const nodeOptions = ref<PipelineAssetRef[]>([])
+const segmentOptions = ref<PipelineAssetRef[]>([])
+const buildingOptions = ref<PipelineAssetRef[]>([])
 const allowedTemplateType = computed<PipelineOrderType | null>(() => props.mode === 'linkage' ? null : props.mode)
 const workorderTypeLabel: Record<PipelineOrderType, string> = {
   inspection: '巡检',
@@ -362,14 +457,14 @@ const priorityOptions: Array<{ value: PipelinePriority; label: string; hint: str
 ]
 let impactAnalysisRequestId = 0
 let recommendRequestId = 0
+let assetSearchRequestId = 0
 
-const parsedNodeIds = computed(() => props.form.nodeIdsText.split(',').map(s => s.trim()).filter(Boolean))
-const parsedSegmentIds = computed(() => props.form.segmentIdsText.split(',').map(s => s.trim()).filter(Boolean))
+const parsedNodeIds = computed(() => props.form.nodeAssets.map(item => item.id).filter(Boolean))
+const parsedSegmentIds = computed(() => props.form.segmentAssets.map(item => item.id).filter(Boolean))
 const hasManualLocation = computed(() =>
   parsedNodeIds.value.length > 0
   || parsedSegmentIds.value.length > 0
-  || props.form.buildingId.trim().length > 0
-  || props.form.buildingName.trim().length > 0,
+  || Boolean(props.form.building?.id),
 )
 const canAnalyzeImpact = computed(() => hasManualLocation.value && !analyzingImpact.value)
 const canRecommendTemplate = computed(() => parsedNodeIds.value.length > 0 || parsedSegmentIds.value.length > 0)
@@ -379,7 +474,7 @@ const currentMediumLabel = computed(() => mediumOptions.find(option => option.va
 const locationSummary = computed(() => {
   const nodeCount = parsedNodeIds.value.length
   const segmentCount = parsedSegmentIds.value.length
-  const buildingCount = Number(Boolean(props.form.buildingId.trim() || props.form.buildingName.trim()))
+  const buildingCount = Number(Boolean(props.form.building?.id))
   if (nodeCount + segmentCount + buildingCount === 0) return '尚未填写定位信息'
   return `节点 ${nodeCount} · 管段 ${segmentCount} · 楼宇 ${buildingCount}`
 })
@@ -404,6 +499,12 @@ function resetLocalUiState() {
   impactAnalysisResult.value = null
   isRecommending.value = false
   recommendedTemplate.value = null
+  nodeSearch.value = ''
+  segmentSearch.value = ''
+  buildingSearch.value = ''
+  nodeOptions.value = []
+  segmentOptions.value = []
+  buildingOptions.value = []
 }
 
 watch(() => props.open, (open) => {
@@ -454,6 +555,70 @@ function validateForm(): boolean {
   return errors.length === 0
 }
 
+async function handleAssetSearch(assetType: 'node' | 'segment' | 'building') {
+  const requestId = ++assetSearchRequestId
+  const query = assetType === 'node'
+    ? nodeSearch.value
+    : assetType === 'segment'
+      ? segmentSearch.value
+      : buildingSearch.value
+
+  try {
+    const result = await pipelineOpsService.searchAssets({
+      assetType,
+      q: query.trim(),
+      pipelineMedium: assetType === 'segment' ? props.form.pipelineMedium : undefined,
+      limit: 12,
+    })
+    if (requestId !== assetSearchRequestId || !props.open) return
+    const selectedIds = new Set([
+      ...props.form.nodeAssets.map(item => item.id),
+      ...props.form.segmentAssets.map(item => item.id),
+      props.form.building?.id || '',
+    ])
+    const options = (result.list || []).filter(item => !selectedIds.has(item.id))
+    if (assetType === 'node') nodeOptions.value = options
+    else if (assetType === 'segment') segmentOptions.value = options
+    else buildingOptions.value = options
+  } catch {
+    if (assetType === 'node') nodeOptions.value = []
+    else if (assetType === 'segment') segmentOptions.value = []
+    else buildingOptions.value = []
+  }
+}
+
+function addNodeAsset(item: PipelineAssetRef) {
+  if (props.form.nodeAssets.some(existing => existing.id === item.id)) return
+  props.form.nodeAssets = [...props.form.nodeAssets, item]
+  nodeSearch.value = ''
+  nodeOptions.value = []
+}
+
+function removeNodeAsset(id: string) {
+  props.form.nodeAssets = props.form.nodeAssets.filter(item => item.id !== id)
+}
+
+function addSegmentAsset(item: PipelineAssetRef) {
+  if (props.form.segmentAssets.some(existing => existing.id === item.id)) return
+  props.form.segmentAssets = [...props.form.segmentAssets, item]
+  segmentSearch.value = ''
+  segmentOptions.value = []
+}
+
+function removeSegmentAsset(id: string) {
+  props.form.segmentAssets = props.form.segmentAssets.filter(item => item.id !== id)
+}
+
+function selectBuildingAsset(item: PipelineAssetRef) {
+  props.form.building = item
+  buildingSearch.value = ''
+  buildingOptions.value = []
+}
+
+function clearBuildingAsset() {
+  props.form.building = null
+}
+
 function validateAutoCreate(): boolean {
   const ok = validateForm()
   const errors = [...validationErrors.value]
@@ -490,8 +655,8 @@ async function handleAnalyzeImpact() {
     const result = await analyzeImpactScope({
       nodeIds: parsedNodeIds.value,
       segmentIds: parsedSegmentIds.value,
-      buildingId: props.form.buildingId,
-      buildingName: props.form.buildingName,
+      buildingId: props.form.building?.id || '',
+      buildingName: props.form.building?.label || '',
       medium: props.form.pipelineMedium,
       area: props.form.area,
     })
@@ -519,9 +684,11 @@ function applyImpactResult() {
 
   const buildings = impactAnalysisResult.value.impactedBuildings
   if (buildings.length > 0) {
-    // 自动填充第一个楼宇的信息
-    props.form.buildingId = buildings[0].buildingId
-    props.form.buildingName = buildings[0].buildingName
+    props.form.building = {
+      assetType: 'building',
+      id: buildings[0].buildingId,
+      label: buildings[0].buildingName,
+    }
   }
 
   // 清除分析结果
@@ -565,6 +732,12 @@ function applyRecommendedTemplate() {
   applyTemplate(recommendedTemplate.value)
   recommendedTemplate.value = null
 }
+
+watch(() => props.form.pipelineMedium, () => {
+  if (props.open) {
+    void handleAssetSearch('segment')
+  }
+})
 </script>
 
 <style scoped>
@@ -616,6 +789,56 @@ function applyRecommendedTemplate() {
   max-width: 760px;
   font-size: 13px;
   line-height: 1.6;
+  color: #64748b;
+}
+
+.ops-asset-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ops-asset-picker {
+  display: grid;
+  gap: 10px;
+}
+
+.ops-asset-picker__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.ops-asset-picker__options,
+.ops-asset-picker__selected {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ops-asset-picker__option,
+.ops-asset-chip {
+  border: 1px solid #d6e3f5;
+  background: #f8fbff;
+  color: #1e293b;
+  border-radius: 12px;
+  padding: 8px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-align: left;
+}
+
+.ops-asset-picker__option strong,
+.ops-asset-chip {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ops-asset-picker__option span {
+  font-size: 12px;
   color: #64748b;
 }
 
@@ -864,7 +1087,8 @@ function applyRecommendedTemplate() {
   }
 
   .ops-create__grid,
-  .ops-create__choice-grid--4 {
+  .ops-create__choice-grid--4,
+  .ops-asset-grid {
     grid-template-columns: 1fr;
   }
 

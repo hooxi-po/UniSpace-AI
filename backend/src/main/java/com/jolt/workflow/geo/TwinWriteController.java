@@ -6,6 +6,7 @@ import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import org.springframework.http.MediaType;
@@ -112,6 +113,12 @@ public class TwinWriteController {
         if (propertiesNode == null || !propertiesNode.isObject()) {
             return ResponseEntity.badRequest().body(errorNode("properties_required"));
         }
+        List<String> buildingIds;
+        try {
+            buildingIds = normalizeBuildingIds(root.get("buildingIds"), false);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(errorNode(e.getMessage()));
+        }
 
         JsonNode visibleNode = root.get("visible");
         Boolean visible = null;
@@ -148,6 +155,10 @@ public class TwinWriteController {
             return ResponseEntity.internalServerError().body(errorNode("segment_sync_failed"));
         }
 
+        if (buildingIds != null) {
+            syncPipeBuildingRelations(featureId, buildingIds, updatedBy);
+        }
+
         JsonNode after = queryFeatureGeoJson(featureId);
         insertAuditLog(featureId, "properties_update", updatedBy, before, after);
 
@@ -155,6 +166,49 @@ public class TwinWriteController {
         ok.put("ok", true);
         ok.put("id", featureId);
         ok.put("action", "properties_update");
+        return ResponseEntity.ok(ok);
+    }
+
+    @PutMapping(value = "/pipes/{id}/buildings", produces = MediaType.APPLICATION_JSON_VALUE)
+    @Transactional
+    public ResponseEntity<JsonNode> updatePipeBuildings(
+            @PathVariable("id") String id,
+            @RequestBody String body
+    ) {
+        String featureId = resolvePipeFeatureId(id);
+        if (featureId == null) {
+            return ResponseEntity.status(404).body(errorNode("not_found"));
+        }
+
+        JsonNode root;
+        try {
+            root = objectMapper.readTree(body);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(errorNode("invalid_json"));
+        }
+
+        List<String> buildingIds;
+        try {
+            buildingIds = normalizeBuildingIds(root.get("buildingIds"), true);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(errorNode(e.getMessage()));
+        }
+
+        String updatedBy = parseUpdatedBy(root);
+        JsonNode before = queryFeatureGeoJson(featureId);
+        syncPipeBuildingRelations(featureId, buildingIds, updatedBy);
+
+        JsonNode after = queryFeatureGeoJson(featureId);
+        insertAuditLog(featureId, "building_binding_update", updatedBy, before, after);
+
+        ObjectNode ok = objectMapper.createObjectNode();
+        ok.put("ok", true);
+        ok.put("id", featureId);
+        ok.put("action", "building_binding_update");
+        ArrayNode buildingIdsArray = ok.putArray("buildingIds");
+        for (String buildingId : buildingIds) {
+            buildingIdsArray.add(buildingId);
+        }
         return ResponseEntity.ok(ok);
     }
 
@@ -232,6 +286,69 @@ public class TwinWriteController {
                 rs -> rs.next() ? rs.getBoolean("visible") : null
         );
         return visible == null || visible;
+    }
+
+    private List<String> normalizeBuildingIds(JsonNode buildingIdsNode, boolean required) {
+        if (buildingIdsNode == null || buildingIdsNode.isNull()) {
+            if (required) throw new IllegalArgumentException("building_ids_required");
+            return null;
+        }
+        if (!buildingIdsNode.isArray()) {
+            throw new IllegalArgumentException("building_ids_required");
+        }
+
+        LinkedHashSet<String> ids = new LinkedHashSet<>();
+        for (JsonNode node : buildingIdsNode) {
+            if (node == null || node.isNull()) continue;
+            String value = node.asText("").trim();
+            if (!value.isBlank()) ids.add(value);
+        }
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+
+        String placeholders = String.join(",", java.util.Collections.nCopies(ids.size(), "?"));
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT id FROM geo_features WHERE layer = 'buildings' AND id IN (" + placeholders + ")",
+                ids.toArray()
+        );
+        LinkedHashSet<String> resolved = new LinkedHashSet<>();
+        for (Map<String, Object> row : rows) {
+            Object value = row.get("id");
+            if (value == null) continue;
+            String id = String.valueOf(value).trim();
+            if (!id.isBlank()) resolved.add(id);
+        }
+        if (resolved.size() != ids.size()) {
+            throw new IllegalArgumentException("building_ids_invalid");
+        }
+        return List.copyOf(resolved);
+    }
+
+    private void syncPipeBuildingRelations(String featureId, List<String> buildingIds, String updatedBy) {
+        jdbcTemplate.update(
+                "DELETE FROM asset_relations " +
+                        "WHERE source_id = ? AND source_type = 'pipe' AND target_type = 'building' AND relation_type = 'serves'",
+                featureId
+        );
+        if (buildingIds.isEmpty()) {
+            return;
+        }
+
+        String placeholders = String.join(",", java.util.Collections.nCopies(buildingIds.size(), "?"));
+        List<Object> params = new java.util.ArrayList<>();
+        params.add(featureId);
+        params.add(updatedBy);
+        params.addAll(buildingIds);
+        jdbcTemplate.update(
+                "INSERT INTO asset_relations (source_id, source_type, target_id, target_type, relation_type, properties) " +
+                        "SELECT ?, 'pipe', g.id, 'building', 'serves', jsonb_build_object('updatedBy', ?, 'manualBound', true) " +
+                        "FROM geo_features g " +
+                        "WHERE g.layer = 'buildings' AND g.id IN (" + placeholders + ") " +
+                        "ON CONFLICT (source_id, source_type, target_id, target_type, relation_type) DO UPDATE " +
+                        "SET properties = EXCLUDED.properties",
+                params.toArray()
+        );
     }
 
     private String parseUpdatedBy(JsonNode root) {

@@ -14,6 +14,18 @@ export type PipelineMedium = 'water' | 'drainage' | 'sewage' | 'mixed'
 export type PipelinePriority = 'low' | 'medium' | 'high' | 'urgent'
 export type PipelineOrderSource = 'manual' | 'telemetry_alert' | 'anomaly_alert' | 'kg_inference' | 'inspection_transfer'
 
+export type PipelineAssetType = 'segment' | 'node' | 'building'
+
+export type PipelineAssetRef = {
+  assetType: PipelineAssetType
+  id: string
+  label: string
+  featureId?: string
+  nodeType?: string
+  pipelineMedium?: PipelineMedium
+  area?: string
+}
+
 export type ImpactedRoomRef = {
   buildingId: string
   buildingName: string

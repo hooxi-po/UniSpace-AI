@@ -1041,6 +1041,18 @@ const linkedBuildingNames = computed(() => {
     .filter(Boolean)
 })
 
+const currentSegmentId = computed(() => {
+  const segment = drilldown.value?.segment as Record<string, unknown> | null | undefined
+  return String(segment?.id || '').trim()
+})
+
+const currentResolvedNodeIds = computed(() => {
+  const nodes = Array.isArray(drilldown.value?.nodes) ? drilldown.value.nodes : []
+  return nodes
+    .map((item) => String((item as Record<string, unknown>)?.id || '').trim())
+    .filter(Boolean)
+})
+
 const preferredBuildingIds = computed(() => {
   return effectiveLinkedBuildings.value
     .map((item) => String((item as Record<string, unknown>)?.id || '').trim())
@@ -1145,18 +1157,9 @@ function buildPostSaveWorkorderPrompt(diff: GraphDiff): PostSaveWorkorderPrompt 
 
   const featureId = String(selectedFeature.value.id)
   const featureName = displayPipeName.value
-  const nodeIds = Array.from(new Set([
-    ...diff.addedNodes.map(item => item.id),
-    ...diff.removedNodes.map(item => item.id),
-    ...diff.modifiedNodes.map(item => item.id),
-  ]))
-  const segmentIds = Array.from(new Set([
-    featureId,
-    ...diff.addedEdges.map(item => item.id),
-    ...diff.removedEdges.map(item => item.id),
-    ...diff.modifiedEdges.map(item => item.id),
-  ]))
-  const topologyChain = Array.from(new Set([...nodeIds, ...segmentIds])).slice(0, 20)
+  const nodeIds = [...currentResolvedNodeIds.value]
+  const segmentIds = currentSegmentId.value ? [currentSegmentId.value] : []
+  const topologyChain = Array.from(new Set([featureId, ...segmentIds, ...nodeIds])).slice(0, 20)
   const summaryLines = buildTopologySummaryLines(diff)
   const buildingText = linkedBuildingNames.value.length
     ? `关联楼宇：${linkedBuildingNames.value.slice(0, 3).join('、')}`
@@ -1217,8 +1220,8 @@ function buildAssetBindingWorkorderPrompt(params: {
     linkedBuildingIds: params.nextBuildings.map(item => item.id),
     linkedBuildingNames: params.nextBuildings.map(item => item.name),
     nodeIds: [],
-    segmentIds: [params.featureId],
-    topologyChain: [params.featureId, ...params.nextBuildings.map(item => item.id)].slice(0, 20),
+    segmentIds: currentSegmentId.value ? [currentSegmentId.value] : [],
+    topologyChain: [params.featureId, ...(currentSegmentId.value ? [currentSegmentId.value] : []), ...params.nextBuildings.map(item => item.id)].slice(0, 20),
     summaryLines,
     initialTitle: `${params.featureName}房产绑定复核`,
     initialDescription: descriptionLines.join('\n'),
@@ -1227,32 +1230,18 @@ function buildAssetBindingWorkorderPrompt(params: {
 }
 
 function workorderMatchesCurrentSelection(item: PipelineWorkOrder) {
-  const featureId = String(selectedFeature.value?.id || '').trim()
-  if (!featureId) return false
-
-  if (item.segmentIds.includes(featureId) || item.topologyChain.includes(featureId)) {
+  const segmentId = currentSegmentId.value
+  if (segmentId && item.segmentIds.includes(segmentId)) {
     return true
   }
 
   const buildingIdSet = new Set(linkedBuildingIds.value)
-  const buildingNameSet = new Set(linkedBuildingNames.value)
   if (item.buildingId && buildingIdSet.has(item.buildingId)) return true
-  if (item.buildingName && buildingNameSet.has(item.buildingName)) return true
-  if (item.impactScope?.impactedBuildings?.some(building => buildingIdSet.has(building.buildingId) || buildingNameSet.has(building.buildingName))) {
+  if (item.impactScope?.impactedBuildings?.some(building => buildingIdSet.has(building.buildingId))) {
     return true
   }
-
-  const searchTexts = [
-    item.id,
-    item.title,
-    item.description,
-    item.buildingName || '',
-    ...item.segmentIds,
-    ...item.nodeIds,
-    ...item.topologyChain,
-  ].map(text => String(text || ''))
-
-  return searchTexts.some(text => text.includes(featureId) || text.includes(displayPipeName.value))
+  const nodeIdSet = new Set(currentResolvedNodeIds.value)
+  return item.nodeIds.some(nodeId => nodeIdSet.has(String(nodeId || '').trim()))
 }
 
 function sortRelatedWorkorders(items: PipelineWorkOrder[]) {
@@ -1282,31 +1271,22 @@ async function loadRelatedWorkorders() {
   relatedWorkordersLoading.value = true
   relatedWorkordersError.value = null
 
-  const featureId = String(selectedFeature.value.id)
-  const queries: Array<Parameters<typeof pipelineOpsService.fetchWorkorders>[0]> = [
-    { pipelineMedium: currentPipeMedium.value as PipelineMedium, segmentId: featureId, limit: 10 },
-    { pipelineMedium: currentPipeMedium.value as PipelineMedium, q: featureId, limit: 10 },
-    ...linkedBuildingIds.value.slice(0, 3).map(buildingId => ({
-      pipelineMedium: currentPipeMedium.value as PipelineMedium,
-      buildingId,
-      limit: 10,
-    })),
-  ]
-
-  const results = await Promise.allSettled(queries.map(query => pipelineOpsService.fetchWorkorders(query)))
-
-  if (requestId !== relatedWorkorderRequestId) return
-
   const workorderMap = new Map<string, PipelineWorkOrder>()
   let hasSuccess = false
-  for (const result of results) {
-    if (result.status !== 'fulfilled') continue
+  try {
+    const result = await pipelineOpsService.fetchRelatedWorkorders({
+      segmentIds: currentSegmentId.value ? [currentSegmentId.value] : [],
+      nodeIds: currentResolvedNodeIds.value,
+      buildingIds: linkedBuildingIds.value,
+      limit: 8,
+    })
+    if (requestId !== relatedWorkorderRequestId) return
     hasSuccess = true
-    for (const item of result.value.list) {
-      if (workorderMatchesCurrentSelection(item)) {
-        workorderMap.set(item.id, item)
-      }
+    for (const item of result.list || []) {
+      workorderMap.set(item.id, item)
     }
+  } catch {
+    if (requestId !== relatedWorkorderRequestId) return
   }
 
   if (sourceWorkorderId.value && !workorderMap.has(sourceWorkorderId.value)) {
@@ -1324,8 +1304,6 @@ async function loadRelatedWorkorders() {
 
   if (!hasSuccess) {
     relatedWorkordersError.value = '关联工单加载失败'
-  } else if (results.some(result => result.status === 'rejected')) {
-    relatedWorkordersError.value = workorderMap.size ? '部分关联工单数据加载失败' : null
   } else {
     relatedWorkordersError.value = null
   }
@@ -1583,7 +1561,7 @@ async function persistPipeName(feature: GeoJsonFeature, nextName: string) {
   }
 }
 
-async function persistPipeProperties(feature: GeoJsonFeature, properties: Record<string, unknown>) {
+async function persistPipeProperties(feature: GeoJsonFeature, properties: Record<string, unknown>, buildingIds?: string[]) {
   const visible = Boolean((feature.properties as Record<string, unknown> | undefined)?.visible ?? true)
 
   try {
@@ -1591,8 +1569,12 @@ async function persistPipeProperties(feature: GeoJsonFeature, properties: Record
       properties,
       visible,
       updatedBy: 'admin-2d-editor',
+      buildingIds,
     })
   } catch {
+    if (Array.isArray(buildingIds)) {
+      throw new Error('房产绑定同步失败')
+    }
     await geoFeatureService.update(props.backendBaseUrl, {
       id: String(feature.id),
       layer: 'pipes',
@@ -1782,7 +1764,11 @@ async function saveAssetBinding(buildingIds: string[]) {
   assetBindingSaving.value = true
   try {
     if (!isDraftPipe.value) {
-      await persistPipeProperties(selectedFeature.value, nextProperties)
+      await persistPipeProperties(
+        selectedFeature.value,
+        nextProperties,
+        nextBuildings.map(item => item.id),
+      )
     }
     updateLocalPipeProperties(featureId, nextProperties)
     linkedBuildingsOverride.value = nextBuildings
@@ -2217,6 +2203,8 @@ watch(
     () => props.open,
     sourceWorkorderId,
     () => selectedFeature.value?.id ?? '',
+    currentSegmentId,
+    () => currentResolvedNodeIds.value.join(','),
     () => linkedBuildingIds.value.join(','),
     () => linkedBuildingNames.value.join(','),
   ],

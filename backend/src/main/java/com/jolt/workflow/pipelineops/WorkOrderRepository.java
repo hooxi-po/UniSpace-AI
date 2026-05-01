@@ -139,6 +139,180 @@ public class WorkOrderRepository extends WorkOrderRepositorySupport {
         return mapWorkOrder(row);
     }
 
+    public ObjectNode listRelatedWorkorders(List<String> segmentIds, List<String> nodeIds, List<String> buildingIds, Integer limit) {
+        List<SegmentAssetRef> resolvedSegments = resolveSegmentAssets(segmentIds);
+        List<String> canonicalSegmentIds = new ArrayList<>();
+        List<String> segmentFeatureIds = new ArrayList<>();
+        for (SegmentAssetRef segment : resolvedSegments) {
+            if (!isBlank(segment.id())) canonicalSegmentIds.add(segment.id());
+            if (!isBlank(segment.featureId())) segmentFeatureIds.add(segment.featureId());
+        }
+        List<String> canonicalNodeIds = resolveCanonicalNodeIds(nodeIds);
+        List<String> canonicalBuildingIds = normalizeDistinctIds(buildingIds);
+        if (canonicalSegmentIds.isEmpty() && canonicalNodeIds.isEmpty() && canonicalBuildingIds.isEmpty()) {
+            throw badRequest("asset_ids_required");
+        }
+
+        int safeLimit = clamp(limit, 1, 50, 8);
+        List<String> clauses = new ArrayList<>();
+        List<Object> params = new ArrayList<>();
+
+        if (!canonicalSegmentIds.isEmpty()) {
+            String placeholders = String.join(",", java.util.Collections.nCopies(canonicalSegmentIds.size(), "?"));
+            clauses.add("EXISTS (SELECT 1 FROM jsonb_array_elements_text(w.segment_ids) t(v) WHERE t.v IN (" + placeholders + "))");
+            params.addAll(canonicalSegmentIds);
+        }
+        if (!segmentFeatureIds.isEmpty()) {
+            String placeholders = String.join(",", java.util.Collections.nCopies(segmentFeatureIds.size(), "?"));
+            clauses.add("EXISTS (SELECT 1 FROM jsonb_array_elements_text(w.topology_chain) t(v) WHERE t.v IN (" + placeholders + "))");
+            params.addAll(segmentFeatureIds);
+        }
+        if (!canonicalNodeIds.isEmpty()) {
+            String placeholders = String.join(",", java.util.Collections.nCopies(canonicalNodeIds.size(), "?"));
+            clauses.add("EXISTS (SELECT 1 FROM jsonb_array_elements_text(w.node_ids) t(v) WHERE t.v IN (" + placeholders + "))");
+            params.addAll(canonicalNodeIds);
+        }
+        if (!canonicalBuildingIds.isEmpty()) {
+            String placeholders = String.join(",", java.util.Collections.nCopies(canonicalBuildingIds.size(), "?"));
+            clauses.add("(w.building_id IN (" + placeholders + ") OR EXISTS (" +
+                    "SELECT 1 FROM order_building_link obl WHERE obl.work_order_id = w.id AND obl.building_id IN (" + placeholders + ")))");
+            params.addAll(canonicalBuildingIds);
+            params.addAll(canonicalBuildingIds);
+        }
+
+        params.add(safeLimit);
+        String sql = "SELECT w.*, " +
+                "COALESCE((SELECT jsonb_agg(jsonb_build_object(" +
+                "'id', l.id, 'stage', l.stage, 'content', l.content, 'actor', l.actor, 'createdAt', l.created_at, " +
+                "'location', l.location, 'photoUrls', l.photo_urls, 'voiceUrl', COALESCE(l.voice_url, ''), " +
+                "'nodeId', COALESCE(l.node_id, ''), 'isMobileUpload', l.is_mobile_upload" +
+                ") ORDER BY l.created_at ASC) FROM work_order_log l WHERE l.work_order_id = w.id), '[]'::jsonb) AS execution_logs, " +
+                "COALESCE((SELECT jsonb_agg(jsonb_build_object(" +
+                "'id', p.id, 'buildingId', p.building_id, 'buildingName', p.building_name, 'pumpId', p.pump_id, " +
+                "'action', p.action, 'durationMinutes', p.duration_minutes, 'result', p.result, " +
+                "'beforeStatus', COALESCE(p.before_status, ''), 'afterStatus', COALESCE(p.after_status, ''), " +
+                "'countdownSeconds', p.countdown_seconds, 'batchTotal', p.batch_total, 'batchIndex', p.batch_index, " +
+                "'progressPercent', p.progress_percent, 'executedAt', p.executed_at, 'executedBy', p.executed_by, " +
+                "'message', COALESCE(p.message, '')" +
+                ") ORDER BY p.executed_at ASC) FROM pump_control_log p WHERE p.work_order_id = w.id), '[]'::jsonb) AS pump_controls " +
+                "FROM work_order w WHERE " + String.join(" OR ", clauses) +
+                " ORDER BY w.updated_at DESC, w.id DESC LIMIT ?";
+
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, params.toArray());
+        ArrayNode list = objectMapper.createArrayNode();
+        for (Map<String, Object> row : rows) {
+            list.add(mapWorkOrder(row));
+        }
+        ObjectNode root = objectMapper.createObjectNode();
+        root.set("list", list);
+        return root;
+    }
+
+    public ObjectNode analyzeImpactScope(JsonNode payload) {
+        return buildImpactAnalysisResponse(
+                text(payload.get("buildingId")),
+                text(payload.get("buildingName")),
+                toTextList(payload.get("nodeIds")),
+                toTextList(payload.get("segmentIds")),
+                defaultText(text(payload.get("medium")), "mixed")
+        );
+    }
+
+    public ObjectNode listAssets(String assetType, String keyword, String pipelineMedium, Integer limit) {
+        String normalizedType = defaultText(assetType, "");
+        int safeLimit = clamp(limit, 1, 50, 12);
+        String normalizedKeyword = defaultText(keyword, "").toLowerCase(Locale.ROOT);
+        String medium = defaultText(pipelineMedium, "").toLowerCase(Locale.ROOT);
+        ArrayNode list = objectMapper.createArrayNode();
+
+        if ("segment".equals(normalizedType)) {
+            StringBuilder sql = new StringBuilder(
+                    "SELECT ps.id, COALESCE(ps.feature_id, '') AS feature_id, " +
+                            "COALESCE(g.properties->>'name', g.properties->>'ref', g.id) AS label, " +
+                            "COALESCE(g.properties->>'area', g.properties->>'campus', '未分区') AS area, " +
+                            "LOWER(COALESCE(g.properties->>'pipelineMedium', g.properties->>'pipeLayer', g.properties->>'medium', 'mixed')) AS medium_raw " +
+                            "FROM pipe_segments ps " +
+                            "LEFT JOIN geo_features g ON g.id = ps.feature_id " +
+                            "WHERE 1=1 "
+            );
+            List<Object> params = new ArrayList<>();
+            if (!normalizedKeyword.isBlank()) {
+                sql.append(" AND (LOWER(ps.id) LIKE ? OR LOWER(COALESCE(ps.feature_id, '')) LIKE ? OR LOWER(COALESCE(g.properties->>'name', g.properties->>'ref', g.id)) LIKE ?) ");
+                String like = "%" + normalizedKeyword + "%";
+                params.add(like);
+                params.add(like);
+                params.add(like);
+            }
+            if (!medium.isBlank()) {
+                sql.append(" AND LOWER(COALESCE(g.properties->>'pipelineMedium', g.properties->>'pipeLayer', g.properties->>'medium', 'mixed')) LIKE ? ");
+                params.add("%" + medium + "%");
+            }
+            sql.append(" ORDER BY ps.updated_at DESC NULLS LAST, ps.id ASC LIMIT ?");
+            params.add(safeLimit);
+            for (Map<String, Object> row : jdbcTemplate.queryForList(sql.toString(), params.toArray())) {
+                ObjectNode item = list.addObject();
+                item.put("assetType", "segment");
+                item.put("id", textValue(row.get("id")));
+                item.put("label", defaultText(textValue(row.get("label")), textValue(row.get("id"))));
+                item.put("featureId", textValue(row.get("feature_id")));
+                item.put("area", defaultText(textValue(row.get("area")), "未分区"));
+                item.put("pipelineMedium", normalizeQuickReportMedium(textValue(row.get("medium_raw"))));
+            }
+        } else if ("node".equals(normalizedType)) {
+            StringBuilder sql = new StringBuilder(
+                    "SELECT id, COALESCE(feature_id, '') AS feature_id, COALESCE(name, id) AS label, COALESCE(node_type, '') AS node_type " +
+                            "FROM pipe_nodes WHERE 1=1 "
+            );
+            List<Object> params = new ArrayList<>();
+            if (!normalizedKeyword.isBlank()) {
+                sql.append(" AND (LOWER(id) LIKE ? OR LOWER(COALESCE(feature_id, '')) LIKE ? OR LOWER(COALESCE(name, id)) LIKE ?) ");
+                String like = "%" + normalizedKeyword + "%";
+                params.add(like);
+                params.add(like);
+                params.add(like);
+            }
+            sql.append(" ORDER BY id ASC LIMIT ?");
+            params.add(safeLimit);
+            for (Map<String, Object> row : jdbcTemplate.queryForList(sql.toString(), params.toArray())) {
+                ObjectNode item = list.addObject();
+                item.put("assetType", "node");
+                item.put("id", textValue(row.get("id")));
+                item.put("label", defaultText(textValue(row.get("label")), textValue(row.get("id"))));
+                item.put("featureId", textValue(row.get("feature_id")));
+                item.put("nodeType", textValue(row.get("node_type")));
+            }
+        } else if ("building".equals(normalizedType)) {
+            StringBuilder sql = new StringBuilder(
+                    "SELECT DISTINCT b.code AS id, COALESCE(b.building_name, g.properties->>'name', g.properties->>'buildingName', b.code) AS label " +
+                            "FROM buildings b " +
+                            "LEFT JOIN geo_features g ON g.layer = 'buildings' AND g.id = b.code " +
+                            "WHERE 1=1 "
+            );
+            List<Object> params = new ArrayList<>();
+            if (!normalizedKeyword.isBlank()) {
+                sql.append(" AND (LOWER(b.code) LIKE ? OR LOWER(COALESCE(b.building_name, '')) LIKE ? OR LOWER(COALESCE(g.properties->>'name', g.properties->>'buildingName', '')) LIKE ?) ");
+                String like = "%" + normalizedKeyword + "%";
+                params.add(like);
+                params.add(like);
+                params.add(like);
+            }
+            sql.append(" ORDER BY b.code ASC LIMIT ?");
+            params.add(safeLimit);
+            for (Map<String, Object> row : jdbcTemplate.queryForList(sql.toString(), params.toArray())) {
+                ObjectNode item = list.addObject();
+                item.put("assetType", "building");
+                item.put("id", textValue(row.get("id")));
+                item.put("label", defaultText(textValue(row.get("label")), textValue(row.get("id"))));
+            }
+        } else {
+            throw badRequest("asset_type_invalid");
+        }
+
+        ObjectNode root = objectMapper.createObjectNode();
+        root.set("list", list);
+        return root;
+    }
+
     @Transactional
     public ObjectNode upsertWorkorder(JsonNode body) {
         String id = text(body.get("id"));

@@ -30,145 +30,18 @@ export interface TemplateRecommendResponse extends PipelineWorkOrderTemplate {
   confidence: number
 }
 
-type BuildingInventoryResponse = {
-  buildings: Array<{
-    code: string
-    buildingName: string
-    roomCount?: number | null
-    floorCount?: number | null
-  }>
-  rooms: Array<{
-    id: string
-    buildingCode: string
-    buildingName: string
-    roomNo: string
-    floor: number
-  }>
-}
-
-type BuildingSeed = { buildingId: string; buildingName: string }
-
-const TOPOLOGY_IMPACT_INDEX: Record<string, BuildingSeed[]> = {
-  'N-1001': [{ buildingId: 'BLD-001', buildingName: '博学楼' }],
-  'N-1002': [{ buildingId: 'BLD-001', buildingName: '博学楼' }],
-  'N-2301': [{ buildingId: 'BLD-002', buildingName: '综合实验楼' }],
-  'N-5011': [{ buildingId: 'BLD-003', buildingName: '学生宿舍楼' }],
-  'N-5012': [{ buildingId: 'BLD-003', buildingName: '学生宿舍楼' }],
-  'N-8801': [{ buildingId: 'BLD-004', buildingName: '创新创业中心' }],
-  'S-2101': [{ buildingId: 'BLD-001', buildingName: '博学楼' }],
-  'S-4302': [{ buildingId: 'BLD-002', buildingName: '综合实验楼' }],
-  'S-4303': [{ buildingId: 'BLD-002', buildingName: '综合实验楼' }],
-  'S-6101': [{ buildingId: 'BLD-003', buildingName: '学生宿舍楼' }],
-  'S-9921': [{ buildingId: 'BLD-004', buildingName: '创新创业中心' }],
-}
-
-let inventoryPromise: Promise<BuildingInventoryResponse> | null = null
-
-async function loadBuildingInventory() {
-  if (!inventoryPromise) {
-    inventoryPromise = $fetch<BuildingInventoryResponse>('/api/buildings', {
-      query: {
-        includeRooms: true,
-        limit: 3000,
-        offset: 0,
-      },
-    }).catch((error) => {
-      inventoryPromise = null
-      throw error
-    })
-  }
-  return await inventoryPromise
-}
-
-function normalizeText(value?: string | null) {
-  return String(value || '').trim().toLowerCase()
-}
-
-function inferImpactHours(medium: PipelineMedium, buildingCount: number, roomCount: number) {
-  const base = medium === 'sewage' ? 5 : medium === 'water' ? 4 : medium === 'drainage' ? 3 : 4
-  const load = Math.min(4, Math.ceil(roomCount / 8)) + Math.max(0, buildingCount - 1)
-  return Math.max(1, base + load)
-}
-
-function inferAffectedUsers(medium: PipelineMedium, roomCount: number, buildingCount: number) {
-  const perRoom = medium === 'water' ? 6 : medium === 'sewage' ? 4 : medium === 'drainage' ? 3 : 5
-  if (roomCount > 0) return roomCount * perRoom
-  return buildingCount * perRoom * 6
-}
-
 /**
  * 分析管段/节点的影响范围
- * 当前以前端可获取的楼宇/房间库存做快速预分析，提交建单后仍以后端真实推断为准。
+ * 直接走后端真实拓扑与建筑绑定数据。
  */
 export async function analyzeImpactScope(
   request: ImpactAnalysisRequest
 ): Promise<ImpactAnalysisResponse> {
-  const inventory = await loadBuildingInventory()
-  const matched = new Map<string, BuildingSeed>()
-
-  const nodeIds = Array.isArray(request.nodeIds) ? request.nodeIds : []
-  const segmentIds = Array.isArray(request.segmentIds) ? request.segmentIds : []
-  for (const key of [...nodeIds, ...segmentIds]) {
-    for (const seed of TOPOLOGY_IMPACT_INDEX[key] || []) {
-      matched.set(seed.buildingId, seed)
-    }
-  }
-
-  const buildingId = String(request.buildingId || '').trim()
-  if (buildingId) {
-    const hit = inventory.buildings.find(item => item.code === buildingId)
-    matched.set(buildingId, {
-      buildingId,
-      buildingName: hit?.buildingName || buildingId,
-    })
-  }
-
-  const buildingName = String(request.buildingName || '').trim()
-  if (buildingName) {
-    const target = normalizeText(buildingName)
-    const byName = inventory.buildings.find(item => normalizeText(item.buildingName) === target)
-    if (byName) {
-      matched.set(byName.code, { buildingId: byName.code, buildingName: byName.buildingName })
-    } else if (!buildingId) {
-      matched.set(buildingName, { buildingId: buildingName, buildingName })
-    }
-  }
-
-  const impactedBuildings: ImpactedBuildingRef[] = Array.from(matched.values()).map((seed) => {
-    const rooms = inventory.rooms
-      .filter(room =>
-        room.buildingCode === seed.buildingId
-        || normalizeText(room.buildingName) === normalizeText(seed.buildingName),
-      )
-      .sort((a, b) => {
-        if (a.floor !== b.floor) return a.floor - b.floor
-        return a.roomNo.localeCompare(b.roomNo, 'zh-CN')
-      })
-
-    const floors = Array.from(new Set(rooms.map(room => room.floor).filter(Number.isFinite))).sort((a, b) => a - b)
-
-    return {
-      buildingId: seed.buildingId,
-      buildingName: seed.buildingName,
-      floors,
-      rooms: rooms.slice(0, 12).map(room => ({
-        buildingId: seed.buildingId,
-        buildingName: seed.buildingName,
-        floorNo: Number.isFinite(room.floor) ? room.floor : null,
-        roomNo: room.roomNo,
-        roomId: room.id,
-        equipmentIds: room.roomNo ? [`PUMP-${room.roomNo}`] : [],
-      })),
-    }
-  })
-
-  const roomCount = impactedBuildings.reduce((sum, building) => sum + building.rooms.length, 0)
-  const medium = request.medium || 'mixed'
-
+  const result = await pipelineOpsService.analyzeImpactScope(request)
   return {
-    impactedBuildings,
-    estimatedImpactHours: inferImpactHours(medium, impactedBuildings.length, roomCount),
-    affectedUserCount: inferAffectedUsers(medium, roomCount, impactedBuildings.length),
+    impactedBuildings: (result.impactedBuildings || []) as ImpactedBuildingRef[],
+    estimatedImpactHours: Number(result.estimatedImpactHours || 0),
+    affectedUserCount: Number(result.affectedUserCount || 0),
   }
 }
 

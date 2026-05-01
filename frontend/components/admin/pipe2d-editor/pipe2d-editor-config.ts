@@ -28,7 +28,7 @@ export type ToolKey =
   | 'annotate'
   | 'layer'
 
-export type PanelSectionKey = 'basic' | 'relation' | 'control' | 'realtime' | 'timeline' | 'runtime'
+export type PanelSectionKey = 'basic' | 'relation' | 'workorders' | 'control' | 'realtime' | 'timeline' | 'runtime'
 
 export type ToolbarDragState = {
   active: boolean
@@ -74,6 +74,7 @@ export const defaultToolbarGhostIcon = Hand
 export const defaultPanelSectionCollapsed: Record<PanelSectionKey, boolean> = {
   basic: false,
   relation: false,
+  workorders: false,
   control: false,
   realtime: false,
   timeline: false,

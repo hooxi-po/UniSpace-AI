@@ -76,6 +76,7 @@
       :format-time="formatTime"
       @close="closeDetail"
       @locate="locateOnMap"
+      @open-pipe-editor="openPipeEditorFromWorkorder"
       @locate-building="locateBuildingOnMap"
       @submit-impact-adjust="submitImpactAdjust"
       @submit-log="submitLog"
@@ -155,6 +156,7 @@ const {
   submitInspectionRecord,
   convertInspection,
   locateOnMap,
+  openPipeEditorFromWorkorder,
   locateBuildingOnMap,
   formatTime,
 } = usePipelineOpsBoardUi(props.mode)

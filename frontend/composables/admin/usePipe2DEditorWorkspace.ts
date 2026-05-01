@@ -35,6 +35,7 @@ type UsePipe2DEditorWorkspaceOptions = {
   setUndergroundSliceEnabled: (enabled: boolean) => void
   setBasemapById: (id: string) => void
   setZoomLevel: (zoom: number) => void
+  openAssetBindingModal?: () => void
   openBuildingModelModal?: () => void
 }
 
@@ -146,7 +147,9 @@ export function usePipe2DEditorWorkspace(options: UsePipe2DEditorWorkspaceOption
     }
     if (tool === 'bindAsset') {
       setEditModes(false, false, false, false)
-      showPlanned('房产绑定')
+      if (!ensurePipeSelectedForEditing('绑定房产')) return false
+      options.openAssetBindingModal?.()
+      activeTool.value = 'select'
       return true
     }
     if (tool === 'buildingModel') {

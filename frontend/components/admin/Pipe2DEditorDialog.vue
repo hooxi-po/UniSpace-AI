@@ -110,6 +110,9 @@
           :traced-segment-count="tracedSegmentCount"
           :traced-node-count="tracedNodeCount"
           :linked-building-labels="linkedBuildingLabels"
+          :related-workorders="relatedWorkorders"
+          :related-workorders-loading="relatedWorkordersLoading"
+          :related-workorders-error="relatedWorkordersError"
           :insight-error="insightError"
           :add-point-mode="addPointMode"
           :delete-point-mode="deletePointMode"
@@ -152,6 +155,7 @@
           @toggle-snap="snapEnabled = !snapEnabled"
           @toggle-scene-mode="toggleSceneModeByPanel"
           @update:relation-active-names="relationActiveNames = $event"
+          @open-workorder="openRelatedWorkorder"
           @reset-draft="handleResetDraft"
           @create-pipe="createDraftPipe"
           @save-geometry="saveGeometry"
@@ -208,12 +212,44 @@
         @submit="submitQuickReport"
       />
 
+      <Pipe2DEditorAssetBindingModal
+        :open="assetBindingModalOpen"
+        :saving="assetBindingSaving"
+        :pipe-name="displayPipeName"
+        :buildings="buildings"
+        :selected-ids="linkedBuildingIds"
+        @close="assetBindingModalOpen = false"
+        @save="saveAssetBinding"
+      />
+
       <Pipe2DEditorBuildingModelModal
         :open="buildingModelModalOpen"
         :backend-base-url="props.backendBaseUrl"
         :preferred-building-ids="preferredBuildingIds"
         @close="buildingModelModalOpen = false"
         @saved="handleBuildingModelSaved"
+      />
+
+      <Pipe2DEditorWorkorderPromptModal
+        :open="workorderPromptVisible && Boolean(pendingWorkorderPrompt)"
+        :submitting="workorderPromptSubmitting"
+        :feature-name="pendingWorkorderPrompt?.featureName || displayPipeName"
+        :pipeline-medium="workorderPromptMedium"
+        :area="pendingWorkorderPrompt?.area || ''"
+        :linked-building-names="pendingWorkorderPrompt?.linkedBuildingNames || []"
+        :summary-lines="pendingWorkorderPrompt?.summaryLines || []"
+        :initial-title="pendingWorkorderPrompt?.initialTitle || ''"
+        :initial-description="pendingWorkorderPrompt?.initialDescription || ''"
+        :initial-priority="pendingWorkorderPrompt?.initialPriority || 'medium'"
+        :available-types="workorderPromptTypeOptions"
+        :related-workorders="relatedWorkorders"
+        :source-workorder-id="sourceWorkorderId || undefined"
+        :impact-summary="workorderPromptImpactSummary"
+        :recommendation="workorderPromptRecommendationView"
+        :insight-loading="workorderPromptInsightLoading"
+        :insight-error="workorderPromptInsightError"
+        @close="closeWorkorderPrompt"
+        @confirm="submitLinkedWorkorder"
       />
     </div>
   </div>
@@ -222,7 +258,7 @@
 <script setup lang="ts">
 import * as Cesium from 'cesium'
 import { PanelRightOpen } from 'lucide-vue-next'
-import { computed, nextTick, onBeforeUnmount, ref, toRef, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, toRef, watch } from 'vue'
 import {
   defaultPanelSectionCollapsed,
   toolItems,
@@ -233,9 +269,11 @@ import {
 import Pipe2DEditorRightPanelSection from '~/components/admin/pipe2d-editor/Pipe2DEditorRightPanelSection.vue'
 import Pipe2DEditorQuickReportModal from '~/components/admin/pipe2d-editor/Pipe2DEditorQuickReportModal.vue'
 import type { QuickReportDraft } from '~/components/admin/pipe2d-editor/Pipe2DEditorQuickReportModal.vue'
+import Pipe2DEditorAssetBindingModal from '~/components/admin/pipe2d-editor/Pipe2DEditorAssetBindingModal.vue'
 import Pipe2DEditorSaveConfirmModal from '~/components/admin/pipe2d-editor/Pipe2DEditorSaveConfirmModal.vue'
 import Pipe2DEditorShortcutHelp from '~/components/admin/pipe2d-editor/Pipe2DEditorShortcutHelp.vue'
 import Pipe2DEditorBuildingModelModal from '~/components/admin/pipe2d-editor/Pipe2DEditorBuildingModelModal.vue'
+import Pipe2DEditorWorkorderPromptModal from '~/components/admin/pipe2d-editor/Pipe2DEditorWorkorderPromptModal.vue'
 import Pipe2DEditorStageSection from '~/components/admin/pipe2d-editor/Pipe2DEditorStageSection.vue'
 import Pipe2DEditorStatusbarSection from '~/components/admin/pipe2d-editor/Pipe2DEditorStatusbarSection.vue'
 import Pipe2DEditorToolbarSection from '~/components/admin/pipe2d-editor/Pipe2DEditorToolbarSection.vue'
@@ -248,8 +286,10 @@ import { usePipe2DEditorWorkspace } from '~/composables/admin/usePipe2DEditorWor
 import { useMindmapEditor } from '~/composables/admin/useMindmapEditor'
 import { useMindmapEditorEvents } from '~/composables/admin/useMindmapEditorEvents'
 import { geoFeatureService, type GeoJsonFeature } from '~/services/geo-features'
+import { analyzeImpactScope, recommendTemplate, type ImpactAnalysisResponse, type TemplateRecommendResponse } from '~/services/pipeline-intelligence'
 import { pipelineOpsService } from '~/services/pipeline-ops'
 import { twinService } from '~/services/twin'
+import type { PipelineMedium, PipelineOrderType, PipelineOrderUpsertPayload, PipelinePriority, PipelineWorkOrder } from '~/types/pipeline-ops'
 import { geometryToLines, type Lines } from '~/utils/pipe2d-geometry'
 import { cloneGraph, createEmptyGraph, diffGraphs, linesToGraph, normalizeLegacyMidPointEdges, type EdgeAttributes, type GraphDiff, type NodeAttributes, type NodeType, type PipeGraph } from '~/utils/pipe2d-graph'
 import { validateTopology, type ValidationIssue } from '~/utils/pipe2d-topology-validation'
@@ -258,16 +298,26 @@ const props = defineProps<{
   open: boolean
   backendBaseUrl: string
   initialFeatureId?: string | null
+  sourceWorkorderId?: string | null
   onRequestClose?: () => void
   standalone?: boolean
 }>()
 
 const standalone = computed(() => Boolean(props.standalone))
+const route = useRoute()
+const router = useRouter()
 
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'saved', id: string): void
 }>()
+
+const WORKORDERS_UPDATED_EVENT = 'pipeline:workorders-updated'
+const LINKAGE_ROUTE_QUERY = {
+  tab: 'ops',
+  sub: 'ops_linkage',
+  third: 'ops_linkage_board',
+} as const
 
 const mapContainerRef = ref<HTMLDivElement | null>(null)
 
@@ -281,10 +331,22 @@ const quickReportMode = ref(false)
 const quickReportVisible = ref(false)
 const quickReportSubmitting = ref(false)
 const pendingQuickReportLocation = ref<{ lon: number; lat: number; nodeId?: string | null; edgeId?: string | null } | null>(null)
+const assetBindingModalOpen = ref(false)
+const assetBindingSaving = ref(false)
 const buildingModelModalOpen = ref(false)
 const saveConfirmVisible = ref(false)
 const pendingSaveDiff = ref<GraphDiff | null>(null)
 const validationResults = ref<ValidationIssue[]>([])
+const workorderPromptVisible = ref(false)
+const workorderPromptSubmitting = ref(false)
+const relatedWorkorders = ref<PipelineWorkOrder[]>([])
+const relatedWorkordersLoading = ref(false)
+const relatedWorkordersError = ref<string | null>(null)
+const linkedBuildingsOverride = ref<Array<{ id: string; name: string }>>([])
+const workorderPromptImpact = ref<ImpactAnalysisResponse | null>(null)
+const workorderPromptRecommendation = ref<TemplateRecommendResponse | null>(null)
+const workorderPromptInsightLoading = ref(false)
+const workorderPromptInsightError = ref<string | null>(null)
 
 const pipes = ref<GeoJsonFeature[]>([])
 const buildings = ref<GeoJsonFeature[]>([])
@@ -300,6 +362,28 @@ const relationActiveNames = ref<string[]>([])
 
 let saveCloseTimer: ReturnType<typeof setTimeout> | null = null
 const hasInitiallyRendered = ref(false)
+let relatedWorkorderRequestId = 0
+let workorderPromptInsightRequestId = 0
+
+type PostSaveWorkorderPrompt = {
+  kind: 'topology' | 'asset-binding'
+  featureId: string
+  featureName: string
+  pipelineMedium: PipelineMedium
+  area: string
+  linkedBuildingIds: string[]
+  linkedBuildingNames: string[]
+  nodeIds: string[]
+  segmentIds: string[]
+  topologyChain: string[]
+  summaryLines: string[]
+  initialTitle: string
+  initialDescription: string
+  initialPriority: PipelinePriority
+}
+
+const pendingWorkorderPrompt = ref<PostSaveWorkorderPrompt | null>(null)
+const sourceWorkorderId = computed(() => String(props.sourceWorkorderId || '').trim())
 
 const selectedFeature = computed(() => {
   return pipes.value.find(item => String(item.id) === selectedFeatureId.value) || null
@@ -512,6 +596,9 @@ const {
   setUndergroundSliceEnabled,
   setBasemapById,
   setZoomLevel,
+  openAssetBindingModal: () => {
+    openAssetBindingModal()
+  },
   openBuildingModelModal: () => {
     buildingModelModalOpen.value = true
   },
@@ -786,6 +873,49 @@ const currentPipeMedium = computed(() => {
   return 'water'
 })
 
+const workorderPromptMedium = computed<PipelineMedium>(() => {
+  return pendingWorkorderPrompt.value?.pipelineMedium || (currentPipeMedium.value as PipelineMedium)
+})
+
+const workorderPromptTypeOptions = computed<Array<{ value: PipelineOrderType; title: string; description: string }>>(() => {
+  if (pendingWorkorderPrompt.value?.kind === 'asset-binding') {
+    return [
+      { value: 'inspection', title: '巡检工单', description: '适合核对影响楼宇、现场复核和补齐台账' },
+      { value: 'retrofit', title: '改造工单', description: '适合资产归档调整、绑定关系修订和正式回写' },
+    ]
+  }
+  return [
+    { value: 'maintenance', title: '维修工单', description: '适合故障修复、应急处置和恢复执行' },
+    { value: 'retrofit', title: '改造工单', description: '适合线路调整、结构变更和台账回写' },
+  ]
+})
+
+const workorderPromptImpactSummary = computed(() => {
+  if (!workorderPromptImpact.value) return null
+  return {
+    buildingCount: workorderPromptImpact.value.impactedBuildings.length,
+    affectedUserCount: workorderPromptImpact.value.affectedUserCount,
+    estimatedImpactHours: workorderPromptImpact.value.estimatedImpactHours,
+    buildingNames: workorderPromptImpact.value.impactedBuildings.map(item => item.buildingName),
+  }
+})
+
+const workorderPromptRecommendationView = computed(() => {
+  const recommendation = workorderPromptRecommendation.value
+  if (!recommendation) return null
+  if (!workorderPromptTypeOptions.value.some(item => item.value === recommendation.preset.type)) {
+    return null
+  }
+  return {
+    type: recommendation.preset.type,
+    title: recommendation.preset.title,
+    description: recommendation.preset.description,
+    priority: recommendation.preset.priority,
+    reason: recommendation.reason,
+    confidence: recommendation.confidence,
+  }
+})
+
 const selectedPointLabel = computed(() => {
   const sel = editorGraph.selected.value
   if (!sel) return '无'
@@ -863,7 +993,7 @@ const lastSyncText = computed(() => {
 })
 
 const linkedBuildingCount = computed(() => {
-  return Array.isArray(drilldown.value?.linkedBuildings) ? drilldown.value.linkedBuildings.length : 0
+  return effectiveLinkedBuildings.value.length
 })
 
 const impactedRoomCount = computed(() => {
@@ -884,14 +1014,35 @@ function toRecordLabel(raw: unknown) {
   return String(candidate || '未命名')
 }
 
+const effectiveLinkedBuildings = computed(() => {
+  if (linkedBuildingsOverride.value.length) {
+    return linkedBuildingsOverride.value.map(item => ({
+      id: item.id,
+      name: item.name,
+      buildingName: item.name,
+    }))
+  }
+  return Array.isArray(drilldown.value?.linkedBuildings) ? drilldown.value.linkedBuildings : []
+})
+
 const linkedBuildingLabels = computed(() => {
-  if (!Array.isArray(drilldown.value?.linkedBuildings)) return []
-  return drilldown.value.linkedBuildings.slice(0, 6).map(toRecordLabel)
+  return effectiveLinkedBuildings.value.slice(0, 6).map(toRecordLabel)
+})
+
+const linkedBuildingIds = computed(() => {
+  return effectiveLinkedBuildings.value
+    .map((item) => String((item as Record<string, unknown>)?.id || '').trim())
+    .filter(Boolean)
+})
+
+const linkedBuildingNames = computed(() => {
+  return effectiveLinkedBuildings.value
+    .map((item) => String((item as Record<string, unknown>)?.name || (item as Record<string, unknown>)?.buildingName || '').trim())
+    .filter(Boolean)
 })
 
 const preferredBuildingIds = computed(() => {
-  if (!Array.isArray(drilldown.value?.linkedBuildings)) return []
-  return drilldown.value.linkedBuildings
+  return effectiveLinkedBuildings.value
     .map((item) => String((item as Record<string, unknown>)?.id || '').trim())
     .filter(Boolean)
 })
@@ -967,6 +1118,429 @@ function quickReportFaultLabel(faultType: QuickReportDraft['faultType']) {
   return '故障'
 }
 
+function notifyWorkordersUpdated() {
+  if (typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent(WORKORDERS_UPDATED_EVENT))
+}
+
+function resolveCurrentArea() {
+  const properties = selectedFeature.value?.properties || {}
+  const area = properties.area || properties.zone || properties.campus || properties.region || ''
+  return String(area || '').trim()
+}
+
+function buildTopologySummaryLines(diff: GraphDiff) {
+  const lines: string[] = []
+  if (diff.addedNodes.length) lines.push(`新增节点 ${diff.addedNodes.length} 个`)
+  if (diff.removedNodes.length) lines.push(`删除节点 ${diff.removedNodes.length} 个`)
+  if (diff.modifiedNodes.length) lines.push(`修改节点 ${diff.modifiedNodes.length} 个`)
+  if (diff.addedEdges.length) lines.push(`新增管段 ${diff.addedEdges.length} 条`)
+  if (diff.removedEdges.length) lines.push(`删除管段 ${diff.removedEdges.length} 条`)
+  if (diff.modifiedEdges.length) lines.push(`修改管段 ${diff.modifiedEdges.length} 条`)
+  return lines.length ? lines : ['本次保存包含管道拓扑调整']
+}
+
+function buildPostSaveWorkorderPrompt(diff: GraphDiff): PostSaveWorkorderPrompt | null {
+  if (!selectedFeature.value) return null
+
+  const featureId = String(selectedFeature.value.id)
+  const featureName = displayPipeName.value
+  const nodeIds = Array.from(new Set([
+    ...diff.addedNodes.map(item => item.id),
+    ...diff.removedNodes.map(item => item.id),
+    ...diff.modifiedNodes.map(item => item.id),
+  ]))
+  const segmentIds = Array.from(new Set([
+    featureId,
+    ...diff.addedEdges.map(item => item.id),
+    ...diff.removedEdges.map(item => item.id),
+    ...diff.modifiedEdges.map(item => item.id),
+  ]))
+  const topologyChain = Array.from(new Set([...nodeIds, ...segmentIds])).slice(0, 20)
+  const summaryLines = buildTopologySummaryLines(diff)
+  const buildingText = linkedBuildingNames.value.length
+    ? `关联楼宇：${linkedBuildingNames.value.slice(0, 3).join('、')}`
+    : '当前未识别到关联楼宇'
+  const descriptionLines = [
+    `${featureName} 已在二维编辑器中完成拓扑调整。`,
+    ...summaryLines.map(line => `- ${line}`),
+    `- ${buildingText}`,
+    '- 建议结合现场核查结果继续执行维修或改造闭环。',
+  ]
+
+  return {
+    kind: 'topology',
+    featureId,
+    featureName,
+    pipelineMedium: currentPipeMedium.value as PipelineMedium,
+    area: resolveCurrentArea(),
+    linkedBuildingIds: linkedBuildingIds.value,
+    linkedBuildingNames: linkedBuildingNames.value,
+    nodeIds,
+    segmentIds,
+    topologyChain,
+    summaryLines,
+    initialTitle: `${featureName}拓扑调整复核`,
+    initialDescription: descriptionLines.join('\n'),
+    initialPriority: diff.removedEdges.length || diff.removedNodes.length || diff.totalChanges >= 5 ? 'high' : 'medium',
+  }
+}
+
+function buildAssetBindingWorkorderPrompt(params: {
+  featureId: string
+  featureName: string
+  previousBuildings: Array<{ id: string; name: string }>
+  nextBuildings: Array<{ id: string; name: string }>
+}): PostSaveWorkorderPrompt {
+  const added = params.nextBuildings.filter(item => !params.previousBuildings.some(prev => prev.id === item.id))
+  const removed = params.previousBuildings.filter(item => !params.nextBuildings.some(next => next.id === item.id))
+  const summaryLines = [
+    added.length ? `新增绑定楼宇 ${added.length} 栋` : '',
+    removed.length ? `解除绑定楼宇 ${removed.length} 栋` : '',
+    params.nextBuildings.length ? `当前共关联 ${params.nextBuildings.length} 栋楼宇` : '当前未绑定任何楼宇',
+  ].filter(Boolean)
+
+  const descriptionLines = [
+    `${params.featureName} 在二维编辑器中更新了房产绑定关系。`,
+    ...summaryLines.map(line => `- ${line}`),
+    added.length ? `- 新增楼宇：${added.map(item => item.name).join('、')}` : '',
+    removed.length ? `- 解除楼宇：${removed.map(item => item.name).join('、')}` : '',
+    '- 建议复核影响范围、处置责任和相关楼宇通知。',
+  ].filter(Boolean)
+
+  return {
+    kind: 'asset-binding',
+    featureId: params.featureId,
+    featureName: params.featureName,
+    pipelineMedium: currentPipeMedium.value as PipelineMedium,
+    area: resolveCurrentArea(),
+    linkedBuildingIds: params.nextBuildings.map(item => item.id),
+    linkedBuildingNames: params.nextBuildings.map(item => item.name),
+    nodeIds: [],
+    segmentIds: [params.featureId],
+    topologyChain: [params.featureId, ...params.nextBuildings.map(item => item.id)].slice(0, 20),
+    summaryLines,
+    initialTitle: `${params.featureName}房产绑定复核`,
+    initialDescription: descriptionLines.join('\n'),
+    initialPriority: added.length || removed.length ? 'medium' : 'low',
+  }
+}
+
+function workorderMatchesCurrentSelection(item: PipelineWorkOrder) {
+  const featureId = String(selectedFeature.value?.id || '').trim()
+  if (!featureId) return false
+
+  if (item.segmentIds.includes(featureId) || item.topologyChain.includes(featureId)) {
+    return true
+  }
+
+  const buildingIdSet = new Set(linkedBuildingIds.value)
+  const buildingNameSet = new Set(linkedBuildingNames.value)
+  if (item.buildingId && buildingIdSet.has(item.buildingId)) return true
+  if (item.buildingName && buildingNameSet.has(item.buildingName)) return true
+  if (item.impactScope?.impactedBuildings?.some(building => buildingIdSet.has(building.buildingId) || buildingNameSet.has(building.buildingName))) {
+    return true
+  }
+
+  const searchTexts = [
+    item.id,
+    item.title,
+    item.description,
+    item.buildingName || '',
+    ...item.segmentIds,
+    ...item.nodeIds,
+    ...item.topologyChain,
+  ].map(text => String(text || ''))
+
+  return searchTexts.some(text => text.includes(featureId) || text.includes(displayPipeName.value))
+}
+
+function sortRelatedWorkorders(items: PipelineWorkOrder[]) {
+  return [...items].sort((a, b) => {
+    const aPriority = a.id === sourceWorkorderId.value ? 0 : 1
+    const bPriority = b.id === sourceWorkorderId.value ? 0 : 1
+    if (aPriority !== bPriority) return aPriority - bPriority
+    return String(b.updatedAt).localeCompare(String(a.updatedAt))
+  })
+}
+
+function upsertRelatedWorkorder(item: PipelineWorkOrder, force = false) {
+  if (!force && !workorderMatchesCurrentSelection(item)) return
+  relatedWorkorders.value = sortRelatedWorkorders([item, ...relatedWorkorders.value.filter(existing => existing.id !== item.id)])
+    .slice(0, 8)
+}
+
+async function loadRelatedWorkorders() {
+  if (!props.open || !selectedFeature.value) {
+    relatedWorkorders.value = []
+    relatedWorkordersError.value = null
+    relatedWorkordersLoading.value = false
+    return
+  }
+
+  const requestId = ++relatedWorkorderRequestId
+  relatedWorkordersLoading.value = true
+  relatedWorkordersError.value = null
+
+  const featureId = String(selectedFeature.value.id)
+  const queries: Array<Parameters<typeof pipelineOpsService.fetchWorkorders>[0]> = [
+    { pipelineMedium: currentPipeMedium.value as PipelineMedium, segmentId: featureId, limit: 10 },
+    { pipelineMedium: currentPipeMedium.value as PipelineMedium, q: featureId, limit: 10 },
+    ...linkedBuildingIds.value.slice(0, 3).map(buildingId => ({
+      pipelineMedium: currentPipeMedium.value as PipelineMedium,
+      buildingId,
+      limit: 10,
+    })),
+  ]
+
+  const results = await Promise.allSettled(queries.map(query => pipelineOpsService.fetchWorkorders(query)))
+
+  if (requestId !== relatedWorkorderRequestId) return
+
+  const workorderMap = new Map<string, PipelineWorkOrder>()
+  let hasSuccess = false
+  for (const result of results) {
+    if (result.status !== 'fulfilled') continue
+    hasSuccess = true
+    for (const item of result.value.list) {
+      if (workorderMatchesCurrentSelection(item)) {
+        workorderMap.set(item.id, item)
+      }
+    }
+  }
+
+  if (sourceWorkorderId.value && !workorderMap.has(sourceWorkorderId.value)) {
+    try {
+      const detail = await pipelineOpsService.fetchWorkorder(sourceWorkorderId.value)
+      if (requestId !== relatedWorkorderRequestId) return
+      workorderMap.set(detail.workorder.id, detail.workorder)
+      hasSuccess = true
+    } catch {
+      // Source workorder fetch is best-effort. The editor can still work with the related list.
+    }
+  }
+
+  relatedWorkorders.value = sortRelatedWorkorders([...workorderMap.values()]).slice(0, 8)
+
+  if (!hasSuccess) {
+    relatedWorkordersError.value = '关联工单加载失败'
+  } else if (results.some(result => result.status === 'rejected')) {
+    relatedWorkordersError.value = workorderMap.size ? '部分关联工单数据加载失败' : null
+  } else {
+    relatedWorkordersError.value = null
+  }
+
+  relatedWorkordersLoading.value = false
+}
+
+function buildPromptBypassRequirement(prompt: PostSaveWorkorderPrompt) {
+  if (!prompt.linkedBuildingNames.length) {
+    return `${prompt.featureName} 已发生联动变更，请结合现场实际确认影响范围与绕行措施。`
+  }
+  return `${prompt.linkedBuildingNames.join('、')} 受当前联动变更影响，请提前通知并安排临时保障。`
+}
+
+async function loadWorkorderPromptInsights(prompt: PostSaveWorkorderPrompt) {
+  const requestId = ++workorderPromptInsightRequestId
+  workorderPromptInsightLoading.value = true
+  workorderPromptInsightError.value = null
+  workorderPromptImpact.value = null
+  workorderPromptRecommendation.value = null
+
+  const [impactResult, recommendationResult] = await Promise.allSettled([
+    analyzeImpactScope({
+      nodeIds: prompt.nodeIds,
+      segmentIds: prompt.segmentIds,
+      buildingId: prompt.linkedBuildingIds[0],
+      buildingName: prompt.linkedBuildingNames[0],
+      medium: prompt.pipelineMedium,
+      area: prompt.area,
+    }),
+    recommendTemplate({
+      nodeIds: prompt.nodeIds,
+      segmentIds: prompt.segmentIds,
+      area: prompt.area,
+      medium: prompt.pipelineMedium,
+    }),
+  ])
+
+  if (requestId !== workorderPromptInsightRequestId) return
+
+  if (impactResult.status === 'fulfilled') {
+    workorderPromptImpact.value = impactResult.value
+  }
+
+  if (recommendationResult.status === 'fulfilled') {
+    workorderPromptRecommendation.value = recommendationResult.value
+  }
+
+  if (impactResult.status === 'rejected' || recommendationResult.status === 'rejected') {
+    workorderPromptInsightError.value = '部分联动分析结果加载失败'
+  } else {
+    workorderPromptInsightError.value = null
+  }
+
+  workorderPromptInsightLoading.value = false
+}
+
+function closeWorkorderPrompt(force = false) {
+  if (workorderPromptSubmitting.value && !force) return
+  workorderPromptVisible.value = false
+  pendingWorkorderPrompt.value = null
+  workorderPromptImpact.value = null
+  workorderPromptRecommendation.value = null
+  workorderPromptInsightError.value = null
+  workorderPromptInsightLoading.value = false
+}
+
+function mergeUniqueStrings(...parts: Array<Array<string | undefined> | undefined>) {
+  const values = new Set<string>()
+  for (const part of parts) {
+    for (const item of part || []) {
+      const text = String(item || '').trim()
+      if (text) values.add(text)
+    }
+  }
+  return [...values]
+}
+
+async function submitLinkedWorkorder(payload: {
+  action: 'create' | 'link'
+  workorderId?: string
+  type?: PipelineOrderType
+  title?: string
+  description?: string
+  area?: string
+  priority?: PipelinePriority
+  assignee?: string
+  reviewer?: string
+  plannedDate?: string
+  deadlineAt?: string
+}) {
+  const prompt = pendingWorkorderPrompt.value
+  if (!prompt) return
+
+  workorderPromptSubmitting.value = true
+  try {
+    let result: { workorder: PipelineWorkOrder }
+    if (payload.action === 'link' && payload.workorderId) {
+      const detail = await pipelineOpsService.fetchWorkorder(payload.workorderId)
+      const current = detail.workorder
+
+      const request: PipelineOrderUpsertPayload = {
+        id: current.id,
+        title: current.title,
+        description: current.description,
+        type: current.type,
+        source: current.source,
+        pipelineMedium: current.pipelineMedium || prompt.pipelineMedium,
+        area: current.area || prompt.area || '未分区',
+        topologyChain: mergeUniqueStrings(current.topologyChain, prompt.topologyChain),
+        nodeIds: mergeUniqueStrings(current.nodeIds, prompt.nodeIds),
+        segmentIds: mergeUniqueStrings(current.segmentIds, prompt.segmentIds),
+        buildingId: current.buildingId || prompt.linkedBuildingIds[0],
+        buildingName: current.buildingName || prompt.linkedBuildingNames[0],
+        roomIds: current.roomIds,
+        equipmentIds: current.equipmentIds,
+        assignee: current.assignee || undefined,
+        reviewer: current.reviewer || undefined,
+        priority: current.priority,
+        plannedDate: current.plannedDate || undefined,
+        deadlineAt: current.deadlineAt || undefined,
+        resultSummary: current.resultSummary || undefined,
+        linkedWorkorderIds: current.linkedWorkorderIds,
+        inspection: current.inspection || undefined,
+        maintenance: current.maintenance || undefined,
+        retrofit: current.retrofit || undefined,
+        retire: current.retire || undefined,
+        createdBy: current.createdBy || 'admin-2d-editor',
+      }
+      result = await pipelineOpsService.createWorkorder(request)
+    } else {
+      const request: PipelineOrderUpsertPayload = {
+        title: payload.title || prompt.initialTitle,
+        description: payload.description || prompt.initialDescription,
+        type: payload.type || workorderPromptTypeOptions.value[0]?.value || 'maintenance',
+        source: 'manual',
+        pipelineMedium: prompt.pipelineMedium,
+        area: payload.area || prompt.area || '未分区',
+        topologyChain: prompt.topologyChain,
+        nodeIds: prompt.nodeIds,
+        segmentIds: prompt.segmentIds,
+        buildingId: prompt.linkedBuildingIds[0],
+        buildingName: prompt.linkedBuildingNames[0],
+        assignee: payload.assignee || undefined,
+        reviewer: payload.reviewer || undefined,
+        priority: payload.priority || prompt.initialPriority,
+        plannedDate: payload.plannedDate || undefined,
+        deadlineAt: payload.deadlineAt || undefined,
+        createdBy: 'admin-2d-editor',
+      }
+      result = await pipelineOpsService.createWorkorder(request)
+    }
+
+    let latestWorkorder = result.workorder
+
+    if (workorderPromptImpact.value?.impactedBuildings.length) {
+      try {
+        const impactRes = await pipelineOpsService.adjustImpact({
+          id: latestWorkorder.id,
+          actor: 'admin-2d-editor',
+          note: prompt.kind === 'asset-binding' ? '二维编辑器房产绑定联动影响范围同步' : '二维编辑器拓扑联动影响范围同步',
+          impactedBuildings: workorderPromptImpact.value.impactedBuildings,
+          bypassRequirement: buildPromptBypassRequirement(prompt),
+        })
+        latestWorkorder = impactRes.workorder
+      } catch {
+        // Impact sync is best-effort and should not block the main workorder flow.
+      }
+    }
+
+    try {
+      const linkageLog = [
+        `二维编辑器联动：${prompt.featureName}`,
+        ...prompt.summaryLines.map(line => `- ${line}`),
+        prompt.linkedBuildingNames.length ? `- 关联楼宇：${prompt.linkedBuildingNames.join('、')}` : '',
+      ].filter(Boolean).join('\n')
+      const logRes = await pipelineOpsService.addExecutionLog({
+        id: latestWorkorder.id,
+        stage: 'system_linkage',
+        content: linkageLog,
+        actor: 'admin-2d-editor',
+        nodeId: prompt.nodeIds[0],
+      })
+      latestWorkorder = logRes.workorder
+    } catch {
+      // Linkage log is best-effort and should not block the main workorder flow.
+    }
+
+    notifyWorkordersUpdated()
+    await loadRelatedWorkorders()
+    upsertRelatedWorkorder(latestWorkorder, true)
+    actionMessage.value = {
+      type: 'ok',
+      text: payload.action === 'link' ? `已关联到工单：${latestWorkorder.id}` : `联动工单已创建：${latestWorkorder.id}`,
+    }
+    closeWorkorderPrompt(true)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '联动工单创建失败'
+    actionMessage.value = { type: 'error', text: message || '联动工单创建失败' }
+  } finally {
+    workorderPromptSubmitting.value = false
+  }
+}
+
+async function openRelatedWorkorder(workorderId: string) {
+  await router.push({
+    query: {
+      ...route.query,
+      ...LINKAGE_ROUTE_QUERY,
+      workorderId,
+    },
+  })
+  requestDialogClose()
+}
+
 function formatMeters(meters: number) {
   if (!Number.isFinite(meters)) return '0 m'
   if (meters >= 1000) return `${(meters / 1000).toFixed(2)} km`
@@ -1006,6 +1580,54 @@ async function persistPipeName(feature: GeoJsonFeature, nextName: string) {
       properties,
       visible,
     })
+  }
+}
+
+async function persistPipeProperties(feature: GeoJsonFeature, properties: Record<string, unknown>) {
+  const visible = Boolean((feature.properties as Record<string, unknown> | undefined)?.visible ?? true)
+
+  try {
+    await twinService.updatePipeProperties(props.backendBaseUrl, String(feature.id), {
+      properties,
+      visible,
+      updatedBy: 'admin-2d-editor',
+    })
+  } catch {
+    await geoFeatureService.update(props.backendBaseUrl, {
+      id: String(feature.id),
+      layer: 'pipes',
+      geometry: feature.geometry,
+      properties,
+      visible,
+    })
+  }
+}
+
+function updateLocalPipeProperties(featureId: string, properties: Record<string, unknown>) {
+  const index = pipes.value.findIndex(item => String(item.id) === featureId)
+  if (index < 0) return
+  pipes.value[index] = {
+    ...pipes.value[index],
+    properties,
+  }
+}
+
+function buildLinkedBuildingProperties(
+  feature: GeoJsonFeature,
+  linkedBuildings: Array<{ id: string; name: string }>,
+) {
+  const base = { ...(feature.properties || {}) }
+  const primary = linkedBuildings[0]
+  return {
+    ...base,
+    buildingId: primary?.id || '',
+    buildingName: primary?.name || '',
+    buildingIds: linkedBuildings.map(item => item.id),
+    buildingNames: linkedBuildings.map(item => item.name),
+    linkedBuilding: primary?.name || '',
+    linkedBuildingName: primary?.name || '',
+    linkedBuildings: linkedBuildings.map(item => item.name),
+    linkedBuildingLabels: linkedBuildings.map(item => item.name),
   }
 }
 
@@ -1119,6 +1741,81 @@ async function updatePipeMedium(nextMediumRaw: string) {
   }
 }
 
+function openAssetBindingModal() {
+  if (!selectedFeature.value) {
+    actionMessage.value = { type: 'error', text: '请先选择一条管线，再绑定房产' }
+    return
+  }
+  assetBindingModalOpen.value = true
+}
+
+async function saveAssetBinding(buildingIds: string[]) {
+  if (!selectedFeature.value || assetBindingSaving.value) return
+
+  const featureId = String(selectedFeature.value.id)
+  const previousBuildings = effectiveLinkedBuildings.value.map((item) => ({
+    id: String((item as Record<string, unknown>)?.id || ''),
+    name: String((item as Record<string, unknown>)?.name || (item as Record<string, unknown>)?.buildingName || ''),
+  })).filter(item => item.id || item.name)
+
+  const nextBuildings = buildingIds
+    .map((id) => {
+      const feature = buildings.value.find(item => String(item.id) === id)
+      const properties = feature?.properties || {}
+      return {
+        id,
+        name: String(properties.name || properties.buildingName || id),
+      }
+    })
+    .filter(item => item.id)
+
+  const nextProperties = buildLinkedBuildingProperties(selectedFeature.value, nextBuildings)
+  const previousIdSet = new Set(previousBuildings.map(item => item.id))
+  const nextIdSet = new Set(nextBuildings.map(item => item.id))
+  const unchanged = previousIdSet.size === nextIdSet.size
+    && [...previousIdSet].every(id => nextIdSet.has(id))
+  if (unchanged) {
+    assetBindingModalOpen.value = false
+    actionMessage.value = { type: 'ok', text: '房产绑定未发生变化' }
+    return
+  }
+  assetBindingSaving.value = true
+  try {
+    if (!isDraftPipe.value) {
+      await persistPipeProperties(selectedFeature.value, nextProperties)
+    }
+    updateLocalPipeProperties(featureId, nextProperties)
+    linkedBuildingsOverride.value = nextBuildings
+    if (drilldown.value) {
+      drilldown.value = {
+        ...drilldown.value,
+        linkedBuildings: nextBuildings.map(item => ({
+          id: item.id,
+          name: item.name,
+          buildingName: item.name,
+        })),
+      }
+    }
+    assetBindingModalOpen.value = false
+    actionMessage.value = {
+      type: 'ok',
+      text: isDraftPipe.value ? '草稿管道房产绑定已更新' : '房产绑定已保存',
+    }
+    pendingWorkorderPrompt.value = buildAssetBindingWorkorderPrompt({
+      featureId,
+      featureName: displayPipeName.value,
+      previousBuildings,
+      nextBuildings,
+    })
+    workorderPromptVisible.value = true
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '房产绑定保存失败'
+    actionMessage.value = { type: 'error', text: message || '房产绑定保存失败' }
+  } finally {
+    assetBindingSaving.value = false
+  }
+}
+
 function createDraftPipe() {
   if (saving.value) return
   if (selectedFeature.value && (isDirty.value || hasGraphDraftChanges.value)) {
@@ -1221,7 +1918,7 @@ function handleMenuCopy() {
 
 function handleMenuBindAsset() {
   hideContextMenu()
-  activateTool('bindAsset')
+  openAssetBindingModal()
 }
 
 function handleBuildingModelSaved(payload: { id: string; name: string }) {
@@ -1315,6 +2012,9 @@ async function submitQuickReport(payload: QuickReportDraft) {
     if (activeTool.value === 'reportFault') {
       quickReportMode.value = true
     }
+    notifyWorkordersUpdated()
+    await loadRelatedWorkorders()
+    upsertRelatedWorkorder(result.workorder, true)
     actionMessage.value = {
       type: 'ok',
       text: `故障工单已创建：${result.workorder.id}`,
@@ -1329,6 +2029,7 @@ async function submitQuickReport(payload: QuickReportDraft) {
 
 async function saveGeometryNow() {
   const featureId = selectedFeature.value ? String(selectedFeature.value.id) : ''
+  const postSavePrompt = pendingSaveDiff.value?.hasChanges ? buildPostSaveWorkorderPrompt(pendingSaveDiff.value) : null
   await persistGeometry()
   if (!featureId) return false
   if (actionMessage.value?.type === 'ok') {
@@ -1348,6 +2049,8 @@ async function saveGeometryNow() {
       saveCloseTimer = null
     }, 620)
     clearValidationResults()
+    pendingWorkorderPrompt.value = postSavePrompt
+    workorderPromptVisible.value = Boolean(postSavePrompt)
     return true
   }
   return false
@@ -1396,9 +2099,18 @@ watch(
       saveSuccessVisible.value = false
       saveConfirmVisible.value = false
       pendingSaveDiff.value = null
+      pendingWorkorderPrompt.value = null
+      workorderPromptVisible.value = false
+      workorderPromptSubmitting.value = false
       quickReportVisible.value = false
       quickReportMode.value = false
       pendingQuickReportLocation.value = null
+      assetBindingModalOpen.value = false
+      assetBindingSaving.value = false
+      linkedBuildingsOverride.value = []
+      relatedWorkorders.value = []
+      relatedWorkordersError.value = null
+      relatedWorkordersLoading.value = false
       clearValidationResults()
       clearSaveCloseTimer()
       stopDraftTimers()
@@ -1440,8 +2152,14 @@ watch(selectedFeature, () => {
   actionMessage.value = null
   saveConfirmVisible.value = false
   pendingSaveDiff.value = null
+  pendingWorkorderPrompt.value = null
+  workorderPromptVisible.value = false
+  workorderPromptSubmitting.value = false
   quickReportVisible.value = false
   pendingQuickReportLocation.value = null
+  assetBindingModalOpen.value = false
+  assetBindingSaving.value = false
+  linkedBuildingsOverride.value = []
   clearValidationResults()
 })
 
@@ -1473,6 +2191,48 @@ watch(
 )
 
 watch(
+  [
+    workorderPromptVisible,
+    () => pendingWorkorderPrompt.value?.featureId || '',
+    () => pendingWorkorderPrompt.value?.kind || '',
+    () => pendingWorkorderPrompt.value?.linkedBuildingIds.join(',') || '',
+    () => pendingWorkorderPrompt.value?.nodeIds.join(',') || '',
+    () => pendingWorkorderPrompt.value?.segmentIds.join(',') || '',
+  ],
+  ([visible]) => {
+    if (!visible || !pendingWorkorderPrompt.value) {
+      workorderPromptImpact.value = null
+      workorderPromptRecommendation.value = null
+      workorderPromptInsightError.value = null
+      workorderPromptInsightLoading.value = false
+      return
+    }
+    void loadWorkorderPromptInsights(pendingWorkorderPrompt.value)
+  },
+  { immediate: true },
+)
+
+watch(
+  [
+    () => props.open,
+    sourceWorkorderId,
+    () => selectedFeature.value?.id ?? '',
+    () => linkedBuildingIds.value.join(','),
+    () => linkedBuildingNames.value.join(','),
+  ],
+  ([opened, , featureId]) => {
+    if (!opened || !featureId) {
+      relatedWorkorders.value = []
+      relatedWorkordersError.value = null
+      relatedWorkordersLoading.value = false
+      return
+    }
+    void loadRelatedWorkorders()
+  },
+  { immediate: true },
+)
+
+watch(
   editorGraphValue,
   () => {
     if (validationResults.value.length) {
@@ -1481,6 +2241,16 @@ watch(
   },
   { deep: true },
 )
+
+function handleWorkordersUpdated() {
+  void loadRelatedWorkorders()
+}
+
+onMounted(() => {
+  if (typeof window !== 'undefined') {
+    window.addEventListener(WORKORDERS_UPDATED_EVENT, handleWorkordersUpdated)
+  }
+})
 
 // 图结构事件处理器（类型明确）
 function handleUpdateNode(id: string, attrs: NodeAttributes) {
@@ -1496,6 +2266,9 @@ function handleUpdateEdge(id: string, attrs: EdgeAttributes) {
 }
 
 onBeforeUnmount(() => {
+  if (typeof window !== 'undefined') {
+    window.removeEventListener(WORKORDERS_UPDATED_EVENT, handleWorkordersUpdated)
+  }
   clearSaveCloseTimer()
   stopDraftTimers()
   stopWorkspaceListeners()

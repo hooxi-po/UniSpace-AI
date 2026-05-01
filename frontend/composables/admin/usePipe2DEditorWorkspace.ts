@@ -35,6 +35,7 @@ type UsePipe2DEditorWorkspaceOptions = {
   setUndergroundSliceEnabled: (enabled: boolean) => void
   setBasemapById: (id: string) => void
   setZoomLevel: (zoom: number) => void
+  openBuildingModelModal?: () => void
 }
 
 export function usePipe2DEditorWorkspace(options: UsePipe2DEditorWorkspaceOptions) {
@@ -66,6 +67,7 @@ export function usePipe2DEditorWorkspace(options: UsePipe2DEditorWorkspaceOption
     if (activeTool.value === 'editPipe') return '点击第一个节点选为起点，再点击第二个节点连线 | Shift+点击使用曲线 | 按 Esc 退出'
     if (activeTool.value === 'reportFault') return '故障标注模式：点击地图位置快速上报 | 按 Esc 退出'
     if (activeTool.value === 'bindAsset') return '点击管线关联房产信息 | 按 Esc 取消'
+    if (activeTool.value === 'buildingModel') return '建筑模型模式：为建筑配置 GLB 模型，并可视化调整锚点与姿态'
     if (activeTool.value === 'annotate') return '点击位置添加批注 | 按 Esc 取消'
 
     // 默认提示（选择模式）
@@ -145,6 +147,12 @@ export function usePipe2DEditorWorkspace(options: UsePipe2DEditorWorkspaceOption
     if (tool === 'bindAsset') {
       setEditModes(false, false, false, false)
       showPlanned('房产绑定')
+      return true
+    }
+    if (tool === 'buildingModel') {
+      setEditModes(false, false, false, false)
+      options.openBuildingModelModal?.()
+      activeTool.value = 'select'
       return true
     }
     if (tool === 'annotate') {
@@ -363,6 +371,11 @@ export function usePipe2DEditorWorkspace(options: UsePipe2DEditorWorkspaceOption
     if (key === 'f') {
       event.preventDefault()
       activateTool('reportFault')
+      return
+    }
+    if (key === 'u') {
+      event.preventDefault()
+      activateTool('buildingModel')
       return
     }
     if (event.code === 'Space') {

@@ -14,8 +14,8 @@
         :selected-feature="selectedFeature"
         :can-undo="combinedCanUndo"
         :can-redo="combinedCanRedo"
-        :snap-enabled="snapEnabled"
-        :scene-mode="sceneMode"
+        :buildings-visible="showBuildings"
+        :external-nodes-visible="showExternalNodes"
         :view-mode="viewMode"
         :view-mode-options="viewModeOptions"
         :pipes="pipes"
@@ -28,8 +28,8 @@
         @ai="showPlanned('AI智能助手')"
         @undo="handleUndo"
         @redo="handleRedo"
-        @toggle-snap="snapEnabled = !snapEnabled"
-        @toggle-scene-mode="toggleSceneModeByPanel"
+        @toggle-buildings="showBuildings = !showBuildings"
+        @toggle-external-nodes="showExternalNodes = !showExternalNodes"
         @beautify="showPlanned('一键美化布局')"
         @share="showPlanned('分享')"
         @validate-topology="handleValidateTopology"
@@ -207,6 +207,14 @@
         @close="closeQuickReport"
         @submit="submitQuickReport"
       />
+
+      <Pipe2DEditorBuildingModelModal
+        :open="buildingModelModalOpen"
+        :backend-base-url="props.backendBaseUrl"
+        :preferred-building-ids="preferredBuildingIds"
+        @close="buildingModelModalOpen = false"
+        @saved="handleBuildingModelSaved"
+      />
     </div>
   </div>
 </template>
@@ -227,6 +235,7 @@ import Pipe2DEditorQuickReportModal from '~/components/admin/pipe2d-editor/Pipe2
 import type { QuickReportDraft } from '~/components/admin/pipe2d-editor/Pipe2DEditorQuickReportModal.vue'
 import Pipe2DEditorSaveConfirmModal from '~/components/admin/pipe2d-editor/Pipe2DEditorSaveConfirmModal.vue'
 import Pipe2DEditorShortcutHelp from '~/components/admin/pipe2d-editor/Pipe2DEditorShortcutHelp.vue'
+import Pipe2DEditorBuildingModelModal from '~/components/admin/pipe2d-editor/Pipe2DEditorBuildingModelModal.vue'
 import Pipe2DEditorStageSection from '~/components/admin/pipe2d-editor/Pipe2DEditorStageSection.vue'
 import Pipe2DEditorStatusbarSection from '~/components/admin/pipe2d-editor/Pipe2DEditorStatusbarSection.vue'
 import Pipe2DEditorToolbarSection from '~/components/admin/pipe2d-editor/Pipe2DEditorToolbarSection.vue'
@@ -272,11 +281,13 @@ const quickReportMode = ref(false)
 const quickReportVisible = ref(false)
 const quickReportSubmitting = ref(false)
 const pendingQuickReportLocation = ref<{ lon: number; lat: number; nodeId?: string | null; edgeId?: string | null } | null>(null)
+const buildingModelModalOpen = ref(false)
 const saveConfirmVisible = ref(false)
 const pendingSaveDiff = ref<GraphDiff | null>(null)
 const validationResults = ref<ValidationIssue[]>([])
 
 const pipes = ref<GeoJsonFeature[]>([])
+const buildings = ref<GeoJsonFeature[]>([])
 const selectedFeatureId = ref('')
 const draftLines = ref<Lines>([])
 const originalLines = ref<Lines>([])
@@ -351,6 +362,8 @@ const {
   sceneMode,
   undergroundSliceEnabled,
   snapEnabled,
+  showBuildings,
+  showExternalNodes,
   contextMenu,
   snapHintVisible,
   hoverLengthHint,
@@ -385,6 +398,7 @@ const {
   open: toRef(props, 'open'),
   mapContainerRef,
   pipes,
+  buildings,
   selectedFeature,
   draftLines,
   originalLines,
@@ -498,6 +512,9 @@ const {
   setUndergroundSliceEnabled,
   setBasemapById,
   setZoomLevel,
+  openBuildingModelModal: () => {
+    buildingModelModalOpen.value = true
+  },
 })
 
 // 同步 activeTool 到 editPipeMode（供 map 禁止拖拽）
@@ -521,6 +538,7 @@ const {
   backendBaseUrl: toRef(props, 'backendBaseUrl'),
   initialFeatureId: toRef(props, 'initialFeatureId'),
   pipes,
+  buildings,
   selectedFeatureId,
   selectedFeature,
   draftLines,
@@ -871,6 +889,13 @@ const linkedBuildingLabels = computed(() => {
   return drilldown.value.linkedBuildings.slice(0, 6).map(toRecordLabel)
 })
 
+const preferredBuildingIds = computed(() => {
+  if (!Array.isArray(drilldown.value?.linkedBuildings)) return []
+  return drilldown.value.linkedBuildings
+    .map((item) => String((item as Record<string, unknown>)?.id || '').trim())
+    .filter(Boolean)
+})
+
 const telemetrySeries = computed(() => {
   const sorted = [...telemetryList.value].sort((a, b) => {
     const av = new Date(a.sampledAt).getTime()
@@ -1197,6 +1222,14 @@ function handleMenuCopy() {
 function handleMenuBindAsset() {
   hideContextMenu()
   activateTool('bindAsset')
+}
+
+function handleBuildingModelSaved(payload: { id: string; name: string }) {
+  buildingModelModalOpen.value = false
+  actionMessage.value = {
+    type: 'ok',
+    text: `已更新建筑模型：${payload.name || payload.id}`,
+  }
 }
 
 function handleMenuTrace() {

@@ -446,18 +446,36 @@
 }
 
 .tool-mode-hint {
-  min-height: 24px;
+  min-height: 46px;
+  width: 100%;
   border-radius: 8px;
-  border: 1px solid var(--line);
-  background: #fff;
+  border: 1px solid rgba(99, 102, 241, 0.14);
+  background: linear-gradient(180deg, #ffffff 0%, #f7f8ff 100%);
   color: var(--text-muted);
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 6px;
+  padding: 6px;
+  box-sizing: border-box;
+}
+
+.tool-mode-hint__main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  color: var(--text-title);
+}
+
+.tool-mode-hint__label {
+  min-width: 0;
   font-size: 11px;
-  font-weight: 600;
-  white-space: nowrap;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
 }
 
 .tool-btn {
@@ -1584,6 +1602,11 @@
     order: 2;
     flex-direction: row;
     overflow-x: auto;
+  }
+
+  .tool-mode-hint {
+    min-width: 112px;
+    flex: 0 0 112px;
   }
 
   .tool-btn {

@@ -1,4 +1,5 @@
 import {
+  Building2,
   TriangleAlert,
   FileText,
   Hand,
@@ -7,7 +8,6 @@ import {
   Network,
   Pencil,
   Plus,
-  Upload,
 } from 'lucide-vue-next'
 import type { Component } from 'vue'
 
@@ -24,9 +24,9 @@ export type ToolKey =
   | 'editPipe'
   | 'reportFault'
   | 'bindAsset'
+  | 'buildingModel'
   | 'annotate'
   | 'layer'
-  | 'import'
 
 export type PanelSectionKey = 'basic' | 'relation' | 'control' | 'realtime' | 'timeline' | 'runtime'
 
@@ -62,9 +62,9 @@ export const toolItems: ToolItem[] = [
   { key: 'editPipe', icon: Pencil, label: '管线编辑', tooltip: '点击两个节点连线（Shift+点击使用曲线）', shortcut: 'P' },
   { key: 'reportFault', icon: TriangleAlert, label: '故障标注', tooltip: '点击地图快速上报故障', shortcut: 'F' },
   { key: 'bindAsset', icon: Home, label: '房产绑定', tooltip: '绑定房产', shortcut: 'B' },
+  { key: 'buildingModel', icon: Building2, label: '建筑模型', tooltip: '可视化摆放建筑模型', shortcut: 'U' },
   { key: 'annotate', icon: FileText, label: '批注', tooltip: '添加批注', shortcut: 'M' },
   { key: 'layer', icon: Layers, label: '图层', tooltip: '图层过滤', shortcut: 'L' },
-  { key: 'import', icon: Upload, label: '导入', tooltip: '导入数据', shortcut: 'U' },
 ]
 
 export const viewModeSet = new Set<ViewMode>(viewModeOptions.map(item => item.key))

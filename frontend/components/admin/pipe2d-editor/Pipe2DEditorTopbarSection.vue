@@ -24,8 +24,8 @@ const props = defineProps<{
   selectedFeature: unknown
   canUndo: boolean
   canRedo: boolean
-  snapEnabled: boolean
-  sceneMode: string
+  buildingsVisible: boolean
+  externalNodesVisible: boolean
   viewMode: string
   viewModeOptions: ViewModeOption[]
   pipes: PipeFeature[]
@@ -41,8 +41,8 @@ const emit = defineEmits<{
   (e: 'ai'): void
   (e: 'undo'): void
   (e: 'redo'): void
-  (e: 'toggle-snap'): void
-  (e: 'toggle-scene-mode'): void
+  (e: 'toggle-buildings'): void
+  (e: 'toggle-external-nodes'): void
   (e: 'beautify'): void
   (e: 'share'): void
   (e: 'validate-topology'): void
@@ -250,19 +250,19 @@ onBeforeUnmount(() => document.removeEventListener('click', onClickOutside))
           class="btn btn--sm"
           type="button"
           :disabled="saving"
-          :title="snapEnabled ? '关闭吸附' : '开启吸附'"
-          @click="emit('toggle-snap')"
+          :title="buildingsVisible ? '隐藏建筑轮廓' : '显示建筑轮廓'"
+          @click="emit('toggle-buildings')"
         >
-          {{ snapEnabled ? '吸附: 开' : '吸附: 关' }}
+          {{ buildingsVisible ? '建筑: 开' : '建筑: 关' }}
         </button>
         <button
           class="btn btn--sm"
           type="button"
           :disabled="saving"
-          title="切换 2D / 3D"
-          @click="emit('toggle-scene-mode')"
+          :title="externalNodesVisible ? '隐藏其他管道节点' : '显示其他管道节点'"
+          @click="emit('toggle-external-nodes')"
         >
-          {{ sceneMode === '3d' ? '切换至2D' : '切换至3D' }}
+          {{ externalNodesVisible ? '其他节点: 开' : '其他节点: 关' }}
         </button>
         <button class="icon-btn" type="button" title="一键美化布局" @click="emit('beautify')">
           <Zap :size="18" />

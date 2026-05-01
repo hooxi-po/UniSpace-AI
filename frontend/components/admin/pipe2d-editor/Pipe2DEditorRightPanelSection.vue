@@ -110,6 +110,7 @@ const emit = defineEmits<{
   (e: 'toggle-scene-mode'): void
   (e: 'update:relation-active-names', value: string[]): void
   (e: 'open-workorder', workorderId: string): void
+  (e: 'create-workorder'): void
   (e: 'reset-draft'): void
   (e: 'create-pipe'): void
   (e: 'save-geometry'): void
@@ -338,6 +339,9 @@ function handleRemoveEdge(edgeId: string) {
         <component :is="panelSectionCollapsed.workorders ? ChevronRight : ChevronDown" :size="16" />
       </button>
       <div v-show="!panelSectionCollapsed.workorders" class="panel-section-body">
+        <div class="panel-row-actions">
+          <button class="btn btn--sm btn--primary" type="button" @click="emit('create-workorder')">新建工单</button>
+        </div>
         <div v-if="relatedWorkordersLoading" class="inline-empty">正在加载关联工单...</div>
         <div v-else-if="relatedWorkordersError" class="panel-empty-state">
           <ClipboardList class="empty-icon" :size="18" />

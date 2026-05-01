@@ -156,6 +156,7 @@
           @toggle-scene-mode="toggleSceneModeByPanel"
           @update:relation-active-names="relationActiveNames = $event"
           @open-workorder="openRelatedWorkorder"
+          @create-workorder="openSelectedPipeWorkorderPrompt"
           @reset-draft="handleResetDraft"
           @create-pipe="createDraftPipe"
           @save-geometry="saveGeometry"
@@ -233,6 +234,7 @@
       <Pipe2DEditorWorkorderPromptModal
         :open="workorderPromptVisible && Boolean(pendingWorkorderPrompt)"
         :submitting="workorderPromptSubmitting"
+        :prompt-kind="pendingWorkorderPrompt?.kind || 'selection'"
         :feature-name="pendingWorkorderPrompt?.featureName || displayPipeName"
         :pipeline-medium="workorderPromptMedium"
         :area="pendingWorkorderPrompt?.area || ''"
@@ -366,7 +368,7 @@ let relatedWorkorderRequestId = 0
 let workorderPromptInsightRequestId = 0
 
 type PostSaveWorkorderPrompt = {
-  kind: 'topology' | 'asset-binding'
+  kind: 'selection' | 'topology' | 'asset-binding'
   featureId: string
   featureName: string
   pipelineMedium: PipelineMedium
@@ -1189,6 +1191,47 @@ function buildPostSaveWorkorderPrompt(diff: GraphDiff): PostSaveWorkorderPrompt 
   }
 }
 
+function buildSelectedPipeWorkorderPrompt(): PostSaveWorkorderPrompt | null {
+  if (!selectedFeature.value) return null
+
+  const featureId = String(selectedFeature.value.id)
+  const featureName = displayPipeName.value
+  const nodeIds = [...currentResolvedNodeIds.value]
+  const segmentIds = currentSegmentId.value ? [currentSegmentId.value] : []
+  const topologyChain = Array.from(new Set([featureId, ...segmentIds, ...nodeIds])).slice(0, 20)
+  const summaryLines = [
+    segmentIds.length ? `已定位管段 ${segmentIds.length} 条` : '已定位当前管道',
+    nodeIds.length ? `自动识别节点 ${nodeIds.length} 个` : '当前未识别到节点',
+    linkedBuildingIds.value.length ? `自动关联楼宇 ${linkedBuildingIds.value.length} 栋` : '当前未识别到关联楼宇',
+  ]
+  const buildingText = linkedBuildingNames.value.length
+    ? `关联楼宇：${linkedBuildingNames.value.slice(0, 4).join('、')}`
+    : '当前未识别到关联楼宇'
+  const descriptionLines = [
+    `${featureName} 已在二维编辑器中被选中，可直接发起工单。`,
+    ...summaryLines.map(line => `- ${line}`),
+    `- ${buildingText}`,
+    '- 系统将基于当前管段自动补齐节点、楼宇与影响范围信息。',
+  ]
+
+  return {
+    kind: 'selection',
+    featureId,
+    featureName,
+    pipelineMedium: currentPipeMedium.value as PipelineMedium,
+    area: resolveCurrentArea(),
+    linkedBuildingIds: linkedBuildingIds.value,
+    linkedBuildingNames: linkedBuildingNames.value,
+    nodeIds,
+    segmentIds,
+    topologyChain,
+    summaryLines,
+    initialTitle: `${featureName}巡检复核`,
+    initialDescription: descriptionLines.join('\n'),
+    initialPriority: linkedBuildingIds.value.length >= 3 ? 'high' : 'medium',
+  }
+}
+
 function buildAssetBindingWorkorderPrompt(params: {
   featureId: string
   featureName: string
@@ -1227,6 +1270,15 @@ function buildAssetBindingWorkorderPrompt(params: {
     initialDescription: descriptionLines.join('\n'),
     initialPriority: added.length || removed.length ? 'medium' : 'low',
   }
+}
+
+function openSelectedPipeWorkorderPrompt() {
+  if (!selectedFeature.value) {
+    actionMessage.value = { type: 'error', text: '请先选中一条管道，再创建工单' }
+    return
+  }
+  pendingWorkorderPrompt.value = buildSelectedPipeWorkorderPrompt()
+  workorderPromptVisible.value = Boolean(pendingWorkorderPrompt.value)
 }
 
 function workorderMatchesCurrentSelection(item: PipelineWorkOrder) {

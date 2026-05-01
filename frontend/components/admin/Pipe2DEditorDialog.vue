@@ -25,7 +25,7 @@
         @commit-project-title="commitProjectTitle"
         @cancel-project-title="cancelProjectTitle"
         @change-view-mode="switchViewByKey"
-        @ai="showPlanned('AI智能助手')"
+        @ai="openAiAssistant"
         @undo="handleUndo"
         @redo="handleRedo"
         @toggle-buildings="showBuildings = !showBuildings"
@@ -253,6 +253,19 @@
         @close="closeWorkorderPrompt"
         @confirm="submitLinkedWorkorder"
       />
+
+      <div v-if="aiAssistantOpen" class="editor-ai-panel">
+        <ChatInterface
+          embedded
+          :open="aiAssistantOpen"
+          :context="aiAssistantContext"
+          title="AI 助手 // 当前管网对象"
+          :suggestions="aiAssistantSuggestions"
+          empty-hint="当前未选中具体管线，AI 只能根据总览和现有统计信息回答。"
+          @update:open="aiAssistantOpen = $event"
+          @action="handleAiAssistantAction"
+        />
+      </div>
     </div>
   </div>
 </template>
@@ -261,6 +274,7 @@
 import * as Cesium from 'cesium'
 import { PanelRightOpen } from 'lucide-vue-next'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, toRef, watch } from 'vue'
+import ChatInterface from '~/components/ChatInterface.vue'
 import {
   defaultPanelSectionCollapsed,
   toolItems,
@@ -349,6 +363,7 @@ const workorderPromptImpact = ref<ImpactAnalysisResponse | null>(null)
 const workorderPromptRecommendation = ref<TemplateRecommendResponse | null>(null)
 const workorderPromptInsightLoading = ref(false)
 const workorderPromptInsightError = ref<string | null>(null)
+const aiAssistantOpen = ref(false)
 
 const pipes = ref<GeoJsonFeature[]>([])
 const buildings = ref<GeoJsonFeature[]>([])
@@ -391,6 +406,31 @@ const selectedFeature = computed(() => {
   return pipes.value.find(item => String(item.id) === selectedFeatureId.value) || null
 })
 
+const ACTIVE_WORKORDER_STATUSES = new Set<PipelineWorkOrder['status']>([
+  'todo',
+  'assigned',
+  'in_progress',
+  'paused',
+  'review',
+])
+
+const selectedPipeFaultLevel = computed<'normal' | 'warning' | 'critical'>(() => {
+  if (!selectedFeature.value) return 'normal'
+
+  let warning = false
+  for (const workorder of relatedWorkorders.value) {
+    if (!ACTIVE_WORKORDER_STATUSES.has(workorder.status)) continue
+    if (workorder.type === 'maintenance' || workorder.priority === 'urgent' || workorder.priority === 'high') {
+      return 'critical'
+    }
+    if (workorder.type === 'inspection' || workorder.type === 'retrofit' || workorder.type === 'retire') {
+      warning = true
+    }
+  }
+
+  return warning ? 'warning' : 'normal'
+})
+
 const isDraftPipe = computed(() => {
   return Boolean(selectedFeature.value?.properties && (selectedFeature.value.properties as Record<string, unknown>).__draft)
 })
@@ -408,6 +448,19 @@ function requestDialogClose() {
     }
     emit('close')
   }
+}
+
+function openAiAssistant() {
+  aiAssistantOpen.value = true
+}
+
+function firstString(value: unknown) {
+  if (typeof value === 'string' && value.trim()) return value.trim()
+  if (Array.isArray(value)) {
+    const found = value.find(item => typeof item === 'string' && item.trim())
+    return typeof found === 'string' ? found.trim() : ''
+  }
+  return ''
 }
 
 // 先初始化思维导图编辑器的状态容器（空状态）
@@ -486,6 +539,7 @@ const {
   pipes,
   buildings,
   selectedFeature,
+  selectedPipeFaultLevel,
   draftLines,
   originalLines,
   saving,
@@ -1112,6 +1166,68 @@ const telemetryLatestText = computed(() => {
   return `${latest.value.toFixed(2)} ${latest.unit}`
 })
 
+const aiAssistantContext = computed<Record<string, unknown> | null>(() => {
+  if (!selectedFeature.value) {
+    return {
+      selectionType: 'overview',
+      selectedFeatureId: '',
+      displayName: '管网总览',
+      pipeCount: pipes.value.length,
+      buildingCount: buildings.value.length,
+      alertCount: alertCount.value,
+    }
+  }
+
+  return {
+    selectionType: 'pipe',
+    assetId: String(selectedFeature.value.id),
+    displayName: displayPipeName.value,
+    pipelineMedium: currentPipeMedium.value,
+    area: resolveCurrentArea(),
+    relatedWorkorders: relatedWorkorders.value.map(item => ({
+      id: item.id,
+      title: item.title,
+      type: item.type,
+      status: item.status,
+      priority: item.priority,
+      updatedAt: item.updatedAt,
+    })),
+    connectedBuildingIds: linkedBuildingIds.value,
+    linkedBuildingNames: linkedBuildingNames.value,
+    segmentIds: currentSegmentId.value ? [currentSegmentId.value] : [],
+    topologyNodeIds: currentResolvedNodeIds.value,
+    telemetrySummary: {
+      latest: telemetryLatestText.value,
+      min: telemetryMinText.value,
+      max: telemetryMaxText.value,
+      abnormalCount: alertCount.value,
+    },
+    impactSummary: {
+      linkedBuildingCount: linkedBuildingCount.value,
+      impactedRoomCount: impactedRoomCount.value,
+      tracedSegmentCount: tracedSegmentCount.value,
+      tracedNodeCount: tracedNodeCount.value,
+    },
+    faultLevel: selectedPipeFaultLevel.value,
+  }
+})
+
+const aiAssistantSuggestions = computed(() => {
+  if (!selectedFeature.value) {
+    return [
+      '总结当前管网总览风险',
+      '哪些区域更需要巡检',
+      '当前异常应该优先看什么',
+    ]
+  }
+  return [
+    '总结这条管线当前风险',
+    '查看这条管线关联工单',
+    '分析这条管线影响范围',
+    '建议下一步处置动作',
+  ]
+})
+
 const selectedPipeIdText = computed(() => (selectedFeature.value ? String(selectedFeature.value.id) : '--'))
 const editorGraphValue = computed(() => editorGraph.graph.value)
 const editorGraphSelected = computed(() => editorGraph.selected.value)
@@ -1571,6 +1687,70 @@ async function openRelatedWorkorder(workorderId: string) {
   requestDialogClose()
 }
 
+async function handleAiAssistantAction(action: { type?: string; payload?: Record<string, unknown> }) {
+  const type = String(action.type || '').trim()
+  const payload = action.payload || {}
+  const featureId = firstString(payload.featureId) || (selectedFeature.value ? String(selectedFeature.value.id) : '')
+  const workorderId = firstString(payload.workorderId)
+
+  if (type === 'create_workorder') {
+    if (!selectedFeature.value || (featureId && String(selectedFeature.value.id) !== featureId)) {
+      const normalized = featureId.trim()
+      if (normalized) {
+        selectedFeatureId.value = normalized
+        await nextTick()
+      }
+    }
+    openSelectedPipeWorkorderPrompt()
+    return
+  }
+
+  if (type === 'open_workorder' && workorderId) {
+    await openRelatedWorkorder(workorderId)
+    return
+  }
+
+  if (type === 'open_workorder_board') {
+    await router.push({
+      query: {
+        ...route.query,
+        ...LINKAGE_ROUTE_QUERY,
+        workorderId: workorderId || undefined,
+      },
+    })
+    requestDialogClose()
+    return
+  }
+
+  if (type === 'open_pipe_editor' && featureId) {
+    await router.push({
+      path: '/admin/pipe-editor',
+      query: {
+        featureId,
+        workorderId: sourceWorkorderId.value || undefined,
+      },
+    })
+    requestDialogClose()
+    return
+  }
+
+  if (type === 'locate_on_map') {
+    const buildingId = firstString(payload.buildingIds)
+    const nodeId = firstString(payload.nodeIds)
+    const segmentId = firstString(payload.segmentIds)
+    const focusId = buildingId || nodeId || segmentId || featureId
+    if (!focusId || typeof window === 'undefined') return
+    const query = new URLSearchParams({
+      focusId,
+      focusBuilding: buildingId,
+      focusNode: nodeId,
+      focusSegment: segmentId,
+      fromWorkorder: workorderId || sourceWorkorderId.value || '',
+    })
+    window.open(`/?${query.toString()}`, '_blank')
+  }
+}
+
 function formatMeters(meters: number) {
   if (!Number.isFinite(meters)) return '0 m'
   if (meters >= 1000) return `${(meters / 1000).toFixed(2)} km`
@@ -1879,6 +2059,10 @@ function createDraftPipe() {
       pipeLayer: 'water',
       pipeType: '供水',
       medium: 'water',
+      diameter: '200',
+      diameter_mm: '200',
+      material: '球墨铸铁',
+      status: 'normal',
       __draft: true,
     },
   }

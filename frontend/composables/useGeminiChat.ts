@@ -1,5 +1,11 @@
 import type { ChatMessage } from '~/types.ts'
 
+type ChatChunkPayload = {
+  text?: string
+  parsedPayload?: Record<string, unknown> | null
+  error?: string
+}
+
 /**
  * Gemini AI 聊天功能的组合式函数
  * 提供流式聊天响应功能，支持实时接收 AI 回复
@@ -13,7 +19,8 @@ export const useGeminiChat = () => {
    */
   const streamChatResponse = async (
     history: ChatMessage[],
-    onChunk: (text: string) => void
+    onChunk: (payload: ChatChunkPayload) => void,
+    context?: Record<string, unknown>
   ) => {
     try {
       const lastUserMsg = history[history.length - 1]
@@ -26,7 +33,8 @@ export const useGeminiChat = () => {
         },
         body: JSON.stringify({
           message: lastUserMsg.text,
-          history: history.slice(0, -1)
+          history: history.slice(0, -1),
+          context: context || lastUserMsg.contextSnapshot || null,
         }),
       })
 
@@ -55,9 +63,9 @@ export const useGeminiChat = () => {
               return
             }
             try {
-              const parsed = JSON.parse(data)
-              if (parsed.text) {
-                onChunk(parsed.text)
+            const parsed = JSON.parse(data)
+              if (parsed.text || parsed.parsedPayload || parsed.error) {
+                onChunk(parsed)
               }
             } catch (e) {
               // Skip invalid JSON
@@ -67,7 +75,7 @@ export const useGeminiChat = () => {
       }
     } catch (error) {
       console.error('Communication uplink failed:', error)
-      onChunk('\n[!] 网络错误：与中央 AI 核心的连接中断。')
+      onChunk({ text: '\n[!] 网络错误：与中央 AI 核心的连接中断。', error: 'network_error' })
     }
   }
 

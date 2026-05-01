@@ -46,6 +46,13 @@ const FORM_PROPERTY_KEYS = new Set([
   'name',
   'building',
   'amenity',
+  'pipelineMedium',
+  'pipeLayer',
+  'pipeType',
+  'diameter',
+  'diameter_mm',
+  'material',
+  'status',
   'highway',
   'building:levels',
   'modelEnabled',
@@ -71,6 +78,10 @@ type FormModel = {
   name: string
   building: string
   amenity: string
+  pipelineMedium: string
+  diameterMm: string
+  material: string
+  status: string
   highway: string
   levels: string
   modelEnabled: boolean
@@ -111,6 +122,10 @@ export function useAssetFeatureDialog(
     name: '',
     building: '',
     amenity: '',
+    pipelineMedium: '',
+    diameterMm: '',
+    material: '',
+    status: 'normal',
     highway: '',
     levels: '',
     modelEnabled: false,
@@ -559,6 +574,12 @@ export function useAssetFeatureDialog(
     form.name = String(properties.name ?? '')
     form.building = String(properties.building ?? '')
     form.amenity = String(properties.amenity ?? '')
+    form.pipelineMedium = String(
+      properties.pipelineMedium ?? properties.pipeLayer ?? properties.medium ?? '',
+    )
+    form.diameterMm = String(properties.diameter_mm ?? properties.diameter ?? '')
+    form.material = String(properties.material ?? '')
+    form.status = String(properties.status ?? 'normal')
     form.highway = String(properties.highway ?? '')
     form.levels = String(toPositiveInteger(properties['building:levels'], null) ?? '')
     form.modelEnabled = normalizeBoolean(properties.modelEnabled, hasModelUrl)
@@ -617,6 +638,28 @@ export function useAssetFeatureDialog(
         }
       }
     } else {
+      const pipelineMedium = form.pipelineMedium.trim()
+      const diameterMm = form.diameterMm.trim()
+      const material = form.material.trim()
+      const status = form.status.trim()
+
+      if (pipelineMedium) {
+        properties.pipelineMedium = pipelineMedium
+        properties.pipeLayer = pipelineMedium
+        properties.pipeType = pipelineMedium === 'water'
+          ? '供水'
+          : pipelineMedium === 'drain'
+            ? '排水'
+            : pipelineMedium === 'sewage'
+              ? '污水'
+              : pipelineMedium
+      }
+      if (diameterMm) {
+        properties.diameter_mm = diameterMm
+        properties.diameter = diameterMm
+      }
+      if (material) properties.material = material
+      if (status) properties.status = status
       if (form.highway.trim()) properties.highway = form.highway.trim()
     }
 

@@ -266,7 +266,8 @@ public class TwinWriteController {
         if (idOrFeatureId == null || idOrFeatureId.isBlank()) return null;
 
         String featureId = jdbcTemplate.query(
-                "SELECT id FROM geo_features WHERE id = ? AND layer = 'roads'",
+                "SELECT id FROM geo_features WHERE id = ? AND layer IN ('pipes', 'roads') " +
+                        "ORDER BY CASE WHEN layer = 'pipes' THEN 0 ELSE 1 END LIMIT 1",
                 ps -> ps.setString(1, idOrFeatureId),
                 rs -> rs.next() ? rs.getString("id") : null
         );
@@ -404,7 +405,9 @@ public class TwinWriteController {
                 "NULLIF(COALESCE(g.properties->>'material', ''), ''), " +
                 "COALESCE(NULLIF(g.properties->>'status', ''), 'normal'), " +
                 "jsonb_build_object('autoSynced', true, 'syncSource', 'properties_update') " +
-                "FROM geo_features g WHERE g.id = ? AND g.layer = 'roads' " +
+                "FROM geo_features g WHERE g.id = ? AND g.layer IN ('pipes', 'roads') " +
+                "ORDER BY CASE WHEN g.layer = 'pipes' THEN 0 ELSE 1 END " +
+                "LIMIT 1 " +
                 "ON CONFLICT (feature_id) DO UPDATE " +
                 "SET diameter_mm = COALESCE(EXCLUDED.diameter_mm, pipe_segments.diameter_mm), " +
                 "material = COALESCE(EXCLUDED.material, pipe_segments.material), " +
@@ -426,7 +429,9 @@ public class TwinWriteController {
                 "           ELSE NULL " +
                 "         END AS merged_geom " +
                 "  FROM geo_features " +
-                "  WHERE id = ? AND layer = 'roads'" +
+                "  WHERE id = ? AND layer IN ('pipes', 'roads') " +
+                "  ORDER BY CASE WHEN layer = 'pipes' THEN 0 ELSE 1 END " +
+                "  LIMIT 1" +
                 "), line_ready AS (" +
                 "  SELECT feature_id, " +
                 "         CASE " +
@@ -490,7 +495,9 @@ public class TwinWriteController {
                 "NULLIF(COALESCE(g.properties->>'material', ''), ''), " +
                 "COALESCE(NULLIF(g.properties->>'status', ''), 'normal'), " +
                 "jsonb_build_object('autoSynced', true, 'syncSource', 'geometry_update') " +
-                "FROM geo_features g WHERE g.id = ? AND g.layer = 'roads' " +
+                "FROM geo_features g WHERE g.id = ? AND g.layer IN ('pipes', 'roads') " +
+                "ORDER BY CASE WHEN g.layer = 'pipes' THEN 0 ELSE 1 END " +
+                "LIMIT 1 " +
                 "ON CONFLICT (feature_id) DO UPDATE " +
                 "SET from_node_id = EXCLUDED.from_node_id, " +
                 "to_node_id = EXCLUDED.to_node_id, " +

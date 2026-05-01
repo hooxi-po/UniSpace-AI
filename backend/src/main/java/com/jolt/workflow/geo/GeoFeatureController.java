@@ -47,7 +47,8 @@ public class GeoFeatureController {
             List<String> layerList = List.of(layers.split(",")).stream()
                     .map(String::trim)
                     .filter(s -> !s.isBlank())
-                    .map(GeoFeatureController::normalizeLayerName)
+                    .flatMap(layer -> expandQueriedLayerNames(layer).stream())
+                    .distinct()
                     .toList();
 
             if (!layerList.isEmpty()) {
@@ -316,9 +317,17 @@ public class GeoFeatureController {
 
     private static String normalizeLayerName(String layer) {
         if ("pipes".equalsIgnoreCase(layer)) {
-            return "roads";
+            return "pipes";
         }
         return layer;
+    }
+
+    private static List<String> expandQueriedLayerNames(String layer) {
+        String normalized = normalizeLayerName(layer);
+        if ("pipes".equalsIgnoreCase(normalized)) {
+            return List.of("pipes", "roads");
+        }
+        return List.of(normalized);
     }
 
     private FeaturePayload parseFeaturePayload(String body) {

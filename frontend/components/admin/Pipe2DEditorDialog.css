@@ -79,6 +79,20 @@
   border: 1px solid var(--line);
 }
 
+.editor-ai-panel {
+  position: absolute;
+  right: 20px;
+  bottom: 20px;
+  z-index: 80;
+  width: min(420px, calc(100vw - 40px));
+  height: min(520px, calc(100vh - 120px));
+  border: 1px solid rgba(99, 102, 241, 0.18);
+  border-radius: 16px;
+  overflow: hidden;
+  background: #050b16;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.18);
+}
+
 .topbar {
   min-height: 56px;
   padding: 8px 16px;

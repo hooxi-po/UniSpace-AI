@@ -131,22 +131,73 @@
             <div class="config-card__header">
               <div>
                 <div class="config-card__title">管道信息</div>
-                <div class="config-card__desc">为道路类型提供常用选项，便于快速录入管道源数据</div>
+                <div class="config-card__desc">围绕管道介质、管径、材质和状态录入，保留历史兼容字段</div>
               </div>
             </div>
 
             <div class="form-grid">
               <label class="field">
-                <span class="field__label">道路类型（highway）</span>
+                <span class="field__label">输送介质</span>
+                <input
+                  v-model.trim="form.pipelineMedium"
+                  class="field__input"
+                  type="text"
+                  list="pipe-medium-options"
+                  :disabled="submitting"
+                  placeholder="例如 water / sewage / drain"
+                >
+                <span class="field__hint">推荐使用 water / sewage / drain</span>
+              </label>
+
+              <label class="field">
+                <span class="field__label">管径（mm）</span>
+                <input
+                  v-model.trim="form.diameterMm"
+                  class="field__input"
+                  type="text"
+                  list="pipe-diameter-options"
+                  :disabled="submitting"
+                  placeholder="例如 200 / 300 / 600"
+                >
+                <span class="field__hint">将同时写入 `diameter` 和 `diameter_mm`</span>
+              </label>
+
+              <label class="field">
+                <span class="field__label">材质</span>
+                <input
+                  v-model.trim="form.material"
+                  class="field__input"
+                  type="text"
+                  list="pipe-material-options"
+                  :disabled="submitting"
+                  placeholder="例如 球墨铸铁 / HDPE / 钢筋混凝土"
+                >
+              </label>
+
+              <label class="field">
+                <span class="field__label">状态</span>
+                <select
+                  v-model="form.status"
+                  class="field__input"
+                  :disabled="submitting"
+                >
+                  <option value="normal">normal</option>
+                  <option value="warning">warning</option>
+                  <option value="critical">critical</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span class="field__label">兼容字段（highway）</span>
                 <input
                   v-model.trim="form.highway"
                   class="field__input"
                   type="text"
                   list="pipe-highway-options"
                   :disabled="submitting"
-                  placeholder="例如 service / primary"
+                  placeholder="例如 service"
                 >
-                <span class="field__hint">支持 service / primary / residential 等常用值</span>
+                <span class="field__hint">仅用于兼容旧分类逻辑，可选填</span>
               </label>
             </div>
           </div>
@@ -373,6 +424,32 @@
 
           <datalist id="building-level-options">
             <option v-for="option in buildingLevelOptions" :key="option" :value="option" />
+          </datalist>
+
+          <datalist id="pipe-medium-options">
+            <option value="water" />
+            <option value="sewage" />
+            <option value="drain" />
+          </datalist>
+
+          <datalist id="pipe-diameter-options">
+            <option value="100" />
+            <option value="150" />
+            <option value="200" />
+            <option value="250" />
+            <option value="300" />
+            <option value="400" />
+            <option value="500" />
+            <option value="600" />
+          </datalist>
+
+          <datalist id="pipe-material-options">
+            <option value="球墨铸铁" />
+            <option value="HDPE" />
+            <option value="PE" />
+            <option value="PVC" />
+            <option value="钢筋混凝土" />
+            <option value="不锈钢" />
           </datalist>
 
           <datalist id="pipe-highway-options">

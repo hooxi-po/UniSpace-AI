@@ -43,7 +43,7 @@
 
       <!-- AI Chat (Floating) -->
       <div class="pointer-events-auto">
-        <ChatInterface />
+        <ChatInterface :context="chatContext" @action="handleChatAction" />
       </div>
     </div>
 
@@ -82,6 +82,60 @@ const selectedTargets = computed(() => {
   }
 })
 
+const chatContext = computed<Record<string, unknown> | null>(() => {
+  const item = selectedItem.value
+  if (!item) return null
+
+  if ('diameter' in item) {
+    return {
+      selectionType: 'pipe',
+      assetId: item.id,
+      pipelineMedium: item.type,
+      status: item.status,
+      pressure: item.pressure,
+      flowRate: item.flowRate,
+      diameter: item.diameter,
+      material: item.material,
+      depth: item.depth,
+      installDate: item.installDate,
+      lastMaintain: item.lastMaintain,
+      topologyNodeIds: item.topologyNodeIds || [],
+      linkedValves: item.linkedValves || [],
+      connectedBuildingIds: item.connectedBuildingIds || [],
+      impactedRoomCount: item.impactedRooms?.length || 0,
+      impactedEquipmentCount: item.linkedEquipments?.length || 0,
+      healthScore: item.healthScore ?? null,
+      healthSummary: item.healthSummary || null,
+      faultImpactScope: item.faultImpactScope || null,
+    }
+  }
+
+  if ('name' in item) {
+    return {
+      selectionType: 'building',
+      assetId: item.id,
+      buildingName: item.name,
+      buildingType: item.type,
+      status: item.status,
+      connectedPipeId: item.connectedPipeId,
+      rooms: item.rooms,
+      keyEquipment: item.keyEquipment || [],
+      powerConsumption: item.powerConsumption,
+    }
+  }
+
+  if ('type' in item && item.type === 'geojson') {
+    const properties = toRecord(item.properties)
+    return {
+      selectionType: 'feature',
+      assetId: String(item.id),
+      featureProperties: properties,
+    }
+  }
+
+  return null
+})
+
 const DEFAULT_VIEWPORT = {
   x: 119.1895,
   y: 26.0254,
@@ -111,6 +165,7 @@ const layers = ref({
 
 // Weather State
 const weatherMode = ref(false)
+const router = useRouter()
 
 function toNumber(value: unknown) {
   if (typeof value === 'number' && Number.isFinite(value)) return value
@@ -435,6 +490,79 @@ const handleZoomOut = () => {
 
 const resetView = () => {
   viewport.value = { ...DEFAULT_VIEWPORT }
+}
+
+function firstString(value: unknown) {
+  if (typeof value === 'string' && value.trim()) return value.trim()
+  if (Array.isArray(value)) {
+    const found = value.find(item => typeof item === 'string' && item.trim())
+    return typeof found === 'string' ? found.trim() : ''
+  }
+  return ''
+}
+
+function stringArray(value: unknown) {
+  if (!Array.isArray(value)) return [] as string[]
+  return value
+    .map(item => (typeof item === 'string' ? item.trim() : ''))
+    .filter(Boolean)
+}
+
+function handleChatAction(action: { type?: string; payload?: Record<string, unknown> }) {
+  const type = String(action.type || '').trim()
+  const payload = action.payload || {}
+  const featureId = firstString(payload.featureId)
+  const workorderId = firstString(payload.workorderId)
+  const buildingId = firstString(payload.buildingIds)
+  const nodeId = firstString(payload.nodeIds)
+  const segmentId = firstString(payload.segmentIds)
+
+  if (type === 'open_pipe_editor' && featureId) {
+    void router.push({
+      path: '/admin/pipe-editor',
+      query: { featureId },
+    })
+    return
+  }
+
+  if (type === 'open_workorder' && workorderId) {
+    void router.push({
+      path: '/admin',
+      query: {
+        tab: 'ops',
+        sub: 'ops_linkage',
+        third: 'ops_linkage_board',
+        workorderId,
+      },
+    })
+    return
+  }
+
+  if (type === 'open_workorder_board') {
+    void router.push({
+      path: '/admin',
+      query: {
+        tab: 'ops',
+        sub: 'ops_linkage',
+        third: 'ops_linkage_board',
+        workorderId: workorderId || undefined,
+      },
+    })
+    return
+  }
+
+  if (type === 'locate_on_map') {
+    const focusId = buildingId || nodeId || segmentId || featureId
+    if (!focusId) return
+    const query = {
+      focusId,
+      focusBuilding: buildingId || undefined,
+      focusNode: nodeId || undefined,
+      focusSegment: segmentId || undefined,
+    }
+    void router.replace({ path: '/', query })
+    return
+  }
 }
 
 watch(

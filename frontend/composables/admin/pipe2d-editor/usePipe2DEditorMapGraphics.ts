@@ -88,6 +88,7 @@ type UsePipe2DEditorMapGraphicsOptions = {
   showBuildings: Ref<boolean>
   showExternalNodes: Ref<boolean>
   selectedFeature: ComputedRef<GeoJsonFeature | null>
+  selectedPipeFaultLevel?: ComputedRef<'normal' | 'warning' | 'critical'>
   draftLines: Ref<Lines>
   activeLineIndex: Ref<number>
   hoveredLineIndex: Ref<number | null>
@@ -109,6 +110,34 @@ type UsePipe2DEditorMapGraphicsOptions = {
   mindmapSelectedEdgeIds?: Ref<Set<string>>
   mindmapHoveredNodeId?: Ref<string | null>
   mindmapHoveredEdgeId?: Ref<string | null>
+}
+
+function resolveSelectedPipePalette(
+  baseColor: string,
+  level: 'normal' | 'warning' | 'critical' = 'normal',
+) {
+  if (level === 'critical') {
+    return {
+      baseColor: '#ef4444',
+      hoverColor: '#dc2626',
+      selectedColor: '#dc2626',
+      haloColor: '#f87171',
+    }
+  }
+  if (level === 'warning') {
+    return {
+      baseColor: '#f59e0b',
+      hoverColor: '#ea580c',
+      selectedColor: '#ea580c',
+      haloColor: '#fdba74',
+    }
+  }
+  return {
+    baseColor,
+    hoverColor: '#22d3ee',
+    selectedColor: '#06b6d4',
+    haloColor: '#22d3ee',
+  }
 }
 
 export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOptions) {
@@ -495,8 +524,9 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
 
       // 根据状态调整视觉效果
       const baseEdgeColor = resolvePipeBaseColor(options.selectedFeature.value)
+      const palette = resolveSelectedPipePalette(baseEdgeColor, options.selectedPipeFaultLevel?.value || 'normal')
       const width = isSelected ? 7 : (isHovered ? 5 : 4)
-      const color = isSelected ? '#06b6d4' : (isHovered ? '#22d3ee' : baseEdgeColor)
+      const color = isSelected ? palette.selectedColor : (isHovered ? palette.hoverColor : palette.baseColor)
       const alpha = isSelected ? 1.0 : (isHovered ? 0.95 : 0.85)
 
       if (hasIssue) {
@@ -528,7 +558,7 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
             material: new Cesium.ColorMaterialProperty(
               new Cesium.CallbackProperty(() => {
                 const alphaPulse = 0.18 + selectedEdgePulse() * 0.22
-                return Cesium.Color.fromCssColorString('#22d3ee').withAlpha(alphaPulse)
+                return Cesium.Color.fromCssColorString(palette.haloColor).withAlpha(alphaPulse)
               }, false),
             ),
             arcType: GROUND_POLYLINE_ARC_TYPE,
@@ -676,6 +706,7 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
     dragEditStartLines = null
     clearGraphics()
     const baseColor = resolvePipeBaseColor(options.selectedFeature.value)
+    const selectedPipePalette = resolveSelectedPipePalette(baseColor, options.selectedPipeFaultLevel?.value || 'normal')
     const graphicLayer = options.getGraphicLayer()
     const mars3dLib = options.getMars3dLib()
     const hasGraphOverlay = Boolean(
@@ -694,7 +725,7 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
               positions: line.map((point) => [point[0], point[1], 0]),
               style: {
                 width: activeLine || hoveredLine ? 6 : 5,
-                color: activeLine || hoveredLine ? '#22d3ee' : baseColor,
+                color: activeLine || hoveredLine ? selectedPipePalette.hoverColor : selectedPipePalette.baseColor,
                 opacity: 1,
                 outline: false,
                 arcType: GROUND_POLYLINE_ARC_TYPE,
@@ -761,8 +792,8 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
               arcType: GROUND_POLYLINE_ARC_TYPE,
               clampToGround: true,
               material: activeLine || hoveredLine
-                ? createSelectedPolylineMaterial('#22d3ee', 1)
-                : createSolidPolylineMaterial(baseColor, 1),
+                ? createSelectedPolylineMaterial(selectedPipePalette.selectedColor, 1)
+                : createSolidPolylineMaterial(selectedPipePalette.baseColor, 1),
             },
           })
           ;(lineEntity as any).__pipeLineMeta = { lineIndex }
@@ -843,6 +874,12 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
       renderGraphNodeEntities()
       renderGraphEdgeEntities()
     }, { deep: true })
+  }
+
+  if (options.selectedPipeFaultLevel) {
+    watch(options.selectedPipeFaultLevel, () => {
+      renderDraftGraphics()
+    })
   }
 
   return {

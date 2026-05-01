@@ -19,6 +19,8 @@ export default defineNuxtConfig({
   runtimeConfig: {
     // 服务端可访问的私有配置
     geminiApiKey: process.env.GEMINI_API_KEY || '',
+    deepseekApiKey: process.env.DEEPSEEK_API_KEY || '',
+    deepseekModel: process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash',
     backendWriteAuthEnabled:
       process.env.BACKEND_WRITE_AUTH_ENABLED
       || process.env.APP_SECURITY_WRITE_AUTH_ENABLED

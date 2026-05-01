@@ -47,6 +47,7 @@ type UsePipe2DEditorMapOptions = {
   pipes: Ref<GeoJsonFeature[]>
   buildings: Ref<GeoJsonFeature[]>
   selectedFeature: ComputedRef<GeoJsonFeature | null>
+  selectedPipeFaultLevel?: ComputedRef<'normal' | 'warning' | 'critical'>
   draftLines: Ref<Lines>
   originalLines: Ref<Lines>
   saving: Ref<boolean>
@@ -388,6 +389,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
       showBuildings,
       showExternalNodes,
       selectedFeature: options.selectedFeature,
+      selectedPipeFaultLevel: options.selectedPipeFaultLevel,
       draftLines: options.draftLines,
       activeLineIndex,
       hoveredLineIndex,
@@ -894,6 +896,14 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     if (!options.open.value || !mapReady.value) return
     renderDraftGraphics()
   })
+
+  watch(
+    () => options.selectedPipeFaultLevel?.value,
+    () => {
+      if (!options.open.value || !mapReady.value) return
+      renderDraftGraphics()
+    },
+  )
 
   watch(
     () => options.draftLines.value,

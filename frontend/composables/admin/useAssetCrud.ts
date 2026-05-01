@@ -85,6 +85,14 @@ export function useAssetCrud(options: UseAssetCrudOptions) {
       },
       properties: {
         name: '新管道',
+        pipelineMedium: 'water',
+        pipeLayer: 'water',
+        pipeType: '供水',
+        medium: 'water',
+        diameter: '200',
+        diameter_mm: '200',
+        material: '球墨铸铁',
+        status: 'normal',
         highway: 'service',
       },
     }

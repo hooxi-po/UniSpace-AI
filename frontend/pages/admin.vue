@@ -76,9 +76,9 @@
               :backend-base-url="backendBaseUrl"
               layer="pipes"
               :search="assetSearch"
-              :search-keys="['id', 'name', 'pipeCategory', 'highway', 'geomType']"
-              :columns="roadColumns as any"
-              :map-row="mapRoadRow as any"
+              :search-keys="['id', 'name', 'pipeCategory', 'pipelineMedium', 'diameter', 'material', 'status', 'geomType']"
+              :columns="pipeColumns as any"
+              :map-row="mapPipeRow as any"
               :cell="assetCell"
               @select="handleAssetSelect"
               @count="currentCount = $event"
@@ -164,10 +164,10 @@ import { adminCompMap } from '~/config/admin-comp-map'
 import { getTabs, getSubTabs, getThirdTabs } from '~/config/admin-menu'
 import {
   buildingColumns,
-  roadColumns,
+  pipeColumns,
   propertyColumns,
   mapBuildingRow,
-  mapRoadRow,
+  mapPipeRow,
 } from '~/utils/admin-tables'
 import { useAdminDetail } from '~/composables/useAdminDetail'
 import { useAssetCrud } from '~/composables/admin/useAssetCrud'
@@ -181,7 +181,7 @@ const searchPlaceholder = computed(() => {
   if (activeTab.value === 'property') return '搜索 id / 名称 / 类型'
   return activeSubTab.value === 'assets_buildings'
     ? '搜索 ID / 名称 / 建筑类型 / 用途'
-    : '搜索 ID / 名称 / 管道类别 / 道路类型'
+    : '搜索 ID / 名称 / 管道类型 / 介质 / 材质 / 状态'
 })
 
 const tabs = computed(() => getTabs())

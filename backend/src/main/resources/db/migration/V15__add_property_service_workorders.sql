@@ -29,11 +29,3 @@ CREATE TABLE IF NOT EXISTS property_service_workorder_logs (
 CREATE INDEX IF NOT EXISTS idx_psw_status ON property_service_workorders(status);
 CREATE INDEX IF NOT EXISTS idx_psw_priority ON property_service_workorders(priority);
 CREATE INDEX IF NOT EXISTS idx_psw_created_at ON property_service_workorders(created_at DESC);
-
-
-
-
-
-
-
-

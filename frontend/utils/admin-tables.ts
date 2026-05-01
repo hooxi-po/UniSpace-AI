@@ -35,10 +35,13 @@ export type BuildingRow = {
   raw: GeoJsonFeature
 }
 
-export type RoadRow = {
+export type PipeRow = {
   id: string
   pipeCategory: string
-  highway: string
+  pipelineMedium: string
+  diameter: string
+  material: string
+  status: string
   name: string
   geomType: string
   visible: boolean
@@ -57,10 +60,13 @@ export const buildingColumns: Column<BuildingRow>[] = [
   { key: 'actions', label: '操作', class: 'ta-c col-actions' },
 ]
 
-export const roadColumns: Column<RoadRow>[] = [
+export const pipeColumns: Column<PipeRow>[] = [
   { key: 'id', label: 'ID', mono: true, class: 'col-id' },
-  { key: 'pipeCategory', label: '管道类别', class: 'col-type' },
-  { key: 'highway', label: '道路类型', class: 'col-type' },
+  { key: 'pipeCategory', label: '管道类型', class: 'col-type' },
+  { key: 'pipelineMedium', label: '输送介质', class: 'col-type' },
+  { key: 'diameter', label: '管径', class: 'col-type' },
+  { key: 'material', label: '材质', class: 'col-type' },
+  { key: 'status', label: '状态', class: 'col-type' },
   { key: 'name', label: '名称', class: 'col-name' },
   { key: 'geomType', label: '几何', class: 'ta-c col-geom' },
   { key: 'visible', label: '显示', class: 'ta-c col-visible' },
@@ -143,6 +149,30 @@ function normalizeHighway(value: unknown) {
   return `${label}（${raw}）`
 }
 
+function normalizePipelineMedium(value: unknown) {
+  const raw = String(value || '').trim().toLowerCase()
+  if (!raw) return '—'
+  if (raw === 'water') return '供水'
+  if (raw === 'drain') return '排水'
+  if (raw === 'sewage') return '污水'
+  return raw
+}
+
+function normalizeDiameter(value: unknown) {
+  const raw = String(value || '').trim()
+  if (!raw) return '—'
+  return raw.toUpperCase().startsWith('DN') ? raw.toUpperCase() : `DN${raw}`
+}
+
+function normalizeStatus(value: unknown) {
+  const raw = String(value || '').trim().toLowerCase()
+  if (!raw) return '正常'
+  if (raw === 'critical') return '严重'
+  if (raw === 'warning') return '预警'
+  if (raw === 'normal') return '正常'
+  return raw
+}
+
 export function mapBuildingRow(f: GeoJsonFeature): BuildingRow {
   const p = (f.properties || {}) as Record<string, unknown>
   const name = String(p.name ?? p.short_name ?? '')
@@ -163,7 +193,7 @@ export function mapBuildingRow(f: GeoJsonFeature): BuildingRow {
   }
 }
 
-export function mapRoadRow(f: GeoJsonFeature): RoadRow {
+export function mapPipeRow(f: GeoJsonFeature): PipeRow {
   const p = (f.properties || {}) as Record<string, unknown>
   const highwayRaw = p.highway ?? p.road ?? p.type
   const name = String(p.name ?? p.ref ?? '')
@@ -179,7 +209,12 @@ export function mapRoadRow(f: GeoJsonFeature): RoadRow {
   return {
     id: f.id,
     pipeCategory,
-    highway: normalizeHighway(highwayRaw),
+    pipelineMedium: normalizePipelineMedium(
+      p.pipelineMedium ?? p.pipeLayer ?? p.medium ?? p.media ?? explicitLayer,
+    ),
+    diameter: normalizeDiameter(p.diameter ?? p.diameter_mm),
+    material: String(p.material ?? '').trim() || '—',
+    status: normalizeStatus(p.status),
     name: name || '—',
     geomType: normalizeGeometryType(f.geometry?.type),
     visible: Boolean((p as any).visible ?? true),
@@ -187,3 +222,6 @@ export function mapRoadRow(f: GeoJsonFeature): RoadRow {
     raw: f,
   }
 }
+
+export const roadColumns = pipeColumns
+export const mapRoadRow = mapPipeRow

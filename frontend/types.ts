@@ -84,6 +84,8 @@ export interface ChatMessage {
   role: 'user' | 'model';
   text: string;
   isLoading?: boolean;
+  contextSnapshot?: Record<string, unknown>;
+  parsedPayload?: Record<string, unknown> | null;
 }
 
 export interface GeoJsonFeature {

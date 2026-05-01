@@ -45,8 +45,8 @@ defineProps<{
 }>()
 
 const activeTab = defineModel<TabKey>({ required: true })
-const activeSubTab = defineModel<SubKey>('subValue')
-const activeThirdTab = defineModel<ThirdKey>('thirdValue')
+const activeSubTab = defineModel<SubKey | undefined>('subValue')
+const activeThirdTab = defineModel<ThirdKey | undefined>('thirdValue')
 
 const siderCollapsed = ref(false)
 </script>

@@ -48,7 +48,7 @@
             :key="tt.key"
             class="admin-sider__third-item"
             :class="{ 'admin-sider__third-item--active': thirdValue === tt.key }"
-            @click="$emit('update:thirdValue', tt.key)"
+            @click="handleThirdClick(tt.key)"
           >
             {{ tt.label }}
           </button>
@@ -82,8 +82,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'update:modelValue', v: TabKey): void
-  (e: 'update:subValue', v: SubKey): void
-  (e: 'update:thirdValue', v: ThirdKey): void
+  (e: 'update:subValue', v: SubKey | undefined): void
+  (e: 'update:thirdValue', v: ThirdKey | undefined): void
   (e: 'toggle'): void
 }>()
 
@@ -120,14 +120,24 @@ function handleSubClick(key: SubKey) {
   if (props.subValue === key) {
     if (expandedSubs.value.has(key)) {
       expandedSubs.value.delete(key)
+      emit('update:thirdValue', undefined)
     } else {
       expandedSubs.value.add(key)
     }
   } else {
     emit('update:subValue', key)
+    emit('update:thirdValue', undefined)
     expandedSubs.value.clear()
     expandedSubs.value.add(key)
   }
+}
+
+function handleThirdClick(key: ThirdKey) {
+  if (props.thirdValue === key) {
+    emit('update:thirdValue', undefined)
+    return
+  }
+  emit('update:thirdValue', key)
 }
 </script>
 

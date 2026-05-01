@@ -22,6 +22,7 @@ export default defineEventHandler(async (event) => {
             : null
         if (!normalizedType) return list
 
+        const occupied = String(r.status || '').toLowerCase() === 'occupied'
         list.push({
           id: String(r.id || ''),
           buildingCode: String(r.building_code || ''),
@@ -30,7 +31,8 @@ export default defineEventHandler(async (event) => {
           floor: Number(r.floor || 0),
           area: Number(r.area || 0),
           type: normalizedType,
-          status: String(r.status || '').toLowerCase() === 'occupied' ? 'Occupied' : 'Empty',
+          status: occupied ? 'Occupied' : 'Empty',
+          statusCn: occupied ? '在住' : '空置',
           department: String(r.department || ''),
           monthlyRent: normalizedType === 'TeacherApartment' ? 800 : 200,
           deposit: normalizedType === 'TeacherApartment' ? 1600 : 400,

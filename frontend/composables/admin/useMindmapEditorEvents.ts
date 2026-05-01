@@ -33,9 +33,12 @@ export interface UseMindmapEditorEventsOptions {
 }
 
 export interface PickResult {
-  type: 'node' | 'edge' | 'connectionPoint' | 'controlPoint'
+  type: 'node' | 'external-node' | 'edge' | 'connectionPoint' | 'controlPoint'
   nodeId?: string
   edgeId?: string
+  featureId?: string
+  lon?: number
+  lat?: number
   direction?: 'top' | 'right' | 'bottom' | 'left'
   cpIndex?: number
 }

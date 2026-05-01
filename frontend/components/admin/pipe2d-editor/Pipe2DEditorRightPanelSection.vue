@@ -31,6 +31,7 @@ type AuditLog = {
 const props = defineProps<{
   selectedFeature: PipeFeature | null
   selectedFeatureId: string
+  currentPipeMedium: string
   pipes: PipeFeature[]
   loading: boolean
   saving: boolean
@@ -81,6 +82,7 @@ const emit = defineEmits<{
   (e: 'collapse-panel'): void
   (e: 'toggle-section', key: PanelSectionKey): void
   (e: 'update:selected-feature-id', value: string): void
+  (e: 'update:pipe-medium', value: string): void
   (e: 'refresh'): void
   (e: 'focus'): void
   (e: 'start-rename'): void
@@ -95,6 +97,7 @@ const emit = defineEmits<{
   (e: 'toggle-scene-mode'): void
   (e: 'update:relation-active-names', value: string[]): void
   (e: 'reset-draft'): void
+  (e: 'create-pipe'): void
   (e: 'save-geometry'): void
   (e: 'update-node', nodeId: string, attrs: NodeAttributes): void
   (e: 'update-node-type', nodeId: string, type: NodeType): void
@@ -121,6 +124,10 @@ function pipeOptionLabel(feature: PipeFeature) {
   const properties = feature.properties || {}
   const name = String(properties.name || properties.ref || feature.id)
   return `${String(feature.id)} · ${name}`
+}
+
+function onPipeMediumChange(event: Event) {
+  emit('update:pipe-medium', (event.target as HTMLSelectElement).value)
 }
 
 function formatDateTime(value: string) {
@@ -195,6 +202,7 @@ function handleRemoveEdge(edgeId: string) {
         </select>
         <div class="panel-row-actions">
           <button class="btn btn--sm" type="button" :disabled="loading" @click="emit('refresh')">刷新</button>
+          <button class="btn btn--sm" type="button" :disabled="saving" @click="emit('create-pipe')">新建管道</button>
           <button class="btn btn--sm" type="button" :disabled="saving || !selectedFeature" @click="emit('focus')">聚焦</button>
         </div>
 
@@ -223,6 +231,14 @@ function handleRemoveEdge(edgeId: string) {
               @keydown.esc.prevent="emit('cancel-rename')"
             >
           </div>
+          <div class="panel-field">
+            <label>管道类型</label>
+            <select :value="currentPipeMedium" class="graph-panel__select" @change="onPipeMediumChange">
+              <option value="water">供水</option>
+              <option value="drainage">排水</option>
+              <option value="sewage">污水</option>
+            </select>
+          </div>
           <div class="panel-meta"><span>编号</span><strong>{{ String(selectedFeature.id) }}</strong></div>
           <div class="panel-meta"><span>几何</span><strong>{{ selectedFeature.geometry?.type || '-' }}</strong></div>
           <div class="panel-meta"><span>草稿</span><strong>{{ draftStatusText }}</strong></div>
@@ -245,6 +261,9 @@ function handleRemoveEdge(edgeId: string) {
                 <strong>{{ globalTotalLengthText }}</strong>
               </div>
             </div>
+          </div>
+          <div class="panel-row-actions">
+            <button class="btn btn--sm btn--primary" type="button" :disabled="saving" @click="emit('create-pipe')">新建第一条管道</button>
           </div>
           <div class="inline-empty inline-empty--compact">从顶部搜索或下拉框选择具体管线后开始编辑</div>
         </template>

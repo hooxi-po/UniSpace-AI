@@ -18,6 +18,7 @@ const props = defineProps<{
   projectTitleDraft: string
   saveStatusClass: string
   saveStatusText: string
+  saveButtonText: string
   saving: boolean
   isDirty: boolean
   selectedFeature: unknown
@@ -45,6 +46,7 @@ const emit = defineEmits<{
   (e: 'beautify'): void
   (e: 'share'): void
   (e: 'validate-topology'): void
+  (e: 'create-pipe'): void
   (e: 'save-geometry'): void
   (e: 'search-select', id: string): void
   (e: 'close'): void
@@ -271,6 +273,15 @@ onBeforeUnmount(() => document.removeEventListener('click', onClickOutside))
         <button
           class="btn btn--sm"
           type="button"
+          :disabled="saving"
+          title="新建管道草稿"
+          @click="emit('create-pipe')"
+        >
+          新建管道
+        </button>
+        <button
+          class="btn btn--sm"
+          type="button"
           :disabled="saving || !selectedFeature"
           title="校验孤立节点、自环和重复边"
           @click="emit('validate-topology')"
@@ -283,7 +294,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onClickOutside))
           :disabled="!selectedFeature || !isDirty || saving"
           @click="emit('save-geometry')"
         >
-          {{ saving ? '保存中...' : '保存修改' }}
+          {{ saving ? '保存中...' : saveButtonText }}
         </button>
         <button
           class="icon-btn icon-btn--close"

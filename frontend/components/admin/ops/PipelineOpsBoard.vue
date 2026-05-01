@@ -1,47 +1,27 @@
 <template>
   <div class="ops-board">
-    <PipelineOpsOverviewSection
-      :meta="meta"
-      :loading="loading"
-      :form-open="formOpen"
-      :report-open="reportOpen"
-      :feedback-text="feedbackText"
-      :feedback-type="feedbackType"
-      :stats="stats"
-      :dashboard="dashboard"
-      :realtime-enabled="realtimeEnabled"
-      :last-update-time="lastUpdateTime"
-      :format-time="formatTime"
-      @refresh="refresh"
-      @toggle-form="formOpen = !formOpen"
-      @toggle-report="reportOpen = !reportOpen"
-      @toggle-realtime="realtimeEnabled = $event"
-      @dismiss-feedback="dismissFeedback"
-      @filter-by-status="handleFilterByStatus"
-    />
+    <div
+      v-if="feedbackText"
+      :class="['ops-notice', `ops-notice--${feedbackType}`]"
+    >
+      <span>{{ feedbackText }}</span>
+      <button class="ops-notice__close" type="button" @click="dismissFeedback">知道了</button>
+    </div>
 
-    <!-- 报表区域 -->
-    <PipelineOpsReportSection
-      v-if="reportOpen"
-      :stats="stats"
-      :dashboard="dashboard"
-    />
-
-    <!-- 异常预警监控 -->
-    <PipelineOpsAlertMonitor
-      :format-time="formatTime"
-      @auto-create-success="handleAlertAutoCreateSuccess"
-    />
-
-    <PipelineOpsCreateSection
-      :open="formOpen"
-      :mode="mode"
-      :submitting="submitting"
-      :form="form"
-      :auto-form="autoForm"
-      @submit-create="submitCreate"
-      @submit-auto-create="submitAutoCreate"
-    />
+    <div v-if="formOpen" class="detail-mask detail-mask--center" @click.self="formOpen = false">
+      <div class="ops-create-dialog">
+        <PipelineOpsCreateSection
+          :open="formOpen"
+          :mode="mode"
+          :submitting="submitting"
+          :form="form"
+          :auto-form="autoForm"
+          @close="formOpen = false"
+          @submit-create="submitCreate"
+          @submit-auto-create="submitAutoCreate"
+        />
+      </div>
+    </div>
 
     <PipelineOpsListSection
       v-model:page="page"
@@ -107,20 +87,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import PipelineOpsActionDialog from './PipelineOpsActionDialog.vue'
 import PipelineOpsCreateSection from './PipelineOpsCreateSection.vue'
 import PipelineOpsDetailPanel from './PipelineOpsDetailPanel.vue'
 import PipelineOpsListSection from './PipelineOpsListSection.vue'
-import PipelineOpsOverviewSection from './PipelineOpsOverviewSection.vue'
-import PipelineOpsReportSection from './PipelineOpsReportSection.vue'
 import { usePipelineOpsBoardUi } from '~/composables/admin/usePipelineOpsBoardUi'
-import { usePipelineOpsRealtime } from '~/composables/admin/usePipelineOpsRealtime'
 import type { PipelineOpsBoardMode } from '~/composables/admin/usePipelineOpsBoard'
 import {
   pipelineOpsActionText,
   pipelineOpsMediumLabel,
-  pipelineOpsMetaMap,
   pipelineOpsPriorityLabel,
   pipelineOpsSourceLabel,
   pipelineOpsStatusLabel,
@@ -131,19 +107,13 @@ const props = defineProps<{
   mode: PipelineOpsBoardMode
   realtimeEnabled?: boolean
 }>()
-const emit = defineEmits<{
-  (e: 'update:realtimeEnabled', enabled: boolean): void
-}>()
 const mode = computed(() => props.mode)
-const meta = computed(() => pipelineOpsMetaMap[props.mode])
 
 const {
   loading,
   submitting,
   list,
   detail,
-  stats,
-  dashboard,
   page,
   total,
   totalPages,
@@ -157,8 +127,6 @@ const {
   queryCreatedFrom,
   queryCreatedTo,
   queryKeyword,
-  refresh,
-  loadDetail,
   formOpen,
   detailOpen,
   actionDialog,
@@ -189,38 +157,7 @@ const {
   locateOnMap,
   locateBuildingOnMap,
   formatTime,
-  showNotice,
 } = usePipelineOpsBoardUi(props.mode)
-
-const reportOpen = ref(false)
-const localRealtimeEnabled = ref(false)
-const realtimeEnabled = computed({
-  get: () => typeof props.realtimeEnabled === 'boolean' ? props.realtimeEnabled : localRealtimeEnabled.value,
-  set: (enabled: boolean) => {
-    if (typeof props.realtimeEnabled === 'boolean') {
-      emit('update:realtimeEnabled', enabled)
-      return
-    }
-    localRealtimeEnabled.value = enabled
-  },
-})
-
-// 实时更新功能
-const { lastUpdateTime } = usePipelineOpsRealtime({
-  enabled: realtimeEnabled,
-  interval: 30000, // 30秒轮询一次
-  onUpdate: async () => {
-    const activeDetailId = detailOpen.value ? detail.value?.id || '' : ''
-    await refresh()
-    if (!activeDetailId) return
-    if (list.value.some(item => item.id === activeDetailId)) return
-    try {
-      await loadDetail(activeDetailId)
-    } catch {
-      // loadDetail already updates the shared error state
-    }
-  },
-})
 
 const typeLabel = pipelineOpsTypeLabel
 const sourceLabel = pipelineOpsSourceLabel
@@ -228,15 +165,5 @@ const statusLabel = pipelineOpsStatusLabel
 const mediumLabel = pipelineOpsMediumLabel
 const priorityLabel = pipelineOpsPriorityLabel
 const actionText = pipelineOpsActionText
-
-function handleFilterByStatus(status: string) {
-  queryStatus.value = status as any
-  page.value = 1
-}
-
-function handleAlertAutoCreateSuccess(workorderId: string) {
-  showNotice('success', `已自动创建工单: ${workorderId}`)
-  refresh()
-}
 </script>
 <style scoped src="./pipeline-ops-board.css"></style>

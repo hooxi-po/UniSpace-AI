@@ -1,5 +1,5 @@
 import type { Property } from '~/mock/properties'
-import { classifyRoadToPipeCategory } from '~/utils/pipe-classifier'
+import { classifyRoadToPipeCategory, resolvePipeLayerFromProps } from '~/utils/pipe-classifier'
 
 export type PropertyRow = Property
 
@@ -167,10 +167,18 @@ export function mapRoadRow(f: GeoJsonFeature): RoadRow {
   const p = (f.properties || {}) as Record<string, unknown>
   const highwayRaw = p.highway ?? p.road ?? p.type
   const name = String(p.name ?? p.ref ?? '')
+  const explicitLayer = resolvePipeLayerFromProps(p)
+  const pipeCategory = explicitLayer === 'water'
+    ? '供水'
+    : explicitLayer === 'drain'
+      ? '排水'
+      : explicitLayer === 'sewage'
+        ? '污水'
+        : classifyRoadToPipeCategory(highwayRaw)
 
   return {
     id: f.id,
-    pipeCategory: classifyRoadToPipeCategory(highwayRaw),
+    pipeCategory,
     highway: normalizeHighway(highwayRaw),
     name: name || '—',
     geomType: normalizeGeometryType(f.geometry?.type),

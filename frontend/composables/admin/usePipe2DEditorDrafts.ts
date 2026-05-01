@@ -51,6 +51,10 @@ export function usePipe2DEditorDrafts(options: UsePipe2DEditorDraftsOptions) {
     draftStatusText.value = next
   }
 
+  function isDraftFeature(feature: GeoJsonFeature | null) {
+    return Boolean(feature?.properties && (feature.properties as Record<string, unknown>).__draft)
+  }
+
   function writeLocalDraft(featureId: string) {
     if (typeof window === 'undefined') return
     const payload: Record<string, unknown> = {
@@ -183,6 +187,22 @@ export function usePipe2DEditorDrafts(options: UsePipe2DEditorDraftsOptions) {
 
     const lines = geometryToLines(feature.geometry)
     if (!lines.length) {
+      if (isDraftFeature(feature)) {
+        const localDraft = readLocalDraft(String(feature.id))
+        if (localDraft) {
+          options.originalLines.value = []
+          options.draftLines.value = localDraft.lines
+          if (options.restoreGraph) {
+            options.restoreGraph(localDraft.graph || linesToGraph(localDraft.lines, 'n'))
+          }
+          draftStatusText.value = '已恢复新管道草稿'
+        } else {
+          options.originalLines.value = []
+          options.draftLines.value = []
+          draftStatusText.value = '未保存的新管道'
+        }
+        return
+      }
       const fallback: Lines = [[[119.1888, 26.0252], [119.1894, 26.0255]]]
       options.originalLines.value = cloneLines(fallback)
       options.draftLines.value = cloneLines(fallback)

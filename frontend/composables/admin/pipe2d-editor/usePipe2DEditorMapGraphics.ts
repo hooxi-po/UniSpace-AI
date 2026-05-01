@@ -118,6 +118,7 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
   const currentGraphNodeEntities: Cesium.Entity[] = []
   const currentGraphEdgeEntities: Cesium.Entity[] = []
   const currentControlPointEntities: Cesium.Entity[] = []
+  const currentExternalNodeEntities: Cesium.Entity[] = []
   let previewLineEntity: Cesium.Entity | null = null
 
   // ---- 防抖渲染优化 ----
@@ -130,6 +131,7 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
     for (const e of currentGraphNodeEntities) viewer.entities.remove(e)
     for (const e of currentGraphEdgeEntities) viewer.entities.remove(e)
     for (const e of currentControlPointEntities) viewer.entities.remove(e)
+    for (const e of currentExternalNodeEntities) viewer.entities.remove(e)
     if (previewLineEntity) {
       viewer.entities.remove(previewLineEntity)
       previewLineEntity = null
@@ -137,6 +139,7 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
     currentGraphNodeEntities.length = 0
     currentGraphEdgeEntities.length = 0
     currentControlPointEntities.length = 0
+    currentExternalNodeEntities.length = 0
   }
 
   function clearGraphics() {
@@ -294,6 +297,73 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
           },
         })
         currentGraphNodeEntities.push(text)
+      }
+    }
+  }
+
+  function renderExternalSharedNodeEntities() {
+    const viewer = options.getViewer()
+    const selectedFeature = options.selectedFeature.value
+    if (!viewer || !selectedFeature) return
+
+    for (const entity of currentExternalNodeEntities) {
+      viewer.entities.remove(entity)
+    }
+    currentExternalNodeEntities.length = 0
+
+    const currentFeatureId = String(selectedFeature.id)
+    const localKeys = new Set<string>()
+    if (options.graph?.value) {
+      for (const node of options.graph.value.nodes) {
+        localKeys.add(`${node.lon.toFixed(8)},${node.lat.toFixed(8)}`)
+      }
+    }
+
+    const renderedKeys = new Set<string>()
+    for (const feature of options.pipes.value) {
+      if (String(feature.id) === currentFeatureId) continue
+      const lines = geometryToLines(feature.geometry)
+      for (const line of lines) {
+        if (line.length < 2) continue
+        for (const point of line) {
+          const key = `${point[0].toFixed(8)},${point[1].toFixed(8)}`
+          if (localKeys.has(key) || renderedKeys.has(key)) continue
+          renderedKeys.add(key)
+
+          const hitArea = viewer.entities.add({
+            position: options.toCartesian(point),
+            point: {
+              pixelSize: 18,
+              color: Cesium.Color.TRANSPARENT,
+              disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            },
+            properties: {
+              externalGraphNode: true,
+              externalNodeLon: point[0],
+              externalNodeLat: point[1],
+              externalFeatureId: String(feature.id),
+            },
+          })
+          currentExternalNodeEntities.push(hitArea)
+
+          const circle = viewer.entities.add({
+            position: options.toCartesian(point),
+            point: {
+              pixelSize: 8,
+              color: Cesium.Color.fromCssColorString('#ffffff').withAlpha(0.96),
+              outlineColor: Cesium.Color.fromCssColorString(resolvePipeBaseColor(feature)),
+              outlineWidth: 2,
+              disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            },
+            properties: {
+              externalGraphNode: true,
+              externalNodeLon: point[0],
+              externalNodeLat: point[1],
+              externalFeatureId: String(feature.id),
+            },
+          })
+          currentExternalNodeEntities.push(circle)
+        }
       }
     }
   }
@@ -591,6 +661,7 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
       }
       renderGraphEdgeEntities()
       renderGraphNodeEntities()
+      renderExternalSharedNodeEntities()
       return
     }
 
@@ -640,6 +711,7 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
 
     renderGraphEdgeEntities()
     renderGraphNodeEntities()
+    renderExternalSharedNodeEntities()
   }
 
   function resetGraphicsState() {

@@ -221,6 +221,11 @@ export function usePipelineOpsBoardUi(mode: PipelineOpsBoardMode) {
     form.type = (mode === 'linkage' ? 'inspection' : mode) as PipelineOrderType
   }
 
+  function resetAutoCreateForm() {
+    autoForm.trigger = 'telemetry_alert'
+    autoForm.reason = ''
+  }
+
   function availableActions(status: PipelineOrderStatus) {
     if (status === 'draft') return ['submit', 'cancel', 'reject']
     if (status === 'todo') return ['assign', 'start', 'cancel', 'reject']
@@ -304,6 +309,7 @@ export function usePipelineOpsBoardUi(mode: PipelineOpsBoardMode) {
     )
     if (!error.value) {
       resetCreateForm()
+      resetAutoCreateForm()
       formOpen.value = false
       detailOpen.value = true
     }
@@ -343,6 +349,9 @@ export function usePipelineOpsBoardUi(mode: PipelineOpsBoardMode) {
       '自动工单已创建',
     )
     if (!error.value) {
+      resetCreateForm()
+      resetAutoCreateForm()
+      formOpen.value = false
       detailOpen.value = true
     }
   }

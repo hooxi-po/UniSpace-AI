@@ -8,6 +8,7 @@
         :project-title-draft="projectTitleDraft"
         :save-status-class="saveStatusClass"
         :save-status-text="saveStatusText"
+        :save-button-text="saveButtonText"
         :saving="saving"
         :is-dirty="isDirty"
         :selected-feature="selectedFeature"
@@ -32,6 +33,7 @@
         @beautify="showPlanned('一键美化布局')"
         @share="showPlanned('分享')"
         @validate-topology="handleValidateTopology"
+        @create-pipe="createDraftPipe"
         @save-geometry="saveGeometry"
         @search-select="handleTopbarSearchSelect"
         @close="requestDialogClose"
@@ -90,6 +92,7 @@
           v-else
           :selected-feature="selectedFeature"
           :selected-feature-id="selectedFeatureId"
+          :current-pipe-medium="currentPipeMedium"
           :pipes="pipes"
           :loading="loading"
           :saving="saving"
@@ -135,6 +138,7 @@
           @collapse-panel="panelCollapsed = true"
           @toggle-section="togglePanelSection"
           @update:selected-feature-id="handleSelectedFeatureIdChange"
+          @update:pipe-medium="updatePipeMedium"
           @refresh="handleRefreshPipes"
           @focus="fitCurrentPipeView"
           @start-rename="startRename"
@@ -149,6 +153,7 @@
           @toggle-scene-mode="toggleSceneModeByPanel"
           @update:relation-active-names="relationActiveNames = $event"
           @reset-draft="handleResetDraft"
+          @create-pipe="createDraftPipe"
           @save-geometry="saveGeometry"
           :graph="editorGraphValue"
           :graph-selected="editorGraphSelected"
@@ -287,6 +292,10 @@ const hasInitiallyRendered = ref(false)
 
 const selectedFeature = computed(() => {
   return pipes.value.find(item => String(item.id) === selectedFeatureId.value) || null
+})
+
+const isDraftPipe = computed(() => {
+  return Boolean(selectedFeature.value?.properties && (selectedFeature.value.properties as Record<string, unknown>).__draft)
 })
 
 function requestDialogClose() {
@@ -743,6 +752,22 @@ const displayPipeName = computed(() => {
   return String(properties.name || properties.ref || selectedFeature.value.id)
 })
 
+const currentPipeMedium = computed(() => {
+  if (!selectedFeature.value) return 'water'
+  const properties = selectedFeature.value.properties || {}
+  const raw = String(
+    properties.pipelineMedium
+    || properties.pipeLayer
+    || properties.pipeType
+    || properties.medium
+    || '',
+  ).trim().toLowerCase()
+  if (raw === 'water' || raw === '供水') return 'water'
+  if (raw === 'drain' || raw === 'drainage' || raw === '排水') return 'drainage'
+  if (raw === 'sewage' || raw === '污水') return 'sewage'
+  return 'water'
+})
+
 const selectedPointLabel = computed(() => {
   const sel = editorGraph.selected.value
   if (!sel) return '无'
@@ -763,15 +788,19 @@ const segmentCount = computed(() => {
 
 const saveStatusText = computed(() => {
   if (saving.value) return '云同步中'
+  if (isDraftPipe.value) return isDirty.value ? '新管道待创建' : '新管道草稿'
   if (isDirty.value) return '草稿未保存'
   return '已同步云端'
 })
 
 const saveStatusClass = computed(() => {
   if (saving.value) return 'save-chip--syncing'
+  if (isDraftPipe.value) return 'save-chip--dirty'
   if (isDirty.value) return 'save-chip--dirty'
   return 'save-chip--saved'
 })
+
+const saveButtonText = computed(() => isDraftPipe.value ? '创建管道' : '保存修改')
 
 const alertCount = computed(() => telemetryList.value.filter(item => String(item.quality || '').toLowerCase() !== 'good').length)
 const isOverviewMode = computed(() => !selectedFeature.value)
@@ -955,6 +984,17 @@ async function persistPipeName(feature: GeoJsonFeature, nextName: string) {
   }
 }
 
+function buildPipeMediumProperties(feature: GeoJsonFeature, nextMedium: 'water' | 'drainage' | 'sewage') {
+  const mediumLabel = nextMedium === 'water' ? '供水' : nextMedium === 'drainage' ? '排水' : '污水'
+  return {
+    ...(feature.properties || {}),
+    pipelineMedium: nextMedium,
+    pipeLayer: nextMedium === 'drainage' ? 'drain' : nextMedium,
+    pipeType: mediumLabel,
+    medium: nextMedium,
+  }
+}
+
 async function commitRename() {
   if (renamingSaving.value) return
   if (!selectedFeature.value) {
@@ -979,7 +1019,9 @@ async function commitRename() {
 
   renamingSaving.value = true
   try {
-    await persistPipeName(pipes.value[index], nextName)
+    if (!isDraftPipe.value) {
+      await persistPipeName(pipes.value[index], nextName)
+    }
     pipes.value[index] = {
       ...pipes.value[index],
       properties: {
@@ -987,7 +1029,7 @@ async function commitRename() {
         name: nextName,
       },
     }
-    actionMessage.value = { type: 'ok', text: '管道名称已保存' }
+    actionMessage.value = { type: 'ok', text: isDraftPipe.value ? '草稿管道名称已更新' : '管道名称已保存' }
     renaming.value = false
   } catch (err) {
     const message = err instanceof Error ? err.message : '管道名称保存失败'
@@ -1000,6 +1042,90 @@ async function commitRename() {
 function cancelRename() {
   if (renamingSaving.value) return
   renaming.value = false
+}
+
+async function updatePipeMedium(nextMediumRaw: string) {
+  if (!selectedFeature.value) return
+  const nextMedium = nextMediumRaw as 'water' | 'drainage' | 'sewage'
+  if (!['water', 'drainage', 'sewage'].includes(nextMedium)) return
+
+  const featureId = String(selectedFeature.value.id)
+  const index = pipes.value.findIndex(item => String(item.id) === featureId)
+  if (index < 0) return
+  if (currentPipeMedium.value === nextMedium) return
+
+  const nextProperties = buildPipeMediumProperties(pipes.value[index], nextMedium)
+  const visible = Boolean((pipes.value[index].properties as Record<string, unknown> | undefined)?.visible ?? true)
+
+  try {
+    if (!isDraftPipe.value) {
+      await twinService.updatePipeProperties(props.backendBaseUrl, featureId, {
+        properties: nextProperties,
+        visible,
+        updatedBy: 'admin-2d-editor',
+      })
+    }
+    pipes.value[index] = {
+      ...pipes.value[index],
+      properties: nextProperties,
+    }
+    actionMessage.value = {
+      type: 'ok',
+      text: isDraftPipe.value ? '草稿管道类型已更新' : '管道类型已保存',
+    }
+  } catch {
+    try {
+      await geoFeatureService.update(props.backendBaseUrl, {
+        id: featureId,
+        layer: 'pipes',
+        geometry: pipes.value[index].geometry,
+        properties: nextProperties,
+        visible,
+      })
+      pipes.value[index] = {
+        ...pipes.value[index],
+        properties: nextProperties,
+      }
+      actionMessage.value = { type: 'ok', text: '管道类型已保存' }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '管道类型保存失败'
+      actionMessage.value = { type: 'error', text: message || '管道类型保存失败' }
+    }
+  }
+}
+
+function createDraftPipe() {
+  if (saving.value) return
+  if (selectedFeature.value && (isDirty.value || hasGraphDraftChanges.value)) {
+    persistLocalDraft(true)
+  }
+  clearValidationResults()
+  clearInsights()
+  renaming.value = false
+  quickReportVisible.value = false
+  pendingQuickReportLocation.value = null
+  const draftId = `pipe_${Date.now()}`
+  const draftFeature: GeoJsonFeature = {
+    type: 'Feature',
+    id: draftId,
+    geometry: {
+      type: 'LineString',
+      coordinates: [],
+    },
+    properties: {
+      name: '新管道',
+      highway: 'service',
+      pipelineMedium: 'water',
+      pipeLayer: 'water',
+      pipeType: '供水',
+      medium: 'water',
+      __draft: true,
+    },
+  }
+  pipes.value = [draftFeature, ...pipes.value.filter(item => String(item.id) !== draftId)]
+  overviewPinned.value = false
+  selectedFeatureId.value = draftId
+  actionMessage.value = { type: 'ok', text: '已创建新管道草稿，先放置节点再连线，最后保存即可落库' }
 }
 
 function togglePanelSection(key: PanelSectionKey) {
@@ -1304,7 +1430,7 @@ watch(
 watch(
   [() => props.open, selectedFeatureId],
   ([opened, featureId]) => {
-    if (!opened || !featureId) {
+    if (!opened || !featureId || isDraftPipe.value) {
       clearInsights()
       return
     }

@@ -243,6 +243,10 @@
         :initial-priority="pendingWorkorderPrompt?.initialPriority || 'medium'"
         :available-types="workorderPromptTypeOptions"
         :related-workorders="relatedWorkorders"
+        :impact-summary="workorderPromptImpactSummary"
+        :recommendation="workorderPromptRecommendationView"
+        :insight-loading="workorderPromptInsightLoading"
+        :insight-error="workorderPromptInsightError"
         @close="closeWorkorderPrompt"
         @confirm="submitLinkedWorkorder"
       />
@@ -281,6 +285,7 @@ import { usePipe2DEditorWorkspace } from '~/composables/admin/usePipe2DEditorWor
 import { useMindmapEditor } from '~/composables/admin/useMindmapEditor'
 import { useMindmapEditorEvents } from '~/composables/admin/useMindmapEditorEvents'
 import { geoFeatureService, type GeoJsonFeature } from '~/services/geo-features'
+import { analyzeImpactScope, recommendTemplate, type ImpactAnalysisResponse, type TemplateRecommendResponse } from '~/services/pipeline-intelligence'
 import { pipelineOpsService } from '~/services/pipeline-ops'
 import { twinService } from '~/services/twin'
 import type { PipelineMedium, PipelineOrderType, PipelineOrderUpsertPayload, PipelinePriority, PipelineWorkOrder } from '~/types/pipeline-ops'
@@ -336,6 +341,10 @@ const relatedWorkorders = ref<PipelineWorkOrder[]>([])
 const relatedWorkordersLoading = ref(false)
 const relatedWorkordersError = ref<string | null>(null)
 const linkedBuildingsOverride = ref<Array<{ id: string; name: string }>>([])
+const workorderPromptImpact = ref<ImpactAnalysisResponse | null>(null)
+const workorderPromptRecommendation = ref<TemplateRecommendResponse | null>(null)
+const workorderPromptInsightLoading = ref(false)
+const workorderPromptInsightError = ref<string | null>(null)
 
 const pipes = ref<GeoJsonFeature[]>([])
 const buildings = ref<GeoJsonFeature[]>([])
@@ -352,6 +361,7 @@ const relationActiveNames = ref<string[]>([])
 let saveCloseTimer: ReturnType<typeof setTimeout> | null = null
 const hasInitiallyRendered = ref(false)
 let relatedWorkorderRequestId = 0
+let workorderPromptInsightRequestId = 0
 
 type PostSaveWorkorderPrompt = {
   kind: 'topology' | 'asset-binding'
@@ -877,6 +887,32 @@ const workorderPromptTypeOptions = computed<Array<{ value: PipelineOrderType; ti
   ]
 })
 
+const workorderPromptImpactSummary = computed(() => {
+  if (!workorderPromptImpact.value) return null
+  return {
+    buildingCount: workorderPromptImpact.value.impactedBuildings.length,
+    affectedUserCount: workorderPromptImpact.value.affectedUserCount,
+    estimatedImpactHours: workorderPromptImpact.value.estimatedImpactHours,
+    buildingNames: workorderPromptImpact.value.impactedBuildings.map(item => item.buildingName),
+  }
+})
+
+const workorderPromptRecommendationView = computed(() => {
+  const recommendation = workorderPromptRecommendation.value
+  if (!recommendation) return null
+  if (!workorderPromptTypeOptions.value.some(item => item.value === recommendation.preset.type)) {
+    return null
+  }
+  return {
+    type: recommendation.preset.type,
+    title: recommendation.preset.title,
+    description: recommendation.preset.description,
+    priority: recommendation.preset.priority,
+    reason: recommendation.reason,
+    confidence: recommendation.confidence,
+  }
+})
+
 const selectedPointLabel = computed(() => {
   const sel = editorGraph.selected.value
   if (!sel) return '无'
@@ -1277,10 +1313,64 @@ async function loadRelatedWorkorders() {
   relatedWorkordersLoading.value = false
 }
 
+function buildPromptBypassRequirement(prompt: PostSaveWorkorderPrompt) {
+  if (!prompt.linkedBuildingNames.length) {
+    return `${prompt.featureName} 已发生联动变更，请结合现场实际确认影响范围与绕行措施。`
+  }
+  return `${prompt.linkedBuildingNames.join('、')} 受当前联动变更影响，请提前通知并安排临时保障。`
+}
+
+async function loadWorkorderPromptInsights(prompt: PostSaveWorkorderPrompt) {
+  const requestId = ++workorderPromptInsightRequestId
+  workorderPromptInsightLoading.value = true
+  workorderPromptInsightError.value = null
+  workorderPromptImpact.value = null
+  workorderPromptRecommendation.value = null
+
+  const [impactResult, recommendationResult] = await Promise.allSettled([
+    analyzeImpactScope({
+      nodeIds: prompt.nodeIds,
+      segmentIds: prompt.segmentIds,
+      buildingId: prompt.linkedBuildingIds[0],
+      buildingName: prompt.linkedBuildingNames[0],
+      medium: prompt.pipelineMedium,
+      area: prompt.area,
+    }),
+    recommendTemplate({
+      nodeIds: prompt.nodeIds,
+      segmentIds: prompt.segmentIds,
+      area: prompt.area,
+      medium: prompt.pipelineMedium,
+    }),
+  ])
+
+  if (requestId !== workorderPromptInsightRequestId) return
+
+  if (impactResult.status === 'fulfilled') {
+    workorderPromptImpact.value = impactResult.value
+  }
+
+  if (recommendationResult.status === 'fulfilled') {
+    workorderPromptRecommendation.value = recommendationResult.value
+  }
+
+  if (impactResult.status === 'rejected' || recommendationResult.status === 'rejected') {
+    workorderPromptInsightError.value = '部分联动分析结果加载失败'
+  } else {
+    workorderPromptInsightError.value = null
+  }
+
+  workorderPromptInsightLoading.value = false
+}
+
 function closeWorkorderPrompt(force = false) {
   if (workorderPromptSubmitting.value && !force) return
   workorderPromptVisible.value = false
   pendingWorkorderPrompt.value = null
+  workorderPromptImpact.value = null
+  workorderPromptRecommendation.value = null
+  workorderPromptInsightError.value = null
+  workorderPromptInsightLoading.value = false
 }
 
 function mergeUniqueStrings(...parts: Array<Array<string | undefined> | undefined>) {
@@ -1316,17 +1406,11 @@ async function submitLinkedWorkorder(payload: {
     if (payload.action === 'link' && payload.workorderId) {
       const detail = await pipelineOpsService.fetchWorkorder(payload.workorderId)
       const current = detail.workorder
-      const mergedDescription = [
-        current.description || '',
-        '',
-        `【二维编辑器联动】${prompt.featureName}`,
-        ...prompt.summaryLines.map(line => `- ${line}`),
-      ].filter(Boolean).join('\n')
 
       const request: PipelineOrderUpsertPayload = {
         id: current.id,
         title: current.title,
-        description: mergedDescription,
+        description: current.description,
         type: current.type,
         source: current.source,
         pipelineMedium: current.pipelineMedium || prompt.pipelineMedium,
@@ -1375,12 +1459,47 @@ async function submitLinkedWorkorder(payload: {
       result = await pipelineOpsService.createWorkorder(request)
     }
 
+    let latestWorkorder = result.workorder
+
+    if (workorderPromptImpact.value?.impactedBuildings.length) {
+      try {
+        const impactRes = await pipelineOpsService.adjustImpact({
+          id: latestWorkorder.id,
+          actor: 'admin-2d-editor',
+          note: prompt.kind === 'asset-binding' ? '二维编辑器房产绑定联动影响范围同步' : '二维编辑器拓扑联动影响范围同步',
+          impactedBuildings: workorderPromptImpact.value.impactedBuildings,
+          bypassRequirement: buildPromptBypassRequirement(prompt),
+        })
+        latestWorkorder = impactRes.workorder
+      } catch {
+        // Impact sync is best-effort and should not block the main workorder flow.
+      }
+    }
+
+    try {
+      const linkageLog = [
+        `二维编辑器联动：${prompt.featureName}`,
+        ...prompt.summaryLines.map(line => `- ${line}`),
+        prompt.linkedBuildingNames.length ? `- 关联楼宇：${prompt.linkedBuildingNames.join('、')}` : '',
+      ].filter(Boolean).join('\n')
+      const logRes = await pipelineOpsService.addExecutionLog({
+        id: latestWorkorder.id,
+        stage: 'system_linkage',
+        content: linkageLog,
+        actor: 'admin-2d-editor',
+        nodeId: prompt.nodeIds[0],
+      })
+      latestWorkorder = logRes.workorder
+    } catch {
+      // Linkage log is best-effort and should not block the main workorder flow.
+    }
+
     notifyWorkordersUpdated()
     await loadRelatedWorkorders()
-    upsertRelatedWorkorder(result.workorder, true)
+    upsertRelatedWorkorder(latestWorkorder, true)
     actionMessage.value = {
       type: 'ok',
-      text: payload.action === 'link' ? `已关联到工单：${result.workorder.id}` : `联动工单已创建：${result.workorder.id}`,
+      text: payload.action === 'link' ? `已关联到工单：${latestWorkorder.id}` : `联动工单已创建：${latestWorkorder.id}`,
     }
     closeWorkorderPrompt(true)
   } catch (err) {
@@ -2047,6 +2166,28 @@ watch(
       return
     }
     void loadInsights(featureId)
+  },
+  { immediate: true },
+)
+
+watch(
+  [
+    workorderPromptVisible,
+    () => pendingWorkorderPrompt.value?.featureId || '',
+    () => pendingWorkorderPrompt.value?.kind || '',
+    () => pendingWorkorderPrompt.value?.linkedBuildingIds.join(',') || '',
+    () => pendingWorkorderPrompt.value?.nodeIds.join(',') || '',
+    () => pendingWorkorderPrompt.value?.segmentIds.join(',') || '',
+  ],
+  ([visible]) => {
+    if (!visible || !pendingWorkorderPrompt.value) {
+      workorderPromptImpact.value = null
+      workorderPromptRecommendation.value = null
+      workorderPromptInsightError.value = null
+      workorderPromptInsightLoading.value = false
+      return
+    }
+    void loadWorkorderPromptInsights(pendingWorkorderPrompt.value)
   },
   { immediate: true },
 )

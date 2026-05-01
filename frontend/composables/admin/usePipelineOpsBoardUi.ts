@@ -536,6 +536,17 @@ export function usePipelineOpsBoardUi(mode: PipelineOpsBoardMode) {
     })
   }
 
+  function openPipeEditorFromWorkorder(item: PipelineWorkOrder) {
+    if (typeof window === 'undefined') return
+    const featureId = item.segmentIds[0] || item.topologyChain.find(id => !String(id).startsWith('N-')) || ''
+    const query = new URLSearchParams()
+    if (featureId) {
+      query.set('featureId', featureId)
+    }
+    query.set('workorderId', item.id)
+    window.open(`/admin/pipe-editor?${query.toString()}`, '_blank')
+  }
+
   function openMapWithTargets({
     workorderId,
     focusBuilding = '',
@@ -709,6 +720,7 @@ export function usePipelineOpsBoardUi(mode: PipelineOpsBoardMode) {
     submitInspectionRecord,
     convertInspection,
     locateOnMap,
+    openPipeEditorFromWorkorder,
     locateBuildingOnMap,
     formatTime,
     showNotice,

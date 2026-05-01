@@ -22,6 +22,22 @@ type WorkorderTypeOption = {
   description: string
 }
 
+type PromptImpactSummary = {
+  buildingCount: number
+  affectedUserCount: number
+  estimatedImpactHours: number
+  buildingNames: string[]
+}
+
+type PromptRecommendation = {
+  type: PipelineOrderType
+  title: string
+  description: string
+  priority: PipelinePriority
+  reason: string
+  confidence: number
+}
+
 const props = defineProps<{
   open: boolean
   submitting: boolean
@@ -35,6 +51,10 @@ const props = defineProps<{
   initialPriority: PipelinePriority
   availableTypes: WorkorderTypeOption[]
   relatedWorkorders: PipelineWorkOrder[]
+  impactSummary?: PromptImpactSummary | null
+  recommendation?: PromptRecommendation | null
+  insightLoading?: boolean
+  insightError?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -131,6 +151,15 @@ function handleConfirm() {
     deadlineAt: form.deadlineAt,
   })
 }
+
+function applyRecommendation() {
+  if (!props.recommendation) return
+  form.action = 'create'
+  form.type = props.recommendation.type
+  form.title = props.recommendation.title
+  form.description = props.recommendation.description
+  form.priority = props.recommendation.priority
+}
 </script>
 
 <template>
@@ -154,6 +183,55 @@ function handleConfirm() {
         <div class="workorder-prompt__summary">
           <div v-for="line in summaryLines" :key="line" class="workorder-prompt__summary-item">
             {{ line }}
+          </div>
+        </div>
+
+        <div v-if="insightLoading" class="workorder-prompt__empty-link">
+          正在分析影响范围并推荐工单模板...
+        </div>
+
+        <div v-else-if="insightError" class="workorder-prompt__empty-link">
+          {{ insightError }}
+        </div>
+
+        <div v-if="impactSummary" class="workorder-prompt__impact">
+          <div class="workorder-prompt__impact-title">影响预分析</div>
+          <div class="workorder-prompt__impact-grid">
+            <div class="workorder-prompt__impact-item">
+              <span>影响楼宇</span>
+              <strong>{{ impactSummary.buildingCount }} 栋</strong>
+            </div>
+            <div class="workorder-prompt__impact-item">
+              <span>预计影响人数</span>
+              <strong>{{ impactSummary.affectedUserCount }} 人</strong>
+            </div>
+            <div class="workorder-prompt__impact-item">
+              <span>预计影响时长</span>
+              <strong>{{ impactSummary.estimatedImpactHours }} 小时</strong>
+            </div>
+          </div>
+          <div v-if="impactSummary.buildingNames.length" class="workorder-prompt__context">
+            <span
+              v-for="name in impactSummary.buildingNames.slice(0, 6)"
+              :key="name"
+              class="token token--soft"
+            >{{ name }}</span>
+          </div>
+        </div>
+
+        <div v-if="recommendation" class="workorder-prompt__recommend">
+          <div class="workorder-prompt__recommend-head">
+            <div>
+              <div class="workorder-prompt__recommend-title">推荐模板</div>
+              <div class="workorder-prompt__recommend-reason">{{ recommendation.reason }}</div>
+            </div>
+            <button class="btn btn--sm" type="button" :disabled="submitting" @click="applyRecommendation">
+              应用推荐
+            </button>
+          </div>
+          <div class="workorder-prompt__recommend-meta">
+            <span>{{ recommendation.title }}</span>
+            <span>匹配度 {{ Math.round(recommendation.confidence * 100) }}%</span>
           </div>
         </div>
 
@@ -428,6 +506,61 @@ function handleConfirm() {
   line-height: 1.5;
 }
 
+.workorder-prompt__impact,
+.workorder-prompt__recommend {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.workorder-prompt__impact-title,
+.workorder-prompt__recommend-title {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.workorder-prompt__recommend-reason {
+  margin-top: 4px;
+  color: rgba(148, 163, 184, 0.92);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.workorder-prompt__impact-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.workorder-prompt__impact-item {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(30, 41, 59, 0.84);
+}
+
+.workorder-prompt__impact-item span,
+.workorder-prompt__recommend-meta {
+  color: rgba(148, 163, 184, 0.92);
+  font-size: 12px;
+}
+
+.workorder-prompt__impact-item strong {
+  font-size: 15px;
+}
+
+.workorder-prompt__recommend-head,
+.workorder-prompt__recommend-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .workorder-prompt__choice-grid {
   display: grid;
   gap: 10px;
@@ -530,6 +663,14 @@ function handleConfirm() {
 
   .workorder-prompt__action-switch {
     flex-direction: column;
+  }
+
+  .workorder-prompt__impact-grid,
+  .workorder-prompt__recommend-head,
+  .workorder-prompt__recommend-meta {
+    grid-template-columns: 1fr;
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .ops-form__row {

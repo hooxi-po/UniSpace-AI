@@ -16,6 +16,7 @@
           </div>
           <div class="detail-actions">
             <button class="ops-btn ops-btn--hero" @click="emit('locate', detail)">三维定位</button>
+            <button class="ops-btn ops-btn--hero" @click="emit('open-pipe-editor', detail)">二维编辑器</button>
             <button class="ops-btn" @click="emit('close')">关闭</button>
           </div>
         </div>
@@ -220,6 +221,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'locate', detail: PipelineWorkOrder): void
+  (e: 'open-pipe-editor', detail: PipelineWorkOrder): void
   (e: 'locate-building', buildingId: string): void
   (e: 'submit-impact-adjust'): void
   (e: 'submit-log'): void

@@ -19,6 +19,7 @@ import static org.mockito.Mockito.when;
 
 import java.lang.reflect.Method;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -218,6 +219,104 @@ class WorkOrderRepositoryTest {
         assertTrue(firstId.matches("WO-MAI-\\d+-[0-9a-f]{8}"));
         assertTrue(secondId.matches("WO-MAI-\\d+-[0-9a-f]{8}"));
         assertFalse(firstId.equals(secondId));
+    }
+
+    @Test
+    void normalizeWorkOrderInputRejectsUnknownNodeIds() {
+        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        when(jdbcTemplate.queryForList(anyString(), any(Object[].class))).thenReturn(List.of());
+        WorkOrderRepository repository = new WorkOrderRepository(jdbcTemplate, objectMapper);
+
+        ObjectNode body = objectMapper.createObjectNode();
+        body.put("title", "节点校验");
+        body.put("type", "inspection");
+        body.set("nodeIds", textArray("NODE-UNKNOWN"));
+
+        WorkOrderRepository.PipelineOpsException ex = assertThrows(
+                WorkOrderRepository.PipelineOpsException.class,
+                () -> repository.normalizeWorkOrderInput(body, null, "WO-TEST-1", true)
+        );
+
+        assertEquals(400, ex.getStatusCode());
+        assertEquals("node_ids_invalid", ex.getMessage());
+    }
+
+    @Test
+    void normalizeWorkOrderInputRejectsUnknownBuildingId() {
+        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        when(jdbcTemplate.queryForList(anyString(), any(Object[].class))).thenReturn(List.of());
+        WorkOrderRepository repository = new WorkOrderRepository(jdbcTemplate, objectMapper);
+
+        ObjectNode body = objectMapper.createObjectNode();
+        body.put("title", "楼宇校验");
+        body.put("type", "inspection");
+        body.put("buildingId", "BLD-UNKNOWN");
+
+        WorkOrderRepository.PipelineOpsException ex = assertThrows(
+                WorkOrderRepository.PipelineOpsException.class,
+                () -> repository.normalizeWorkOrderInput(body, null, "WO-TEST-2", true)
+        );
+
+        assertEquals(400, ex.getStatusCode());
+        assertEquals("building_id_invalid", ex.getMessage());
+    }
+
+    @Test
+    void normalizeWorkOrderInputCanonicalizesSegmentFeatureIds() {
+        JdbcTemplate jdbcTemplate = mock(JdbcTemplate.class);
+        when(jdbcTemplate.queryForList(anyString(), any(Object[].class))).thenAnswer(invocation -> {
+            String sql = invocation.getArgument(0, String.class);
+            if (sql.contains("FROM pipe_segments ps")) {
+                return List.of(Map.of(
+                        "id", "SEG-001",
+                        "feature_id", "pipe-feature-1",
+                        "from_node_id", "NODE-A",
+                        "to_node_id", "NODE-B"
+                ));
+            }
+            if (sql.contains("FROM pipe_segments WHERE")) {
+                return List.of(Map.of(
+                        "id", "SEG-001",
+                        "feature_id", "pipe-feature-1"
+                ));
+            }
+            if (sql.contains("FROM buildings WHERE code = ?")) {
+                return List.of(Map.of(
+                        "building_id", "BLD-001",
+                        "building_name", "博学楼"
+                ));
+            }
+            if (sql.contains("FROM asset_relations")) {
+                return List.of(Map.of("building_id", "BLD-001"));
+            }
+            if (sql.contains("FROM building_rooms")) {
+                return List.of(Map.of(
+                        "id", "ROOM-101",
+                        "room_no", "101",
+                        "floor_no", 1
+                ));
+            }
+            if (sql.contains("FROM rooms")) {
+                return List.of();
+            }
+            return List.of();
+        });
+        WorkOrderRepository repository = new WorkOrderRepository(jdbcTemplate, objectMapper);
+
+        ObjectNode body = objectMapper.createObjectNode();
+        body.put("title", "管段归一化");
+        body.put("type", "maintenance");
+        body.put("pipelineMedium", "water");
+        body.put("buildingId", "BLD-001");
+        body.set("segmentIds", textArray("pipe-feature-1"));
+
+        ObjectNode normalized = repository.normalizeWorkOrderInput(body, null, "WO-TEST-3", true);
+
+        assertEquals("SEG-001", normalized.path("segmentIds").path(0).asText());
+        assertEquals("BLD-001", normalized.path("buildingId").asText());
+        assertEquals("博学楼", normalized.path("buildingName").asText());
+        assertTrue(normalized.path("topologyChain").toString().contains("SEG-001"));
+        assertTrue(normalized.path("topologyChain").toString().contains("pipe-feature-1"));
     }
 
     private ObjectNode inspectionOrderWithManualImpactScope() {

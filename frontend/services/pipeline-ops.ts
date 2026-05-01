@@ -3,6 +3,8 @@ import type {
   ConvertToMaintenancePayload,
   ImpactAdjustPayload,
   InspectionRecordPayload,
+  PipelineAssetRef,
+  PipelineMedium,
   PipelineExecutionLogPayload,
   PipelineOpsDashboard,
   PipelineOrderListQuery,
@@ -35,6 +37,13 @@ export type PipelineQuickReportPayload = {
   severity: 'low' | 'medium' | 'high'
   note?: string
   reportedBy?: string
+}
+
+export type PipelineRelatedWorkordersQuery = {
+  segmentIds?: string[]
+  nodeIds?: string[]
+  buildingIds?: string[]
+  limit?: number
 }
 
 async function readError(res: Response) {
@@ -73,6 +82,17 @@ export const pipelineOpsService = {
     })
   },
 
+  async fetchRelatedWorkorders(query: PipelineRelatedWorkordersQuery) {
+    return $fetch<{ list: PipelineWorkOrder[] }>('/api/pipeline-ops/workorders-related', {
+      query: {
+        segmentIds: (query.segmentIds || []).join(','),
+        nodeIds: (query.nodeIds || []).join(','),
+        buildingIds: (query.buildingIds || []).join(','),
+        limit: query.limit,
+      },
+    })
+  },
+
   async fetchStats(query: PipelineOrderListQuery = {}) {
     return $fetch<{ stats: PipelineOpsStats }>('/api/pipeline-ops/stats', { query })
   },
@@ -91,6 +111,37 @@ export const pipelineOpsService = {
       },
       true,
     )
+  },
+
+  async analyzeImpactScope(payload: {
+    segmentIds?: string[]
+    nodeIds?: string[]
+    buildingId?: string
+    buildingName?: string
+    medium?: PipelineMedium
+    area?: string
+  }) {
+    return await requestJson<{
+      impactedBuildings: PipelineWorkOrder['impactScope']['impactedBuildings']
+      estimatedImpactHours: number
+      affectedUserCount: number
+    }>(
+      '/api/pipeline-ops/impact-analysis',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }
+    )
+  },
+
+  async searchAssets(query: {
+    assetType: 'segment' | 'node' | 'building'
+    q?: string
+    pipelineMedium?: PipelineMedium
+    limit?: number
+  }) {
+    return await $fetch<{ list: PipelineAssetRef[] }>('/api/pipeline-ops/assets', { query })
   },
 
   async autoCreate(payload: {

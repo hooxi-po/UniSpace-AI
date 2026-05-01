@@ -25,6 +25,20 @@ export type PipelineOrderListResult = {
   }
 }
 
+export type PipelineRelatedWorkordersQuery = {
+  segmentIds?: string[]
+  nodeIds?: string[]
+  buildingIds?: string[]
+  limit?: number
+}
+
+export type PipelineAssetListQuery = {
+  assetType: string
+  q?: string
+  pipelineMedium?: string
+  limit?: number
+}
+
 function toBackendError(error: unknown) {
   const statusCode = Number((error as any)?.statusCode || (error as any)?.response?.status || 502)
   const statusMessage = String(
@@ -59,6 +73,43 @@ async function pipelineOpsFetch<T>(path: string, options?: {
 
 export async function listWorkorders(query: PipelineOrderListQuery = {}): Promise<PipelineOrderListResult> {
   return await pipelineOpsFetch<PipelineOrderListResult>('/workorders', {
+    method: 'GET',
+    query,
+  })
+}
+
+export async function listRelatedWorkorders(query: PipelineRelatedWorkordersQuery) {
+  return await pipelineOpsFetch<{ list: PipelineWorkOrder[] }>('/workorders-related', {
+    method: 'GET',
+    query: {
+      segmentIds: (query.segmentIds || []).join(','),
+      nodeIds: (query.nodeIds || []).join(','),
+      buildingIds: (query.buildingIds || []).join(','),
+      limit: query.limit,
+    },
+  })
+}
+
+export async function analyzeImpactScope(payload: {
+  segmentIds?: string[]
+  nodeIds?: string[]
+  buildingId?: string
+  buildingName?: string
+  medium?: string
+  area?: string
+}) {
+  return await pipelineOpsFetch<{
+    impactedBuildings: any[]
+    estimatedImpactHours: number
+    affectedUserCount: number
+  }>('/impact-analysis', {
+    method: 'POST',
+    body: payload,
+  })
+}
+
+export async function listPipelineAssets(query: PipelineAssetListQuery) {
+  return await pipelineOpsFetch<{ list: Array<Record<string, unknown>> }>('/assets', {
     method: 'GET',
     query,
   })

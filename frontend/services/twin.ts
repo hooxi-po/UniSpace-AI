@@ -106,10 +106,26 @@ export const twinService = {
   updatePipeProperties(
     _backendBaseUrl: string,
     id: string,
-    payload: { properties: Record<string, unknown>; visible?: boolean; updatedBy?: string }
+    payload: { properties: Record<string, unknown>; visible?: boolean; updatedBy?: string; buildingIds?: string[] }
   ) {
     return requestJson<{ ok: boolean; id: string; action: string }>(
       `/api/backend/twin/pipes/${encodeURIComponent(id)}/properties`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      },
+      true
+    )
+  },
+
+  updatePipeBuildings(
+    _backendBaseUrl: string,
+    id: string,
+    payload: { buildingIds: string[]; updatedBy?: string }
+  ) {
+    return requestJson<{ ok: boolean; id: string; action: string; buildingIds: string[] }>(
+      `/api/backend/twin/pipes/${encodeURIComponent(id)}/buildings`,
       {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },

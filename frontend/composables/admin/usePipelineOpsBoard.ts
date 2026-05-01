@@ -56,6 +56,7 @@ export function usePipelineOpsBoard(mode: PipelineOpsBoardMode) {
   const queryMedium = ref<PipelineMedium | ''>('')
   const queryPriority = ref<PipelinePriority | ''>('')
   const queryNodeId = ref('')
+  const querySegmentId = ref('')
   const queryBuildingId = ref('')
   const queryAssignee = ref('')
   const queryCreatedFrom = ref('')
@@ -71,6 +72,7 @@ export function usePipelineOpsBoard(mode: PipelineOpsBoardMode) {
     pipelineMedium: queryMedium.value || undefined,
     priority: queryPriority.value || undefined,
     nodeId: queryNodeId.value || undefined,
+    segmentId: querySegmentId.value || undefined,
     buildingId: queryBuildingId.value || undefined,
     assignee: queryAssignee.value || undefined,
     createdFrom: queryCreatedFrom.value || undefined,
@@ -87,6 +89,7 @@ export function usePipelineOpsBoard(mode: PipelineOpsBoardMode) {
     pipelineMedium: queryMedium.value || undefined,
     priority: queryPriority.value || undefined,
     nodeId: queryNodeId.value || undefined,
+    segmentId: querySegmentId.value || undefined,
     buildingId: queryBuildingId.value || undefined,
     assignee: queryAssignee.value || undefined,
     createdFrom: queryCreatedFrom.value || undefined,
@@ -427,6 +430,7 @@ export function usePipelineOpsBoard(mode: PipelineOpsBoardMode) {
     queryMedium,
     queryPriority,
     queryNodeId,
+    querySegmentId,
     queryBuildingId,
     queryAssignee,
     queryCreatedFrom,

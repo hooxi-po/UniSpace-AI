@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/pipeline-ops")
@@ -76,6 +77,37 @@ public class PipelineOpsController {
         ObjectNode root = objectMapper.createObjectNode();
         root.set("workorder", workorder);
         return root;
+    }
+
+    @GetMapping(value = "/workorders-related", produces = MediaType.APPLICATION_JSON_VALUE)
+    public JsonNode listRelatedWorkorders(
+            @RequestParam(name = "segmentIds", required = false) String segmentIds,
+            @RequestParam(name = "nodeIds", required = false) String nodeIds,
+            @RequestParam(name = "buildingIds", required = false) String buildingIds,
+            @RequestParam(name = "limit", required = false) Integer limit
+    ) {
+        return repository.listRelatedWorkorders(
+                splitCsv(segmentIds),
+                splitCsv(nodeIds),
+                splitCsv(buildingIds),
+                limit
+        );
+    }
+
+    @PostMapping(value = "/impact-analysis", produces = MediaType.APPLICATION_JSON_VALUE)
+    public JsonNode analyzeImpactScope(@RequestBody String body) {
+        ObjectNode payload = readObjectBody(body);
+        return repository.analyzeImpactScope(payload);
+    }
+
+    @GetMapping(value = "/assets", produces = MediaType.APPLICATION_JSON_VALUE)
+    public JsonNode listAssets(
+            @RequestParam(name = "assetType") String assetType,
+            @RequestParam(name = "q", required = false) String keyword,
+            @RequestParam(name = "pipelineMedium", required = false) String pipelineMedium,
+            @RequestParam(name = "limit", required = false) Integer limit
+    ) {
+        return repository.listAssets(text(assetType), text(keyword), text(pipelineMedium), limit);
     }
 
     @PostMapping(value = "/workorders", produces = MediaType.APPLICATION_JSON_VALUE)
@@ -238,6 +270,16 @@ public class PipelineOpsController {
         if (value == null) return null;
         String trimmed = value.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private List<String> splitCsv(String raw) {
+        String text = text(raw);
+        if (text == null) return List.of();
+        return java.util.Arrays.stream(text.split(","))
+                .map(String::trim)
+                .filter(part -> !part.isEmpty())
+                .distinct()
+                .toList();
     }
 
     private WorkOrderRepository.PipelineOrderListQuery buildListQuery(

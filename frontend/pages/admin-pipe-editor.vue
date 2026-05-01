@@ -88,13 +88,12 @@ const currentWorkorderId = computed(() => {
 const workorderFeatureId = computed(() => {
   const item = workorderDetail.value
   if (!item) return null
-  const directSegment = item.segmentIds[0]
-  if (directSegment) return directSegment
   const fallbackSegment = item.topologyChain.find(id => {
     const normalized = String(id || '').trim()
     return normalized.length > 0 && !normalized.startsWith('N-')
   })
-  return fallbackSegment || null
+  if (fallbackSegment) return fallbackSegment
+  return item.segmentIds[0] || null
 })
 
 const initialFeatureId = computed(() => routeFeatureId.value || workorderFeatureId.value)

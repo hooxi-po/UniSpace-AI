@@ -69,8 +69,9 @@
           <div class="ops-create-card__meta">必填优先级与介质</div>
         </div>
 
-        <div class="ops-form__row">
-          <label>工单标题 <span class="required-mark">*</span>
+        <div class="ops-form__row ops-form__row--aligned">
+          <label class="ops-create-field">
+            <span class="ops-create-field__label">工单标题 <span class="required-mark">*</span></span>
             <input
               v-model="form.title"
               class="ops-input"
@@ -78,7 +79,8 @@
               placeholder="例如：实验楼污水主管巡检复核"
             />
           </label>
-          <label>工单描述
+          <label class="ops-create-field">
+            <span class="ops-create-field__label">工单描述</span>
             <input v-model="form.description" class="ops-input" placeholder="补充异常现象、影响范围或处置目标" />
           </label>
         </div>
@@ -239,15 +241,17 @@
           <div class="ops-create-card__meta">自动生成待办工单</div>
         </div>
 
-        <div class="ops-form__row">
-          <label>触发类型
+        <div class="ops-form__row ops-form__row--aligned">
+          <label class="ops-create-field">
+            <span class="ops-create-field__label">触发类型</span>
             <select v-model="autoForm.trigger" class="ops-input">
               <option value="telemetry_alert">监测异常</option>
               <option value="anomaly_alert">人工上报异常</option>
               <option value="kg_inference">知识图谱推理</option>
             </select>
           </label>
-          <label>触发原因 <span class="required-mark">*</span>
+          <label class="ops-create-field">
+            <span class="ops-create-field__label">触发原因 <span class="required-mark">*</span></span>
             <input v-model="autoForm.reason" class="ops-input" placeholder="例如：N-2301 压力异常，建议发起复核巡检" />
           </label>
         </div>
@@ -782,6 +786,22 @@ function applyRecommendedTemplate() {
 
 .ops-form__actions--split {
   justify-content: space-between;
+}
+
+.ops-form__row--aligned {
+  align-items: start;
+}
+
+.ops-create-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ops-create-field__label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
 }
 
 .ops-modal {

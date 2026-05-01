@@ -49,6 +49,10 @@ export function usePipe2DEditorData(options: UsePipe2DEditorDataOptions) {
   const telemetryPreview = computed(() => telemetryList.value.slice(0, 5))
   const auditPreview = computed(() => auditLogs.value.slice(0, 5))
 
+  function isDraftFeature(feature: GeoJsonFeature | null) {
+    return Boolean(feature?.properties && (feature.properties as Record<string, unknown>).__draft)
+  }
+
   function clearInsights() {
     insightError.value = null
     drilldown.value = null
@@ -135,6 +139,7 @@ export function usePipe2DEditorData(options: UsePipe2DEditorDataOptions) {
     const properties = { ...(feature.properties || {}) }
     const visible = Boolean(properties.visible ?? true)
     delete (properties as Record<string, unknown>).visible
+    delete (properties as Record<string, unknown>).__draft
 
     const oldType = String(feature.geometry?.type || 'LineString')
     const shouldUseMulti = oldType === 'MultiLineString' || options.draftLines.value.length > 1
@@ -162,16 +167,30 @@ export function usePipe2DEditorData(options: UsePipe2DEditorDataOptions) {
     options.actionMessage.value = null
     try {
       const payload = buildPayloadForSave(options.selectedFeature.value)
-      try {
-        await twinService.updatePipeGeometry(
-          options.backendBaseUrl.value,
-          payload.id,
-          payload.geometry,
-          'admin-2d-editor',
-        )
-      } catch {
-        // Backward compatible fallback when twin write API is unavailable.
-        await geoFeatureService.update(options.backendBaseUrl.value, payload)
+      if (isDraftFeature(options.selectedFeature.value)) {
+        await geoFeatureService.create(options.backendBaseUrl.value, payload)
+        try {
+          await twinService.updatePipeGeometry(
+            options.backendBaseUrl.value,
+            payload.id,
+            payload.geometry,
+            'admin-2d-editor',
+          )
+        } catch {
+          // Twin sync is best-effort for freshly created pipes.
+        }
+      } else {
+        try {
+          await twinService.updatePipeGeometry(
+            options.backendBaseUrl.value,
+            payload.id,
+            payload.geometry,
+            'admin-2d-editor',
+          )
+        } catch {
+          // Backward compatible fallback when twin write API is unavailable.
+          await geoFeatureService.update(options.backendBaseUrl.value, payload)
+        }
       }
 
       const index = options.pipes.value.findIndex(item => String(item.id) === payload.id)
@@ -194,7 +213,10 @@ export function usePipe2DEditorData(options: UsePipe2DEditorDataOptions) {
 
       options.originalLines.value = cloneLines(options.draftLines.value)
       options.history.value = []
-      options.actionMessage.value = { type: 'ok', text: `已保存 ${payload.id} 的几何` }
+      options.actionMessage.value = {
+        type: 'ok',
+        text: isDraftFeature(options.selectedFeature.value) ? `已创建新管道 ${payload.id}` : `已保存 ${payload.id} 的几何`,
+      }
       options.emitSaved(payload.id)
       loadInsights(payload.id)
     } catch (err: unknown) {

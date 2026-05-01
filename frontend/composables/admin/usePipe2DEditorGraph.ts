@@ -26,7 +26,7 @@ import {
   type PipeGraph,
   type PipeNode,
 } from '~/utils/pipe2d-graph'
-import type { Lines, Point } from '~/utils/pipe2d-geometry'
+import { isSamePoint, type Lines, type Point } from '~/utils/pipe2d-geometry'
 
 // ---------------------------------------------------------------------------
 // 选中状态类型
@@ -212,6 +212,15 @@ export function usePipe2DEditorGraph(options: {
     selected.value = { kind: 'node', nodeId: node.id }
     syncDraftLinesFromGraph()
     return node
+  }
+
+  function ensureNodeAt(lon: number, lat: number, type: NodeType = 'default', attributes: NodeAttributes = {}): PipeNode {
+    const existing = graph.value.nodes.find(node => isSamePoint([node.lon, node.lat], [lon, lat], 1e-8))
+    if (existing) {
+      selected.value = { kind: 'node', nodeId: existing.id }
+      return existing
+    }
+    return addNode(lon, lat, type, attributes)
   }
 
   function removeNode(nodeId: string) {
@@ -403,6 +412,7 @@ export function usePipe2DEditorGraph(options: {
     redoGraph,
     // nodes
     addNode,
+    ensureNodeAt,
     removeNode,
     removeBatch,
     updateNode,

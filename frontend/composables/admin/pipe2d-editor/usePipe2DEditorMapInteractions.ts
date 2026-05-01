@@ -39,7 +39,14 @@ type UsePipe2DEditorMapInteractionsOptions = {
   addNodeMode: Ref<boolean>
   quickReportMode?: Ref<boolean>
   placeGraphNodeAtScreen: (x: number, y: number) => boolean
-  pickGraphEntity: (screenPosition: { x: number; y: number }) => { type: 'node'; nodeId: string } | { type: 'edge'; edgeId: string } | null
+  pickGraphEntity: (
+    screenPosition: { x: number; y: number },
+  ) => (
+    | { type: 'node'; nodeId: string }
+    | { type: 'external-node'; lon: number; lat: number; featureId: string }
+    | { type: 'edge'; edgeId: string }
+    | null
+  )
   findNearestGraphEdge?: (screenPosition: { x: number; y: number }, thresholdPx?: number) => string | null
   selectGraphNode: (nodeId: string) => void
   selectGraphEdge: (edgeId: string) => void
@@ -73,6 +80,7 @@ type UsePipe2DEditorMapInteractionsOptions = {
   startQuickReport?: (payload: { lon: number; lat: number; nodeId?: string | null; edgeId?: string | null }) => void
   editPipeMode?: Ref<boolean>
   connectGraphNodes?: (sourceId: string, targetId: string, edgeType: 'straight' | 'curve') => void
+  ensureSharedGraphNodeAt?: (lon: number, lat: number) => string
 }
 
 export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapInteractionsOptions) {
@@ -563,14 +571,20 @@ export function usePipe2DEditorMapInteractions(options: UsePipe2DEditorMapIntera
       // 管线编辑模式：两次点击连线
       if (options.editPipeMode?.value) {
         const graphHit = options.pickGraphEntity({ x: movement.position.x, y: movement.position.y })
-        if (!graphHit || graphHit.type !== 'node') {
+        const resolvedNodeId = graphHit?.type === 'node'
+          ? graphHit.nodeId
+          : graphHit?.type === 'external-node'
+            ? options.ensureSharedGraphNodeAt?.(graphHit.lon, graphHit.lat) ?? null
+            : null
+
+        if (!resolvedNodeId) {
           // 点击空白或边：清除起点
           editPipeSourceNodeId = null
           options.clearGraphSelection?.()
           options.renderDraftGraphics()
           return
         }
-        const nodeId = graphHit.nodeId
+        const nodeId = resolvedNodeId
         if (!editPipeSourceNodeId) {
           // 第一次点击：选为起点
           editPipeSourceNodeId = nodeId

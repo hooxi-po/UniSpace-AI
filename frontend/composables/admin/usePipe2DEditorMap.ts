@@ -232,6 +232,7 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
    */
   function pickEntity(screenPosition: { x: number; y: number }):
     | { type: 'node'; nodeId: string }
+    | { type: 'external-node'; lon: number; lat: number; featureId: string }
     | { type: 'edge'; edgeId: string }
     | { type: 'connectionPoint'; nodeId: string; direction: 'top' | 'right' | 'bottom' | 'left' }
     | { type: 'controlPoint'; edgeId: string; cpIndex: number }
@@ -287,6 +288,16 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
         return {
           type: 'node',
           nodeId: String(nodeId),
+        }
+      }
+
+      const externalGraphNode = Boolean(readProperty(props, 'externalGraphNode'))
+      if (externalGraphNode) {
+        return {
+          type: 'external-node',
+          lon: Number(readProperty(props, 'externalNodeLon') ?? 0),
+          lat: Number(readProperty(props, 'externalNodeLat') ?? 0),
+          featureId: String(readProperty(props, 'externalFeatureId') || ''),
         }
       }
     }
@@ -438,6 +449,14 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     pickGraphEntity: (pos) => {
       const result = pickEntity(pos)
       if (result?.type === 'node') return { type: 'node' as const, nodeId: result.nodeId }
+      if (result?.type === 'external-node') {
+        return {
+          type: 'external-node' as const,
+          lon: result.lon,
+          lat: result.lat,
+          featureId: result.featureId,
+        }
+      }
       if (result?.type === 'edge') return { type: 'edge' as const, edgeId: result.edgeId }
       const nearestEdgeId = findNearestGraphEdge(pos)
       if (nearestEdgeId) return { type: 'edge' as const, edgeId: nearestEdgeId }
@@ -516,6 +535,10 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     editPipeMode: options.editPipeMode,
     connectGraphNodes: (sourceId, targetId, edgeType) => {
       editorGraph.addEdge(sourceId, targetId, edgeType)
+    },
+    ensureSharedGraphNodeAt: (lon, lat) => {
+      const node = editorGraph.ensureNodeAt(lon, lat)
+      return node.id
     },
   })
 

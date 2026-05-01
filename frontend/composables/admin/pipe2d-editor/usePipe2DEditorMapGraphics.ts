@@ -44,6 +44,7 @@ function toSurfaceCartesian(point: Point) {
 }
 
 const GROUND_POLYLINE_ARC_TYPE = Cesium.ArcType.GEODESIC
+const BUILDING_OUTLINE_COLOR = Cesium.Color.fromCssColorString('#94a3b8').withAlpha(0.95)
 
 function createSolidPolylineMaterial(color: string, alpha = 1) {
   const base = Cesium.Color.fromCssColorString(color).withAlpha(alpha)
@@ -83,6 +84,9 @@ type UsePipe2DEditorMapGraphicsOptions = {
   getGraphicLayer: () => any | null
   getMars3dLib: () => any | null
   pipes: Ref<GeoJsonFeature[]>
+  buildings: Ref<GeoJsonFeature[]>
+  showBuildings: Ref<boolean>
+  showExternalNodes: Ref<boolean>
   selectedFeature: ComputedRef<GeoJsonFeature | null>
   draftLines: Ref<Lines>
   activeLineIndex: Ref<number>
@@ -119,6 +123,7 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
   const currentGraphEdgeEntities: Cesium.Entity[] = []
   const currentControlPointEntities: Cesium.Entity[] = []
   const currentExternalNodeEntities: Cesium.Entity[] = []
+  const currentBuildingEntities: Cesium.Entity[] = []
   let previewLineEntity: Cesium.Entity | null = null
 
   // ---- 防抖渲染优化 ----
@@ -132,6 +137,7 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
     for (const e of currentGraphEdgeEntities) viewer.entities.remove(e)
     for (const e of currentControlPointEntities) viewer.entities.remove(e)
     for (const e of currentExternalNodeEntities) viewer.entities.remove(e)
+    for (const e of currentBuildingEntities) viewer.entities.remove(e)
     if (previewLineEntity) {
       viewer.entities.remove(previewLineEntity)
       previewLineEntity = null
@@ -140,6 +146,7 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
     currentGraphEdgeEntities.length = 0
     currentControlPointEntities.length = 0
     currentExternalNodeEntities.length = 0
+    currentBuildingEntities.length = 0
   }
 
   function clearGraphics() {
@@ -302,6 +309,7 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
   }
 
   function renderExternalSharedNodeEntities() {
+    if (!options.showExternalNodes.value) return
     const viewer = options.getViewer()
     const selectedFeature = options.selectedFeature.value
     if (!viewer || !selectedFeature) return
@@ -363,6 +371,77 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
             },
           })
           currentExternalNodeEntities.push(circle)
+        }
+      }
+    }
+  }
+
+  function isPointArray(value: unknown): value is number[] {
+    return Array.isArray(value)
+      && value.length >= 2
+      && Number.isFinite(Number(value[0]))
+      && Number.isFinite(Number(value[1]))
+  }
+
+  function geometryToPolygonGroups(geometry: GeoJsonFeature['geometry']) {
+    const type = String(geometry?.type || '')
+    const coordinates = geometry?.coordinates
+    if (type === 'Polygon' && Array.isArray(coordinates)) {
+      return [coordinates]
+    }
+    if (type === 'MultiPolygon' && Array.isArray(coordinates)) {
+      return coordinates.filter(Array.isArray)
+    }
+    return []
+  }
+
+  function ringToCartesianPositions(ring: unknown) {
+    if (!Array.isArray(ring)) return [] as Cesium.Cartesian3[]
+    return ring
+      .filter(isPointArray)
+      .map(point => Cesium.Cartesian3.fromDegrees(Number(point[0]), Number(point[1]), 0))
+  }
+
+  function renderBuildingEntities() {
+    if (!options.showBuildings.value) return
+    const viewer = options.getViewer()
+    if (!viewer) return
+
+    for (const entity of currentBuildingEntities) {
+      viewer.entities.remove(entity)
+    }
+    currentBuildingEntities.length = 0
+
+    for (const feature of options.buildings.value) {
+      const groups = geometryToPolygonGroups(feature.geometry)
+      for (const polygon of groups) {
+        if (!Array.isArray(polygon) || polygon.length === 0) continue
+        const outer = ringToCartesianPositions(polygon[0])
+        if (outer.length < 3) continue
+        const outlineEntity = viewer.entities.add({
+          polyline: {
+            positions: outer,
+            width: 1.8,
+            material: new Cesium.ColorMaterialProperty(BUILDING_OUTLINE_COLOR),
+            arcType: GROUND_POLYLINE_ARC_TYPE,
+            clampToGround: true,
+          },
+        })
+        currentBuildingEntities.push(outlineEntity)
+
+        for (const ring of polygon.slice(1)) {
+          const holeOutline = ringToCartesianPositions(ring)
+          if (holeOutline.length < 3) continue
+          const holeEntity = viewer.entities.add({
+            polyline: {
+              positions: holeOutline,
+              width: 1.4,
+              material: new Cesium.ColorMaterialProperty(BUILDING_OUTLINE_COLOR.withAlpha(0.78)),
+              arcType: GROUND_POLYLINE_ARC_TYPE,
+              clampToGround: true,
+            },
+          })
+          currentBuildingEntities.push(holeEntity)
         }
       }
     }
@@ -602,6 +681,7 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
     const hasGraphOverlay = Boolean(
       options.graph?.value.nodes.length || options.graph?.value.edges.length,
     )
+    renderBuildingEntities()
 
     if (graphicLayer && mars3dLib) {
       if (!hasGraphOverlay) {

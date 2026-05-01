@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { Component } from 'vue'
 
 type ToolItem = {
@@ -9,12 +10,16 @@ type ToolItem = {
   shortcut: string
 }
 
-defineProps<{
+const props = defineProps<{
   activeToolLabel: string
   toolItems: ToolItem[]
   activeTool: string
   saving: boolean
 }>()
+
+const activeToolItem = computed(() => {
+  return props.toolItems.find(tool => tool.key === props.activeTool) || null
+})
 
 const emit = defineEmits<{
   (e: 'pointerdown', toolKey: string, event: PointerEvent): void
@@ -24,7 +29,12 @@ const emit = defineEmits<{
 
 <template>
   <aside class="left-toolbar">
-    <div class="tool-mode-hint">当前：{{ activeToolLabel }}</div>
+    <div class="tool-mode-hint">
+      <div class="tool-mode-hint__main">
+        <component :is="activeToolItem?.icon" :size="14" :stroke-width="2.2" />
+        <span class="tool-mode-hint__label">{{ activeToolLabel }}</span>
+      </div>
+    </div>
     <button
       v-for="tool in toolItems"
       :key="tool.key"

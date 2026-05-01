@@ -45,6 +45,7 @@ type UsePipe2DEditorMapOptions = {
   open: Ref<boolean>
   mapContainerRef: Ref<HTMLDivElement | null>
   pipes: Ref<GeoJsonFeature[]>
+  buildings: Ref<GeoJsonFeature[]>
   selectedFeature: ComputedRef<GeoJsonFeature | null>
   draftLines: Ref<Lines>
   originalLines: Ref<Lines>
@@ -77,6 +78,8 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
   const addPointMode = ref(false)
   const addNodeMode = ref(false)
   const snapEnabled = ref(true)
+  const showBuildings = ref(true)
+  const showExternalNodes = ref(true)
   const history = ref<Lines[]>([])
   const redoHistory = ref<Lines[]>([])
   const deletePointMode = ref(false)
@@ -381,6 +384,9 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
       getGraphicLayer: () => graphicLayer,
       getMars3dLib: () => mars3dLib,
       pipes: options.pipes,
+      buildings: options.buildings,
+      showBuildings,
+      showExternalNodes,
       selectedFeature: options.selectedFeature,
       draftLines: options.draftLines,
       activeLineIndex,
@@ -872,6 +878,24 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
   )
 
   watch(
+    () => options.buildings.value,
+    () => {
+      if (!options.open.value || !mapReady.value) return
+      renderDraftGraphics()
+    },
+  )
+
+  watch(showBuildings, () => {
+    if (!options.open.value || !mapReady.value) return
+    renderDraftGraphics()
+  })
+
+  watch(showExternalNodes, () => {
+    if (!options.open.value || !mapReady.value) return
+    renderDraftGraphics()
+  })
+
+  watch(
     () => options.draftLines.value,
     () => {
       if (skipDraftLinesWatch) {
@@ -908,6 +932,8 @@ export function usePipe2DEditorMap(options: UsePipe2DEditorMapOptions) {
     addPointMode,
     addNodeMode,
     snapEnabled,
+    showBuildings,
+    showExternalNodes,
     history,
     historyItems,
     canRedo,

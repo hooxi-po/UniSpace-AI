@@ -26,6 +26,7 @@ type UsePipe2DEditorDataOptions = {
   backendBaseUrl: Ref<string>
   initialFeatureId: Ref<string | null | undefined>
   pipes: Ref<GeoJsonFeature[]>
+  buildings: Ref<GeoJsonFeature[]>
   selectedFeatureId: Ref<string>
   selectedFeature: ComputedRef<GeoJsonFeature | null>
   draftLines: Ref<Lines>
@@ -67,13 +68,23 @@ export function usePipe2DEditorData(options: UsePipe2DEditorDataOptions) {
     options.actionMessage.value = null
 
     try {
-      const features = await geoFeatureService.list(options.backendBaseUrl.value, {
-        layer: 'pipes',
-        limit: 6000,
-      })
-      options.pipes.value = features.filter(item => {
+      const [pipeFeatures, buildingFeatures] = await Promise.all([
+        geoFeatureService.list(options.backendBaseUrl.value, {
+          layer: 'pipes',
+          limit: 6000,
+        }),
+        geoFeatureService.list(options.backendBaseUrl.value, {
+          layer: 'buildings',
+          limit: 3000,
+        }),
+      ])
+      options.pipes.value = pipeFeatures.filter(item => {
         const type = String(item.geometry?.type || '')
         return type === 'LineString' || type === 'MultiLineString'
+      })
+      options.buildings.value = buildingFeatures.filter(item => {
+        const type = String(item.geometry?.type || '')
+        return type === 'Polygon' || type === 'MultiPolygon'
       })
 
       const preferredId = options.initialFeatureId.value
@@ -93,6 +104,7 @@ export function usePipe2DEditorData(options: UsePipe2DEditorDataOptions) {
     } catch (err: unknown) {
       loadError.value = getErrorMessage(err, '加载管道列表失败')
       options.pipes.value = []
+      options.buildings.value = []
       options.selectedFeatureId.value = ''
       return false
     } finally {

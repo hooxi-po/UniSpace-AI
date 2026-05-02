@@ -15,7 +15,7 @@
             <span>{{ mediumLabel[workorderDetail.pipelineMedium] }}</span>
           </template>
           <span v-else-if="workorderError">{{ workorderError }}</span>
-          <span v-else>已从工单反向打开二维编辑器</span>
+          <span v-else>已从工单反向打开管网二维运维工作台</span>
         </div>
       </div>
 

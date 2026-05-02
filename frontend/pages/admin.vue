@@ -18,6 +18,9 @@
     :third-tabs="currentThirdTabs"
   >
     <template #actions>
+      <button class="admin-btn admin-btn--primary" type="button" @click="openPipeEditor">
+        管网二维运维工作台
+      </button>
       <NuxtLink class="admin-btn admin-btn--default" to="/">
         <ArrowLeft :size="14" />
         返回地图
@@ -36,14 +39,6 @@
             </div>
             <div class="toolbar">
               <input class="admin-input" v-model="assetSearch" :placeholder="searchPlaceholder" />
-              <button
-                v-if="activeSubTab === 'assets_pipelines'"
-                class="admin-btn"
-                type="button"
-                @click="openPipeEditor"
-              >
-                二维地图编辑
-              </button>
               <button class="admin-btn admin-btn--primary" type="button" @click="openCreateAsset">
                 {{ assetCreateLabel }}
               </button>
@@ -327,6 +322,12 @@ function openPipeEditor() {
 
 .admin-btn--default {
   text-decoration: none;
+}
+
+:deep(.admin-layout__header-right) {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .admin-input {

@@ -16,7 +16,7 @@
           </div>
           <div class="detail-actions">
             <button class="ops-btn ops-btn--hero" @click="emit('locate', detail)">三维定位</button>
-            <button class="ops-btn ops-btn--hero" @click="emit('open-pipe-editor', detail)">二维编辑器</button>
+            <button class="ops-btn ops-btn--hero" @click="emit('open-pipe-editor', detail)">管网二维运维工作台</button>
             <button class="ops-btn" @click="emit('close')">关闭</button>
           </div>
         </div>

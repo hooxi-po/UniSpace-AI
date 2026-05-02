@@ -29,7 +29,10 @@ dependencies {
 	implementation("org.springframework.boot:spring-boot-starter-json")
 	implementation("org.springframework.boot:spring-boot-starter-data-jpa")
 	implementation("org.springframework.boot:spring-boot-starter-jdbc")
+	implementation("org.springframework.boot:spring-boot-starter-security")
+	implementation("org.springframework.boot:spring-boot-starter-actuator")
 	implementation("org.flywaydb:flyway-core")
+	implementation("org.flywaydb:flyway-database-postgresql")
 	implementation("org.hibernate.orm:hibernate-spatial")
 	runtimeOnly("org.postgresql:postgresql")
 
@@ -37,9 +40,24 @@ dependencies {
 	annotationProcessor("org.projectlombok:lombok")
 
 	testImplementation("org.springframework.boot:spring-boot-starter-test")
+	testRuntimeOnly("com.h2database:h2")
 	testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 tasks.withType<Test> {
 	useJUnitPlatform()
+}
+
+tasks.named<org.springframework.boot.gradle.tasks.run.BootRun>("bootRun") {
+	val dbUrl = System.getenv("DB_URL")?.takeIf { it.isNotBlank() } ?: "jdbc:postgresql://localhost:5432/unispace"
+	val dbUser = System.getenv("DB_USER")?.takeIf { it.isNotBlank() } ?: "postgres"
+	val dbPassword = (
+		System.getenv("DB_PASSWORD")?.takeIf { it.isNotBlank() }
+			?: System.getenv("POSTGRES_PASSWORD")?.takeIf { it.isNotBlank() }
+			?: "123456"
+	)
+
+	systemProperty("spring.datasource.url", dbUrl)
+	systemProperty("spring.datasource.username", dbUser)
+	systemProperty("spring.datasource.password", dbPassword)
 }

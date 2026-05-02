@@ -1,0 +1,279 @@
+.page {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #1f2329;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.subtitle {
+  color: #646a73;
+  font-size: 14px;
+}
+
+.card {
+  border: 1px solid #dee0e3;
+  border-radius: 12px;
+  background: #fff;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.tab {
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid #dee0e3;
+  font-size: 14px;
+  color: #646a73;
+  background: #fff;
+}
+
+.tab.active {
+  border-color: #3370ff;
+  color: #3370ff;
+  background: #e1eaff;
+}
+
+.uploadSection {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.uploadRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.uploadLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid #dee0e3;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  background: #fff;
+}
+
+.uploadLabel:hover {
+  background: #f2f3f5;
+}
+
+.hidden {
+  display: none;
+}
+
+.fileName {
+  font-size: 14px;
+  color: #646a73;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btnReset {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid #dee0e3;
+  border-radius: 8px;
+  font-size: 14px;
+  background: #fff;
+}
+
+.btnReset:hover {
+  background: #f2f3f5;
+}
+
+.templateHint {
+  border: 1px solid #dee0e3;
+  border-radius: 12px;
+  padding: 12px;
+  background: #f9fafb;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hintTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2329;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hintCols {
+  display: grid;
+  gap: 4px;
+}
+
+.hintCol {
+  font-size: 12px;
+  color: #646a73;
+}
+
+.hintSub {
+  font-size: 12px;
+  color: #8f959e;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.storageKey {
+  font-size: 12px;
+  color: #8f959e;
+}
+
+.btnImport {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  background: #3370ff;
+  border: 1px solid #3370ff;
+}
+
+.btnImport:hover {
+  background: #285cc9;
+}
+
+.btnImport:disabled {
+  background: #e5e7eb;
+  color: #9ca3af;
+  border-color: #e5e7eb;
+  cursor: not-allowed;
+}
+
+.errorBox {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.errorTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: #dc2626;
+}
+
+.errorList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 14rem;
+  overflow: auto;
+}
+
+.errorItem {
+  font-size: 14px;
+  color: #dc2626;
+}
+
+.errorMore {
+  font-size: 14px;
+  color: #dc2626;
+}
+
+.previewCard {
+  border: 1px solid #dee0e3;
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.previewHeader {
+  padding: 16px;
+  border-bottom: 1px solid #dee0e3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.previewTitle {
+  font-weight: 600;
+  color: #1f2329;
+}
+
+.previewCount {
+  font-size: 12px;
+  color: #8f959e;
+}
+
+.previewBody {
+  padding: 16px;
+  overflow: auto;
+}
+
+.previewEmpty {
+  text-align: center;
+  color: #8f959e;
+  padding: 40px 0;
+}
+
+.previewTable {
+  min-width: 100%;
+  font-size: 14px;
+}
+
+.previewTable th {
+  padding: 8px 12px;
+  text-align: left;
+  background: #f5f6f7;
+  color: #646a73;
+  white-space: nowrap;
+}
+
+.previewTable td {
+  padding: 8px 12px;
+  white-space: nowrap;
+  border-top: 1px solid #dee0e3;
+}
+
+.note {
+  font-size: 12px;
+  color: #8f959e;
+}

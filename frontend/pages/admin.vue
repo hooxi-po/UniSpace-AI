@@ -2,12 +2,25 @@
   <AdminLayout
     v-model="activeTab"
     v-model:subValue="activeSubTab"
+    v-model:thirdValue="activeThirdTab"
     title="后台大厅"
-    subtitle="资产中心"
-    :tabs="tabs as unknown as { key: 'assets'; label: string }[]"
-    :sub-tabs="assetSubTabs as unknown as { key: 'assets_buildings' | 'assets_pipelines'; label: string }[]"
+    :subtitle="activeTab === 'assets'
+      ? '资产中心'
+      : activeTab === 'property'
+        ? '房产管理'
+        : activeTab === 'ops'
+          ? '管网运维闭环'
+          : activeTab === 'persons'
+            ? '人员管理'
+            : ''"
+    :tabs="tabs"
+    :sub-tabs="currentSubTabs"
+    :third-tabs="currentThirdTabs"
   >
     <template #actions>
+      <button class="admin-btn admin-btn--primary" type="button" @click="openPipeEditor">
+        管网二维运维工作台
+      </button>
       <NuxtLink class="admin-btn admin-btn--default" to="/">
         <ArrowLeft :size="14" />
         返回地图
@@ -16,40 +29,78 @@
 
     <template #default>
       <div class="page">
-        <section class="panel">
+        <component v-if="activeThirdTab && compMap[activeThirdTab]" :is="compMap[activeThirdTab]" />
+
+        <section v-else-if="activeTab === 'assets'" class="panel">
           <div class="panel__header panel__header--row">
             <div>
-              <div class="panel__title">资产中心（Mock）</div>
-              <div class="panel__subtitle">当前展示 mock 数据</div>
+              <div class="panel__title">资产中心</div>
+              <div class="panel__subtitle">支持建筑/管道数据 CRUD</div>
             </div>
             <div class="toolbar">
               <input class="admin-input" v-model="assetSearch" :placeholder="searchPlaceholder" />
+              <button class="admin-btn admin-btn--primary" type="button" @click="openCreateAsset">
+                {{ assetCreateLabel }}
+              </button>
             </div>
           </div>
           <div class="panel__body">
+            <div v-if="assetNotice" :class="['asset-notice', `asset-notice--${assetNotice.type}`]">
+              {{ assetNotice.text }}
+            </div>
+
             <GeoFeatureTable
               v-if="activeSubTab === 'assets_buildings'"
               :active="activeSubTab === 'assets_buildings'"
+              :reload-key="assetReloadKey"
               :backend-base-url="backendBaseUrl"
               layer="buildings"
               :search="assetSearch"
               :search-keys="['id', 'name', 'buildingType', 'amenity', 'geomType']"
-              :columns="buildingColumns"
-              :map-row="mapBuildingRow"
-              @select="openAssetDetail"
+              :columns="buildingColumns as any"
+              :map-row="mapBuildingRow as any"
+              :cell="assetCell"
+              @select="handleAssetSelect"
               @count="currentCount = $event"
             />
 
             <GeoFeatureTable
               v-else
               :active="activeSubTab === 'assets_pipelines'"
+              :reload-key="assetReloadKey"
               :backend-base-url="backendBaseUrl"
-              layer="roads"
+              layer="pipes"
               :search="assetSearch"
-              :search-keys="['id', 'name', 'highway', 'geomType']"
-              :columns="roadColumns"
-              :map-row="mapRoadRow"
-              @select="openAssetDetail"
+              :search-keys="['id', 'name', 'pipeCategory', 'pipelineMedium', 'diameter', 'material', 'status', 'geomType']"
+              :columns="pipeColumns as any"
+              :map-row="mapPipeRow as any"
+              :cell="assetCell"
+              @select="handleAssetSelect"
+              @count="currentCount = $event"
+            />
+
+            <div class="footer-note">当前显示：{{ currentCount }} 条（{{ assetLayerLabel }}）</div>
+          </div>
+        </section>
+
+        <section v-else class="panel" v-show="!activeThirdTab">
+          <div class="panel__header panel__header--row">
+            <div>
+              <div class="panel__title">房产管理（Mock）</div>
+              <div class="panel__subtitle">当前展示 mock 数据</div>
+            </div>
+            <div class="toolbar">
+              <input class="admin-input" v-model="assetSearch" :placeholder="searchPlaceholder" />
+            </div>
+          </div>
+
+          <div class="panel__body">
+            <PropertyTable
+              :active="activeTab === 'property'"
+              :search="assetSearch"
+              :search-keys="['id', 'name', 'type', 'status', 'location']"
+              :columns="propertyColumns"
+              @select="openPropertyDetail"
               @count="currentCount = $event"
             />
 
@@ -65,144 +116,163 @@
         :obj="detailObj"
         @close="closeDetail"
       />
+
+      <AssetFeatureDialog
+        :open="editorOpen"
+        :mode="editorMode"
+        :layer="activeAssetLayer"
+        :backend-base-url="backendBaseUrl"
+        :payload="editorPayload"
+        :submitting="editorSubmitting"
+        :api-error="editorError"
+        @close="closeEditor"
+        @submit="submitEditor"
+      />
+
+      <AssetDeleteDialog
+        :open="deleteOpen"
+        :id="deleteTargetId"
+        :submitting="deleteSubmitting"
+        :error="deleteError"
+        @close="closeDeleteDialog"
+        @confirm="confirmDelete"
+      />
+
     </template>
   </AdminLayout>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { ArrowLeft } from 'lucide-vue-next'
+import type { SubKey, ThirdKey } from '~/types/admin'
+import type { AssetLayer } from '~/services/geo-features'
+
 import AdminLayout from '~/components/admin/AdminLayout.vue'
 import GeoFeatureTable from '~/components/admin/GeoFeatureTable.vue'
+import PropertyTable from '~/components/admin/PropertyTable.vue'
 import JsonDrawer from '~/components/admin/JsonDrawer.vue'
+import AssetFeatureDialog from '~/components/admin/AssetFeatureDialog.vue'
+import AssetDeleteDialog from '~/components/admin/AssetDeleteDialog.vue'
+
+import { adminCompMap } from '~/config/admin-comp-map'
+import { getTabs, getSubTabs, getThirdTabs } from '~/config/admin-menu'
+import {
+  buildingColumns,
+  pipeColumns,
+  propertyColumns,
+  mapBuildingRow,
+  mapPipeRow,
+} from '~/utils/admin-tables'
+import { useAdminDetail } from '~/composables/useAdminDetail'
+import { useAssetCrud } from '~/composables/admin/useAssetCrud'
+import { normalizeBackendBaseUrl } from '~/utils/backend-url'
+
+const compMap = adminCompMap
+const route = useRoute()
+const router = useRouter()
 
 const searchPlaceholder = computed(() => {
-  return activeSubTab.value === 'assets_buildings' ? '搜索 id / name' : '搜索 id / name'
+  if (activeTab.value === 'property') return '搜索 id / 名称 / 类型'
+  return activeSubTab.value === 'assets_buildings'
+    ? '搜索 ID / 名称 / 建筑类型 / 用途'
+    : '搜索 ID / 名称 / 管道类型 / 介质 / 材质 / 状态'
 })
 
-const tabs = [{ key: 'assets', label: '资产中心' }] as const
+const tabs = computed(() => getTabs())
 
-const assetSubTabs = [
-  { key: 'assets_buildings', label: '建筑数据' },
-  { key: 'assets_pipelines', label: '管道数据' },
-] as const
+type TabKey = typeof tabs.value[number]['key']
 
-type TabKey = typeof tabs[number]['key']
-type AssetSubKey = typeof assetSubTabs[number]['key']
+const initTab = typeof route.query.tab === 'string' ? route.query.tab : 'assets'
+const activeTab = ref<TabKey>(tabs.value.some(t => t.key === initTab) ? initTab as TabKey : 'assets')
+const initSub = typeof route.query.sub === 'string' ? route.query.sub : ''
+const initialSubTabs = getSubTabs(activeTab.value)
+const fallbackSub = initialSubTabs[0]?.key ?? 'assets_buildings'
+const activeSubTab = ref<SubKey>((initialSubTabs.some(s => s.key === initSub) ? initSub : fallbackSub) as SubKey)
+const activeThirdTab = ref<ThirdKey | undefined>(
+  typeof route.query.third === 'string' ? route.query.third as ThirdKey : undefined
+)
 
-const activeTab = ref<TabKey>('assets')
-const activeSubTab = ref<AssetSubKey>('assets_buildings')
+const currentSubTabs = computed(() => getSubTabs(activeTab.value))
+const currentThirdTabs = computed(() => getThirdTabs(activeTab.value, activeSubTab.value))
+
+watch(activeTab, () => {
+  const subs = currentSubTabs.value
+  if (subs.length && !subs.some(s => s.key === activeSubTab.value)) {
+    activeSubTab.value = subs[0].key
+  }
+}, { immediate: true })
+
+watch([activeTab, activeSubTab], () => {
+  activeThirdTab.value = undefined
+})
+
+watch(currentThirdTabs, (tabs) => {
+  if (!tabs.length) {
+    activeThirdTab.value = undefined
+    return
+  }
+  if (!activeThirdTab.value || !tabs.some(t => t.key === activeThirdTab.value)) {
+    activeThirdTab.value = tabs[0].key
+  }
+}, { immediate: true })
+
+type AssetFeatureLike = Record<string, unknown> & { id?: string | number | null }
 
 const assetSearch = ref('')
-
-const backendBaseUrl = 'http://localhost:8080'
-
+const runtimeConfig = useRuntimeConfig()
+const backendBaseUrl = normalizeBackendBaseUrl(runtimeConfig.public.backendBaseUrl as string | undefined)
 const currentCount = ref(0)
+const assetReloadKey = ref(0)
+const pipeEditorFeatureId = ref<string | null>(null)
 
-type GeoJsonGeometry = {
-  type: string
-  coordinates: unknown
-}
+const { detailOpen, detailObj, detailType, closeDetail, openAssetDetail, openPropertyDetail } = useAdminDetail()
 
-type GeoJsonFeature = {
-  type: 'Feature'
-  id: string
-  properties: Record<string, unknown>
-  geometry: GeoJsonGeometry
-}
+const activeAssetLayer = computed<AssetLayer>(() => {
+  return activeSubTab.value === 'assets_buildings' ? 'buildings' : 'pipes'
+})
 
-type BuildingRow = {
-  id: string
-  name: string
-  buildingType: string
-  levels: number | null
-  amenity: string
-  geomType: string
-  raw: GeoJsonFeature
-}
+const assetLayerLabel = computed(() => {
+  return activeAssetLayer.value === 'buildings' ? '建筑' : '管道'
+})
 
-type RoadRow = {
-  id: string
-  highway: string
-  name: string
-  geomType: string
-  raw: GeoJsonFeature
-}
+const {
+  assetNotice,
+  assetCreateLabel,
+  editorOpen,
+  editorMode,
+  editorPayload,
+  editorSubmitting,
+  editorError,
+  deleteOpen,
+  deleteTargetId,
+  deleteSubmitting,
+  deleteError,
+  openCreateAsset,
+  closeEditor,
+  submitEditor,
+  closeDeleteDialog,
+  confirmDelete,
+  assetCell,
+} = useAssetCrud({
+  backendBaseUrl,
+  activeAssetLayer,
+  onReload: () => {
+    assetReloadKey.value += 1
+  },
+})
 
-const buildingColumns = [
-  { key: 'id', label: 'ID', mono: true },
-  { key: 'name', label: '名称' },
-  { key: 'buildingType', label: '建筑类型', mono: true },
-  { key: 'levels', label: '楼层', mono: true, class: 'ta-r' },
-  { key: 'amenity', label: '用途', mono: true },
-  { key: 'geomType', label: '几何', mono: true },
-]
-
-const roadColumns = [
-  { key: 'id', label: 'ID', mono: true },
-  { key: 'highway', label: '道路类型', mono: true },
-  { key: 'name', label: '名称' },
-  { key: 'geomType', label: '几何', mono: true },
-]
-
-function mapBuildingRow(f: GeoJsonFeature): BuildingRow {
-  const p = (f.properties || {}) as Record<string, unknown>
-  const name = String(p.name ?? p.short_name ?? '')
-  const buildingType = String(p.building ?? p.type ?? '')
-  const levelsRaw = p['building:levels']
-  const levelsNum = levelsRaw == null || levelsRaw === '' ? null : Number(levelsRaw)
-  const levels = Number.isFinite(levelsNum) ? (levelsNum as number) : null
-  const amenity = String(p.amenity ?? p.office ?? p.shop ?? '')
-
-  return {
-    id: f.id,
-    name: name || '—',
-    buildingType: buildingType || '—',
-    levels,
-    amenity: amenity || '—',
-    geomType: String(f.geometry?.type ?? '—'),
-    raw: f,
+function handleAssetSelect(feature: AssetFeatureLike) {
+  if (activeAssetLayer.value === 'pipes') {
+    pipeEditorFeatureId.value = feature?.id ? String(feature.id) : null
   }
+  openAssetDetail(feature)
 }
 
-function mapRoadRow(f: GeoJsonFeature): RoadRow {
-  const p = (f.properties || {}) as Record<string, unknown>
-  const highway = String(p.highway ?? p.road ?? p.type ?? '')
-  const name = String(p.name ?? p.ref ?? '')
-
-  return {
-    id: f.id,
-    highway: highway || '—',
-    name: name || '—',
-    geomType: String(f.geometry?.type ?? '—'),
-    raw: f,
-  }
+function openPipeEditor() {
+  const query = pipeEditorFeatureId.value ? { featureId: pipeEditorFeatureId.value } : {}
+  void router.push({ path: '/admin/pipe-editor', query })
 }
-
-const detailOpen = ref(false)
-const detailObj = ref<unknown>(null)
-const detailType = ref('')
-
-function closeDetail() {
-  detailOpen.value = false
-  detailObj.value = null
-  detailType.value = ''
-}
-
-function openAssetDetail(obj: unknown) {
-  detailObj.value = obj
-  detailType.value = detectType(obj)
-  detailOpen.value = true
-}
-
-function detectType(obj: unknown) {
-  const o = obj as any
-  if (!o) return 'unknown'
-  if (typeof o.id === 'string' && typeof o.name === 'string') return 'building'
-  if (typeof o.id === 'string' && typeof o.diameter === 'string') return 'pipeline'
-  return 'unknown'
-}
-
 </script>
 
 <style scoped>
@@ -254,15 +324,10 @@ function detectType(obj: unknown) {
   text-decoration: none;
 }
 
-.admin-btn--link {
-  border-color: transparent;
-  background: transparent;
-  color: var(--primary);
-  padding: 0 6px;
-}
-
-.admin-btn--link:hover {
-  background: rgba(22, 100, 255, 0.08);
+:deep(.admin-layout__header-right) {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .admin-input {
@@ -316,6 +381,26 @@ function detectType(obj: unknown) {
   padding: 12px;
 }
 
+.asset-notice {
+  margin-bottom: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.asset-notice--success {
+  border-color: rgba(18, 166, 90, 0.26);
+  background: rgba(18, 166, 90, 0.08);
+  color: #0f7a41;
+}
+
+.asset-notice--error {
+  border-color: rgba(245, 74, 69, 0.26);
+  background: rgba(245, 74, 69, 0.08);
+  color: #c03631;
+}
+
 .toolbar {
   display: flex;
   align-items: center;
@@ -323,176 +408,9 @@ function detectType(obj: unknown) {
   flex-wrap: wrap;
 }
 
-.table-wrap {
-  width: 100%;
-  overflow: auto;
-}
-
-.table {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  font-size: 13px;
-}
-
-.table thead th {
-  position: sticky;
-  top: 0;
-  background: #ffffff;
-  text-align: left;
-  font-weight: 600;
-  color: var(--muted);
-  border-bottom: 1px solid var(--border);
-  padding: 10px 10px;
-}
-
-.table tbody td {
-  padding: 10px 10px;
-  border-bottom: 1px solid #f0f1f2;
-}
-
-.table tbody tr:hover {
-  background: #fafbfc;
-}
-
-.row-click {
-  cursor: pointer;
-}
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  height: 22px;
-  padding: 0 8px;
-  border-radius: 999px;
-  font-size: 12px;
-  border: 1px solid var(--border);
-  background: #f6f7f8;
-  color: var(--muted);
-}
-
-.badge--success {
-  background: rgba(18, 166, 90, 0.08);
-  border-color: rgba(18, 166, 90, 0.22);
-  color: #0f7a41;
-}
-
-.badge--warning {
-  background: rgba(245, 159, 0, 0.08);
-  border-color: rgba(245, 159, 0, 0.22);
-  color: #b26a00;
-}
-
-.badge--danger {
-  background: rgba(245, 74, 69, 0.08);
-  border-color: rgba(245, 74, 69, 0.22);
-  color: #c03631;
-}
-
-.badge--default {
-  background: #f6f7f8;
-  border-color: var(--border);
-  color: var(--muted);
-}
-
-.kv {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.kv__row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.kv__key {
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.kv__val {
-  font-size: 12px;
-}
-
-.code {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: #0b1220;
-  color: #e6edf3;
-  padding: 10px;
-  max-height: 70vh;
-  overflow: auto;
-}
-
-.code pre {
-  margin: 0;
-  font-size: 12px;
-  line-height: 18px;
-  white-space: pre-wrap;
-}
-
-.drawer {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-}
-
-.drawer__mask {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.35);
-}
-
-.drawer__panel {
-  position: absolute;
-  right: 0;
-  top: 0;
-  height: 100%;
-  width: 560px;
-  max-width: 100%;
-  background: #ffffff;
-  border-left: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-}
-
-.drawer__header {
-  padding: 12px 12px;
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.drawer__title {
-  font-weight: 600;
-}
-
-.drawer__body {
-  padding: 12px;
-  overflow: auto;
-}
-
-.drawer__footer {
-  margin-top: 10px;
-  display: flex;
-  justify-content: flex-end;
-}
-
 .footer-note {
   margin-top: 10px;
   color: var(--muted);
   font-size: 12px;
-}
-
-.ta-r {
-  text-align: right;
-}
-
-.mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 </style>

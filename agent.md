@@ -1,731 +1,637 @@
-# agent.md — UniSpace-AI 项目智能体快速理解文档
+# agent.md — UniSpace-AI 编码助手黄金手册（v3）
 
-本文档面向“后续智能体/自动化助手”，目标是在**不依赖人类口头背景**的前提下，让新智能体快速掌握本仓库的：
-
-- 项目目标与约束
-- 运行方式与环境变量
-- 前后端目录结构与**逐文件职责**
-- 核心数据流（地图/图层/拾取/AI 聊天/后端 GeoJSON API）
-- 数据库结构（PostGIS）与迁移
-- 已知坑/历史修复点
-- 可扩展点与下一步改造建议
-
-> 本文档依据当前仓库代码生成（截至本文写入时），不应包含任何未在代码中出现的文件或功能。
+> 作用：给任何接手本仓库的编码助手一套可执行、可验证、可交付的统一规则。  
+> 适用范围：`UniSpace-AI/` 全仓库（前端 + 后端 + 文档）。  
+> 最后对齐时间：2026-03-27（基于当前代码状态，含 Mars3D 管道二维编辑器地图层继续拆分与 `pipeline-ops` 全链路）。
 
 ---
 
-## 1. 仓库概览
+## 0) 先读 60 秒
 
-- 仓库根目录：`UniSpace-AI/`
-- 架构：前后端分离 + 本地/容器化数据库
-
-### 1.1 核心模块
-
-- **frontend**：Nuxt 3 + Cesium 地图可视化 + Tailwind UI + Gemini AI（通过 Nuxt server route 代理）
-- **backend**：Spring Boot 4 + Postgres/PostGIS + Flyway。提供 `geo_features` 空间要素表与 GeoJSON API。
-- **docker-compose.yml**：提供 PostGIS 数据库容器（Postgres 16 + PostGIS 3.4）。
-- **start.sh**：一键并行启动前后端（注意端口冲突与依赖安装）。
-
-### 1.2 当前数据现状（非常关键）
-
-- **前端地图默认加载静态 GeoJSON**：`frontend/public/map/{water,green,buildings,roads}.geojson`
-- **后端 API** 已实现 `GET /api/v1/features`、`GET /api/v1/features/{id}`；前端后台大厅（`/admin`）的资产中心已接入该 API（buildings/roads）。
-- 前端的“资产台账/告警/工单/压力数据”目前为 **mock 常量**：`frontend/composables/useConstants.ts`
+- 仓库根目录新增了 `AGENTS.md`，它是给 agent 框架的最短入口；详细规则仍以本文 `agent.md` 为准。
+- `frontend/components/admin/ops/`、`frontend/composables/admin/`、`frontend/composables/admin/pipe2d-editor/`、`frontend/composables/shared/`、`backend/src/main/java/com/jolt/workflow/geo/`、`backend/src/main/java/com/jolt/workflow/pipelineops/` 已补局部 `AGENTS.md`；进入这些目录改文件前，先读局部规则。
+- 本仓库关键语义：业务层叫 `pipes`，存储层仍是 `roads`。
+- 主地图仍是 Cesium，管道加载逻辑集中在 `frontend/composables/shared/usePipeLayerLoader.ts`。
+- 主地图选中高亮已从 `MapView.vue` 拆到 `frontend/composables/shared/useMapViewSelection.ts`，工单热力图叠加在 `frontend/composables/shared/useMapViewWorkorderHeat.ts`，BBox/分页抓取/建筑替换模型计算在 `frontend/utils/map-view-helpers.ts`。
+- 后台二维编辑器已经切到 Mars3D 本地 npm 模式，入口是 `frontend/components/admin/Pipe2DEditorDialog.vue`。
+- `Pipe2DEditorDialog.vue` 现在是编排壳，界面区块已经拆到 `frontend/components/admin/pipe2d-editor/`。
+- 二维编辑器壳层状态已继续下沉：工作区交互在 `frontend/composables/admin/usePipe2DEditorWorkspace.ts`，本地草稿与自动保存在 `frontend/composables/admin/usePipe2DEditorDrafts.ts`。
+- 二维编辑器地图层已继续分层：共享类型/几何辅助在 `frontend/composables/admin/pipe2d-editor/pipe2d-editor-map-shared.ts`，交互/命中/快捷键在 `frontend/composables/admin/pipe2d-editor/usePipe2DEditorMapInteractions.ts`，图层渲染与 Mars3D 图元同步在 `frontend/composables/admin/pipe2d-editor/usePipe2DEditorMapGraphics.ts`，`usePipe2DEditorMap.ts` 只保留装配、初始化和视图控制。
+- 二维编辑器已实现思维导图式交互：`useMindmapEditor.ts` 负责核心操作，`useMindmapEditorEvents.ts` 负责事件处理，`usePipe2DEditorMapGraphics.ts` 负责多级视觉反馈和连接点渲染。
+- Mars3D 懒加载在 `frontend/utils/mars3d-loader.ts`，首轮加载失败后允许重试，不能再假设失败后永久缓存。
+- 二维编辑器几何保存优先走 Twin 写接口，失败时回退到 `geo-features` 更新；管道重命名也已经真实写回后端。
+- 本地草稿机制已上线：`localStorage` 按 featureId 缓存，`800ms` 防抖 + `8s` 定时暂存。
+- `pipeline-ops` 已打通：`PipelineOpsBoard.vue` -> `usePipelineOpsBoardUi.ts` -> `usePipelineOpsBoard.ts` -> `services/pipeline-ops.ts` -> `frontend/server/api/pipeline-ops/*` -> `frontend/server/utils/pipeline-ops-db.ts` -> `backend/.../pipelineops/*`。
+- `pipeline-ops` 后端已从单巨型仓储拆成“主仓储 + support 基类”：主流程在 `backend/src/main/java/com/jolt/workflow/pipelineops/WorkOrderRepository.java`，通用归一化/缓存/影响范围/日志辅助在 `backend/src/main/java/com/jolt/workflow/pipelineops/WorkOrderRepositorySupport.java`。
+- 写接口前端鉴权已切到全局弹层：`frontend/services/proxy-write-auth.ts` + `frontend/components/common/ProxyWriteAuthDialog.vue`，禁止再回退到浏览器原生 `prompt`。
+- `pipeline-ops` 当前重要约束已经落地：
+  - 列表、统计、Dashboard 共用同一套过滤条件。
+  - 快速切换筛选时，旧请求不会覆盖新结果。
+  - `assign` 必须带 `assignee`。
+  - 巡检转维修必须基于异常巡检记录。
+  - `set_duration` 必须是正整数分钟。
+  - 无拓扑/无楼宇草稿不会自动绑定第一栋楼。
+  - 日期/时间字段会在入库前校验，避免数据库 cast 直接抛 500。
+- 改语义、接口、地图行为后，必须同步：
+  - `README.md`
+  - `开发日志.md`
+  - 本文 `agent.md`
 
 ---
 
-## 2. 启动方式与端口
+## 1) 不可违背规则（MUST）
 
-### 2.1 一键启动（推荐）
+1. 对外语义优先用 `pipes`，提到 `roads` 必须注明“存储层 roads”。
+2. 复杂地图逻辑不要继续堆进 `MapView.vue` 或 `Pipe2DEditorDialog.vue`，优先下沉到 composable。
+3. 新增前端文件必须遵守 `frontend/STRUCTURE.md`。
+4. 文档必须对应仓库现状，禁止把设计稿、规划项、占位功能写成“已实现”。
+5. 涉及接口、状态流、地图行为的修改，必须给出最小验证结果。
+6. 只改当前任务必需文件，不顺手做无关重构。
+7. 保持兼容：`pipes -> roads`、Twin 写接口 fallback、Nuxt server proxy 写鉴权不要被误删。
+8. 文档、脚本、实现三者必须对齐，不能出现“README 可运行但脚本已失效”。
+9. 新增后台业务交互禁止继续使用原生 `window.alert` / `window.prompt` / `window.confirm`，统一改为组件内弹层、表单或消息提示。
+10. 不得提交构建产物或本地运行目录：`.nuxt/`、`.output/`、`build/`、`.gradle/`、`.gradle-home/`、测试报告目录都不应入库。
+11. 若单文件已超过以下体量，默认视为重构警戒线，新增需求优先拆分而不是继续堆：
+    - 前端 `.vue` / `.ts`：`800` 行
+    - 后端 `.java`：`1200` 行
+12. 修改 `pipeline-ops`、Twin、二维编辑器或写接口时，不允许只做静态改动说明，必须跑对应验证命令。
+13. 跨前后端链路改动，默认优先执行仓库根目录 `./scripts/verify-local.sh`，除非能明确说明为什么只跑子集验证。
+14. 评估是否继续拆大文件时，优先运行 `./scripts/check-size-guardrails.sh`，不要靠肉眼猜。
+15. `./scripts/check-size-guardrails.sh` 只看仓库已跟踪或未忽略文件；若脚本输出了 `node_modules/.nuxt/.output`，说明脚本本身又退化了，先修脚本再继续用它做准绳。
 
-脚本：`start.sh`
+### 1.1 新接手最短路径
 
-- 后端：`backend/` 下执行 `./gradlew bootRun`
-- 前端：`frontend/` 下执行 `npm ci`（有 lock）或 `npm install`，然后 `npm run dev`
+如果你第一次接手这个仓库，默认按下面顺序：
 
-默认端口：
+1. 先跑 `./scripts/verify-local.sh`，确认本地环境和依赖完整。
+   - 只改前端可先用 `./scripts/verify-local.sh frontend`
+   - 只改后端可先用 `./scripts/verify-local.sh backend`
+   - 只看体量守卫可先用 `./scripts/verify-local.sh guardrails`
+2. 再读本文 `0) 先读 60 秒`、`4) 当前真实实现快照`、`8) 改动-验证矩阵`。
+3. 改主地图，看 `frontend/pages/index.vue` + `frontend/components/MapView.vue` + `frontend/composables/shared/usePipeLayerLoader.ts`。
+4. 改主地图选中、高亮、房间锚点，看 `frontend/composables/shared/useMapViewSelection.ts`。
+5. 改主地图工单热力图、轮询、泵控刷新联动，看 `frontend/composables/shared/useMapViewWorkorderHeat.ts`。
+6. 改主地图 BBox、动态 GeoJSON 抓取、建筑替换模型缩放，看 `frontend/utils/map-view-helpers.ts`。
+7. 改二维编辑器，先看 `frontend/components/admin/Pipe2DEditorDialog.vue`，再按职责下钻到 `frontend/composables/admin/usePipe2DEditorWorkspace.ts`、`frontend/composables/admin/usePipe2DEditorDrafts.ts`、`frontend/composables/admin/usePipe2DEditorMap.ts`、`frontend/composables/admin/pipe2d-editor/*`、`frontend/composables/admin/usePipe2DEditorData.ts`。
+8. 改工单联动，看 `frontend/components/admin/ops/PipelineOpsBoard.vue` + `frontend/composables/admin/usePipelineOpsBoardUi.ts` + `frontend/composables/admin/usePipelineOpsBoard.ts` + `backend/src/main/java/com/jolt/workflow/pipelineops/WorkOrderRepository.java`。
+9. 改写接口鉴权，看 `frontend/services/proxy-write-auth.ts`、`frontend/components/common/ProxyWriteAuthDialog.vue` 和 `frontend/server/api/*`。
 
-- 前端：`http://localhost:3000`
-- 后端：`http://localhost:8080`
+### 1.2 指令冲突裁决顺序
 
-### 2.2 数据库启动（可选但建议）
+1. 当前对话中的用户明确要求
+2. 本文件 `agent.md`
+3. `README.md` / `frontend/STRUCTURE.md` / 其它仓库说明文档
+4. 历史习惯
 
-文件：`docker-compose.yml`
+如果用户要求与本文件冲突：
 
-- 服务：`postgis`
-- 镜像：`postgis/postgis:16-3.4`
-- 端口映射：`5432:5432`
-- 默认库：`unispace`，用户/密码：`postgres/postgres`
+- 先执行用户要求
+- 在交付说明中写清冲突点和影响范围
 
-命令：
+---
+
+## 2) 仓库总览
+
+- 前端：`frontend/`（Nuxt 3 + Cesium + Mars3D）
+- 后端：`backend/`（Spring Boot 4 + JdbcTemplate + PostGIS）
+- 启动脚本：`start.sh`
+- 默认端口：前端 `3000`，后端 `8080`
+- 后端 API 前缀：`/api/v1`
+- 前端写代理前缀：
+  - `frontend/server/api/backend/*`
+  - `frontend/server/api/pipeline-ops/*`
+
+---
+
+## 3) 领域词典（统一术语）
+
+- `pipes`：前端地图、后台资产中心、Twin 编辑器对外使用的管道层名。
+- `roads`：`geo_features.layer` 中的实际存储层名。
+- `pipeType`：前端注入的三类介质值，当前使用 `water | drain | sewage`。
+- `visible`：`geo_features.visible`，后台资产中心和属性写回会用到。
+- `Twin drilldown`：按 featureId 返回段、节点、关系、关联楼宇、受影响房间、阀门、设备。
+- `Twin trace`：按上下游方向返回拓扑链路。
+- `Twin telemetry_latest`：返回当前最新测点数据。
+- `pipeline-ops`：巡检 / 维修 / 改造 / 报废 / 联动工单域。
+- `impactScope`：工单影响范围，包含楼宇、楼层、房间和避让要求。
+- `executionLogs`：工单执行日志，不等于状态时间轴；状态流转也会形成独立 timeline 记录。
+
+---
+
+## 4) 当前真实实现快照
+
+### 4.1 主地图数据流
+
+1. `frontend/pages/index.vue` 维护图层状态、选中项、视口。
+2. `frontend/components/MapView.vue` 负责 Cesium 容器、相机同步、拾取、高亮、看板联动。
+3. `frontend/composables/shared/usePipeLayerLoader.ts` 负责：
+   - 请求 `GET /api/v1/features?layers=pipes&visible=true&bbox=...&page=...`
+   - 按 `highway` 分类为 `water/drain/sewage`
+   - 注入 `properties.pipeType`
+   - 统一三类线宽 `5`
+4. `frontend/composables/shared/useMapViewSelection.ts` 负责：
+   - 选中实体高亮
+   - 楼宇/房间 fallback 锚点
+   - focus 图层标注
+5. `frontend/composables/shared/useMapViewWorkorderHeat.ts` 负责：
+   - 工单热力点拉取与轮询
+   - cluster 样式
+   - 泵控刷新后的热力图重载
+6. `frontend/utils/map-view-helpers.ts` 负责：
+   - 当前视口 BBox 计算
+   - 分页抓取动态图层
+   - 建筑替换模型 footprint/scale 计算
+7. 建筑层来自 `layers=buildings`，绿地仍来自静态 `public/map/green.geojson`。
+
+### 4.2 后台资产中心
+
+- 页面：`frontend/pages/admin.vue`
+- CRUD 组件：
+  - `frontend/components/admin/GeoFeatureTable.vue`
+  - `frontend/components/admin/AssetFeatureDialog.vue`
+  - `frontend/components/admin/AssetDeleteDialog.vue`
+  - `frontend/components/admin/AssetRowActions.vue`
+  - `frontend/components/admin/AssetVisibilitySwitch.vue`
+- 状态编排：`frontend/composables/admin/useAssetCrud.ts`
+- 服务层：`frontend/services/geo-features.ts`
+- 写代理：`frontend/server/api/backend/features*.ts`
+
+### 4.3 管道二维编辑器（Mars3D）
+
+- 顶层壳：`frontend/components/admin/Pipe2DEditorDialog.vue`
+  - 负责弹窗开关、草稿状态、消息提示、面板联动、事件编排
+- 区块组件：
+  - `frontend/components/admin/pipe2d-editor/Pipe2DEditorTopbarSection.vue`
+  - `frontend/components/admin/pipe2d-editor/Pipe2DEditorToolbarSection.vue`
+  - `frontend/components/admin/pipe2d-editor/Pipe2DEditorStageSection.vue`
+  - `frontend/components/admin/pipe2d-editor/Pipe2DEditorRightPanelSection.vue`
+  - `frontend/components/admin/pipe2d-editor/Pipe2DEditorStatusbarSection.vue`
+  - `frontend/components/admin/pipe2d-editor/Pipe2DEditorShortcutHelp.vue`
+- 地图交互：`frontend/composables/admin/usePipe2DEditorMap.ts`
+  - 懒加载 Mars3D：`frontend/utils/mars3d-loader.ts`
+  - 默认高德底图
+  - 支持 2D/3D 切换、地下切片、聚焦当前管道、缩放控件
+  - 装配地图实例、相机同步、底图切换和视图控制
+- 地图交互：`frontend/composables/admin/pipe2d-editor/usePipe2DEditorMapInteractions.ts`
+  - 负责线段/节点选中、点击插点、中心加点、删除节点、右键菜单、吸附提示、长度 hover、撤销/重做、键盘快捷键
+  - 使用 Cesium 拾取 + 邻近命中兜底，保持 Mars3D 编辑态下的点线可选中
+- 地图共享辅助：`frontend/composables/admin/pipe2d-editor/pipe2d-editor-map-shared.ts`
+  - 负责地图层共享类型、缩放/测长辅助、命中辅助函数
+- 地图图元渲染：`frontend/composables/admin/pipe2d-editor/usePipe2DEditorMapGraphics.ts`
+  - 负责草稿线/点渲染、Mars3D 图层同步、编辑态图元回写、拖拽释放兜底
+- 工作区壳层状态：`frontend/composables/admin/usePipe2DEditorWorkspace.ts`
+  - 负责工具栏拖拽放置、视图切换、项目标题、快捷键、画布皮肤与壳层 UI 状态
+- 数据编排：`frontend/composables/admin/usePipe2DEditorData.ts`
+  - `loadPipes()`
+  - `loadInsights()`：并行拉 `drilldown / trace / telemetry / audit`
+  - `saveGeometry()`：优先 Twin 写，失败回退 `geo-features.update()`
+- 草稿管理：`frontend/composables/admin/usePipe2DEditorDrafts.ts`
+  - 负责本地草稿恢复、`800ms` 防抖暂存、`8s` 周期暂存、服务端草稿状态文案
+- 服务层：`frontend/services/twin.ts`
+  - 读：`drilldown` / `trace` / `telemetryLatest` / `listAuditLogs`
+  - 写：`updatePipeGeometry` / `updatePipeProperties`
+- 当前已落地的编辑器持久化：
+  - 几何保存
+  - 名称重命名保存
+  - 草稿本地恢复
+  - 保存成功 toast
+  - 审计日志回读
+
+### 4.4 工单联动（`pipeline-ops`）
+
+- 前端看板编排壳：`frontend/components/admin/ops/PipelineOpsBoard.vue`
+  - 只负责拼装区块组件与透传状态/事件
+- UI 子组件：
+  - `frontend/components/admin/ops/PipelineOpsOverviewSection.vue`
+  - `frontend/components/admin/ops/PipelineOpsCreateSection.vue`
+  - `frontend/components/admin/ops/PipelineOpsListSection.vue`
+  - `frontend/components/admin/ops/PipelineOpsActionDialog.vue`
+  - `frontend/components/admin/ops/PipelineOpsDetailPanel.vue`
+  - `frontend/components/admin/ops/PipelineOpsImpactCard.vue`
+  - `frontend/components/admin/ops/PipelineOpsLogsCard.vue`
+  - `frontend/components/admin/ops/PipelineOpsPumpCard.vue`
+  - `frontend/components/admin/ops/PipelineOpsInspectionCard.vue`
+  - `frontend/components/admin/ops/pipeline-ops-detail-types.ts`
+  - `frontend/components/admin/ops/pipeline-ops-view-constants.ts`
+  - 模式：`inspection` / `maintenance` / `retrofit` / `retire` / `linkage`
+  - 能力：筛选、统计卡、Dashboard、建单、详情、执行日志、泵控、异常巡检转维修
+- 状态编排：`frontend/composables/admin/usePipelineOpsBoard.ts`
+  - 列表请求使用完整过滤条件
+  - 统计和 Dashboard 与列表共享过滤条件
+  - `refreshRequestId` 防止旧响应覆盖新状态
+- 壳层 UI 流程：`frontend/composables/admin/usePipelineOpsBoardUi.ts`
+  - 负责弹层开关、表单草稿、通知提示、泵控倒计时、路由打开详情、地图定位跳转
+- 客户端服务：`frontend/services/pipeline-ops.ts`
+  - 所有写操作通过同源 `/api/pipeline-ops/*`
+  - 已接入 proxy 写鉴权头
+- 全局写鉴权 UI：
+  - 服务：`frontend/services/proxy-write-auth.ts`
+  - 弹层：`frontend/components/common/ProxyWriteAuthDialog.vue`
+  - 行为：命中 401/403 写鉴权时弹层收集凭证，并自动重试当前请求
+- Nuxt server 代理：
+  - 路由：`frontend/server/api/pipeline-ops/*`
+  - 代理工具：`frontend/server/utils/pipeline-ops-db.ts`
+  - 统一转发到 Spring Boot `/api/v1/pipeline-ops/*`
+- 迁移脚本：`frontend/scripts/migrate-pipeline-ops-json-to-postgres.mjs`
+  - 源文件：`frontend/server/data/pipeline-ops.json`
+  - 当 `BACKEND_WRITE_AUTH_ENABLED=false` 时不再强制要求密码
+
+### 4.5 后端 Geo / Twin / PipelineOps
+
+- Geo 接口：`backend/src/main/java/com/jolt/workflow/geo/GeoFeatureController.java`
+- Twin 只读接口：`backend/src/main/java/com/jolt/workflow/geo/TwinController.java`
+- Twin 写接口：`backend/src/main/java/com/jolt/workflow/geo/TwinWriteController.java`
+- 模块 2 遥测：`backend/src/main/java/com/jolt/workflow/geo/Module2TelemetryController.java`
+- 工单接口：`backend/src/main/java/com/jolt/workflow/pipelineops/PipelineOpsController.java`
+- 工单主流程仓储：`backend/src/main/java/com/jolt/workflow/pipelineops/WorkOrderRepository.java`
+- 工单 support 基类：`backend/src/main/java/com/jolt/workflow/pipelineops/WorkOrderRepositorySupport.java`
+
+### 4.6 当前数据库迁移重点
+
+- `V1__init_postgis_and_features.sql`
+- `V3__add_twin_topology_tables.sql`
+- `V5__add_twin_entity_tables.sql`
+- `V6__add_module2_telemetry_tables.sql`
+- `V8__add_buildings_and_rooms_tables.sql`
+- `V9__seed_buildings_and_rooms_from_json.sql`
+- `V10__add_pipeline_ops_tables.sql`
+
+---
+
+## 5) 目录职责与代码落位
+
+### 5.1 前端
+
+- `pages/`：路由入口，只做页面拼装
+- `components/`：可复用组件
+- `components/admin/pipe2d-editor/`：二维编辑器 UI 分区组件
+- `components/admin/ops/`：工单看板 UI
+- `composables/admin/`：后台业务状态与交互逻辑
+- `composables/shared/`：主地图共享逻辑
+- `services/`：请求封装，不放 Vue 状态
+- `server/api/`：Nuxt server 路由，负责 proxy 和写鉴权
+- `utils/`：纯函数和第三方库加载器
+
+### 5.2 地图模块红线
+
+- 不在 `MapView.vue` 新增复杂分类规则。
+- 不在 `MapView.vue` 新增选中高亮、BBox 抓取、建筑替换模型计算等纯逻辑；这些逻辑优先下沉到 `useMapViewSelection.ts` 或 `map-view-helpers.ts`。
+- 不在多个组件重复写同一套管道分类逻辑。
+- 不要把 Mars3D 编辑逻辑再塞回 `Pipe2DEditorDialog.vue`。
+- 修改 `PIPE_LAYER_NAMES` 或主地图图层行为时，必须同步 `MapControls.vue`、`index.vue` 和文档。
+
+### 5.3 二维编辑器红线
+
+- `Pipe2DEditorDialog.vue` 只做编排，不承载复杂几何算法。
+- 工具栏拖拽、画布视图、快捷键、项目标题等壳层状态优先改 `usePipe2DEditorWorkspace.ts`。
+- 本地草稿、恢复、自动保存优先改 `usePipe2DEditorDrafts.ts`。
+- 图元渲染、Mars3D 图层同步、编辑态可视化优先改 `composables/admin/pipe2d-editor/usePipe2DEditorMapGraphics.ts`。
+- 选中、插点、删点、hover、右键菜单、快捷键优先改 `composables/admin/pipe2d-editor/usePipe2DEditorMapInteractions.ts`。
+- 共享地图类型/命中/缩放辅助优先改 `composables/admin/pipe2d-editor/pipe2d-editor-map-shared.ts`。
+- `usePipe2DEditorMap.ts` 只承载状态装配、Mars3D 初始化、相机/底图/场景模式控制，禁止再把交互细节塞回去。
+- Twin 读写逻辑优先改 `usePipe2DEditorData.ts` 或 `services/twin.ts`。
+- 改名称持久化时，不要只改本地 `pipes` 数组，必须同步后端。
+
+### 5.4 `pipeline-ops` 红线
+
+- 看板筛选、统计、Dashboard 必须保持同一套过滤语义。
+- `PipelineOpsBoard.vue` 只做编排；新 UI 区块优先落到 `ops/` 子组件，不要再把大块模板塞回主文件。
+- `PipelineOpsBoard.vue` 若因表单/弹层/通知/timer 继续膨胀，优先补 `usePipelineOpsBoardUi.ts`，不要把这些状态重新塞回组件脚本。
+- 写接口一律经 `services/pipeline-ops.ts` -> Nuxt server proxy，不能前端直接打后端写接口。
+- `WorkOrderRepository.java` 改 SQL 时必须同步检查：
+  - 参数顺序
+  - 日期/时间校验
+  - building 过滤语义
+  - 影响范围去重
+  - 状态流转前置校验
+- 非业务主流程的归一化、JSON 解析、缓存、日志落库、影响范围推断，优先放 `WorkOrderRepositorySupport.java`，不要重新堆回主仓储。
+
+### 5.5 工程护栏
+
+- 新增脚本时，优先补到已有启动/验证链路，并同步 `README.md`。
+- 改前端管理台交互时，优先做组件化弹层，不接受再引入浏览器原生阻塞式交互。
+- 触达超大文件时，若这次不拆，交付说明里必须明确“不拆的原因”和下一步拆分点。
+- 只要发现本地构建产物、缓存目录或测试报告出现在 git 变更里，先处理掉再继续提交。
+- 新接手 agent 默认先看 `AGENTS.md`，再下钻本文；不要跳过仓库入口说明直接盲改。
+
+### 5.6 当前主要技术债
+
+- `pipeline-ops` 主壳和详情壳已经拆开，但其它历史业务模块仍未统一到这种结构，后续接手新模块时按这个模式继续拆。
+- 历史物业模块仍有部分原生 `alert/confirm/prompt`，接手这些模块时优先替换，不要延续旧写法。
+- 前端构建仍存在大 chunk 警告和 `mars3d-cesium` 的 `eval` 警告，当前不阻塞功能，但属于持续优化项。
+
+---
+
+## 6) 任务决策树
+
+### 6.1 如果需求是“改主地图表现”
+
+1. 先判断是样式、加载范围还是分类问题。
+2. 样式和分类优先改 `usePipeLayerLoader.ts`。
+3. 选中高亮或房间锚点优先改 `useMapViewSelection.ts`。
+4. BBox、分页抓取、建筑替换模型优先改 `map-view-helpers.ts`。
+5. 只涉及编排或拾取再改 `MapView.vue`。
+6. 回归 `layers=pipes`、图层开关、实体点击。
+
+### 6.2 如果需求是“改后台二维编辑器 UI”
+
+1. 先找对应区块组件：
+   - 顶部栏：`Pipe2DEditorTopbarSection.vue`
+   - 工具栏：`Pipe2DEditorToolbarSection.vue`
+   - 画布区：`Pipe2DEditorStageSection.vue`
+   - 右侧面板：`Pipe2DEditorRightPanelSection.vue`
+   - 底部状态栏：`Pipe2DEditorStatusbarSection.vue`
+2. 壳层 UI 状态优先改 `usePipe2DEditorWorkspace.ts`，不要把拖拽、快捷键、视图切换回塞主组件。
+3. 只在壳组件做事件连接，不把细节逻辑拉回去。
+
+### 6.3 如果需求是“改二维编辑交互/保存”
+
+1. 先判断属于哪一层：
+   - 地图初始化、相机、底图、场景切换：`usePipe2DEditorMap.ts`
+   - 选点、插点、删点、撤销、右键、快捷键：`usePipe2DEditorMapInteractions.ts`
+   - 渲染同步、编辑态图元回写：`usePipe2DEditorMapGraphics.ts`
+2. 草稿恢复/自动保存优先改 `usePipe2DEditorDrafts.ts`
+3. Twin 拉取/保存优先改 `usePipe2DEditorData.ts`
+4. 网络接口优先改 `services/twin.ts` 或 Nuxt backend proxy
+5. 至少回归：选中节点、选中线段、插点、删点、撤销、保存、重新打开
+
+### 6.4 如果需求是“改工单联动看板”
+
+1. UI 壳层优先改 `PipelineOpsBoard.vue`
+2. 壳层交互、弹层、表单、通知优先改 `usePipelineOpsBoardUi.ts`
+3. 状态、过滤、刷新语义优先改 `usePipelineOpsBoard.ts`
+4. API 封装优先改 `services/pipeline-ops.ts`
+5. server proxy 改 `frontend/server/api/pipeline-ops/*` 或 `pipeline-ops-db.ts`
+5. 后端行为改 `PipelineOpsController.java` / `WorkOrderRepository.java`
+6. 如果只是改缓存、归一化、impact scope、日志装配，优先改 `WorkOrderRepositorySupport.java`
+
+### 6.5 如果需求是“改写接口鉴权 / 代理”
+
+1. Geo/Twin 写代理看 `frontend/server/api/backend/*`
+2. 工单写代理看 `frontend/server/api/pipeline-ops/*`
+3. 鉴权头逻辑看 `frontend/server/utils/backend-proxy.ts` 和相关 proxy util
+4. 同步验证 `BACKEND_WRITE_AUTH_ENABLED=true/false`
+
+### 6.6 如果需求描述不完整
+
+1. 先按最小可行改动处理
+2. 不确定项默认保持向后兼容
+3. 若会引入破坏性语义变更，先停下确认
+
+---
+
+## 7) 常见任务改动地图
+
+### 7.1 管道分类规则
+
+- `frontend/composables/shared/usePipeLayerLoader.ts`
+- 可能联动：`frontend/pages/index.vue`
+
+### 7.2 主地图管道样式
+
+- `frontend/composables/shared/usePipeLayerLoader.ts`
+
+### 7.3 二维编辑器视觉样式
+
+- `frontend/components/admin/Pipe2DEditorDialog.vue`
+- `frontend/components/admin/pipe2d-editor/*.vue`
+
+### 7.4 二维编辑器节点/线段选中、插点、删点
+
+- `frontend/composables/admin/pipe2d-editor/usePipe2DEditorMapInteractions.ts`
+- `frontend/composables/admin/usePipe2DEditorMap.ts`
+
+### 7.5 二维编辑器 Twin 穿透/追踪/遥测/审计
+
+- `frontend/composables/admin/usePipe2DEditorData.ts`
+- `frontend/services/twin.ts`
+- `backend/src/main/java/com/jolt/workflow/geo/TwinController.java`
+
+### 7.6 二维编辑器几何/属性写回
+
+- `frontend/services/twin.ts`
+- `frontend/server/api/backend/twin/pipes/[id]/geometry.put.ts`
+- `frontend/server/api/backend/twin/pipes/[id]/properties.put.ts`
+- `backend/src/main/java/com/jolt/workflow/geo/TwinWriteController.java`
+
+### 7.7 工单筛选、统计、看板不一致
+
+- `frontend/composables/admin/usePipelineOpsBoard.ts`
+- `frontend/services/pipeline-ops.ts`
+- `frontend/server/utils/pipeline-ops-db.ts`
+- `backend/src/main/java/com/jolt/workflow/pipelineops/WorkOrderRepository.java`
+- `backend/src/main/java/com/jolt/workflow/pipelineops/WorkOrderRepositorySupport.java`
+
+### 7.8 工单流程校验、日志、泵控
+
+- `backend/src/main/java/com/jolt/workflow/pipelineops/WorkOrderRepository.java`
+- `backend/src/main/java/com/jolt/workflow/pipelineops/WorkOrderRepositorySupport.java`
+
+### 7.9 迁移脚本
+
+- `frontend/scripts/migrate-pipeline-ops-json-to-postgres.mjs`
+
+---
+
+## 8) 改动-验证矩阵（DoD）
+
+### 8.1 改主地图
+
+至少执行：
 
 ```bash
-docker compose up -d
+curl -s "http://localhost:8080/api/v1/features?layers=pipes&limit=1"
+curl -s "http://localhost:8080/api/v1/features?layers=buildings&limit=1"
+cd frontend && npm run typecheck
 ```
 
-### 2.3 常见启动问题
+浏览器确认：
 
-- **8080 被占用**：后端会启动失败（Tomcat 报 “Port 8080 already in use”）。
-  - 临时方案：`./gradlew bootRun --args='--server.port=8081'`
-  - 或停止占用 8080 的进程。
+- 首页可打开
+- 三类管道可切换
+- 点击实体后右侧详情不报错
 
----
+### 8.2 改后台资产中心
 
-## 3. 环境变量与配置
+至少回归：
 
-### 3.1 后端数据库连接（backend）
+- `/admin` 可进入资产中心
+- 建筑/管道列表都能加载
+- `visible` 开关可写回
+- 新增/编辑/删除可刷新
+- `cd frontend && npm run typecheck`
 
-配置文件：`backend/src/main/resources/application.properties`
+### 8.3 改二维编辑器
 
-- `spring.datasource.url=${DB_URL:jdbc:postgresql://localhost:5432/unispace}`
-- `spring.datasource.username=${DB_USER:postgres}`
-- `spring.datasource.password=${DB_PASSWORD:postgres}`
-
-因此后端支持环境变量：
-
-- `DB_URL`
-- `DB_USER`
-- `DB_PASSWORD`
-
-### 3.2 前端 AI（Gemini）
-
-配置文件：`frontend/nuxt.config.ts`
-
-- 运行时配置：`runtimeConfig.geminiApiKey = process.env.GEMINI_API_KEY || ''`
-
-因此需要：
-
-- `GEMINI_API_KEY`（Nuxt server 侧读取；未设置会导致 `/api/chat` 抛 500）
-
----
-
-## 4. 目录与逐文件职责（按模块）
-
-下面按目录逐文件说明“这个文件负责什么”、“被谁调用”、“关键数据结构”。
-
-> 说明：以下列表仅覆盖仓库内可见源代码文件；忽略 `build/`、`node_modules/` 等构建产物。
-
----
-
-# 4A. Root 目录
-
-## `start.sh`
-
-- 目的：一键启动前端与后端。
-- 行为：
-  - 检查 `java`、`node` 是否存在。
-  - 后端：`cd backend && ./gradlew bootRun`（前台启动在子进程中）
-  - 前端：`cd frontend && npm ci || npm install && npm run dev`
-  - `trap cleanup EXIT INT TERM`：退出时 kill 两个子进程。
-- 关键点：
-  - `set -euo pipefail`：变量未定义会直接失败。
-  - 依赖安装可能比较慢；CI/开发机可考虑用缓存。
-
-## `docker-compose.yml`
-
-- 目的：提供本地 PostGIS 数据库。
-- 默认：
-  - DB：`unispace`
-  - User/Pass：`postgres/postgres`
-  - volume：`unispace_postgis_data`
-
-## `README.md`
-
-- 根 README（已更新）：面向开发者的快速开始与模块说明。
-
----
-
-# 4B. Backend（Spring Boot）
-
-## 4B.1 构建与依赖
-
-### `backend/build.gradle.kts`
-
-- Spring Boot 版本：`4.0.1`
-- Java toolchain：21
-- 关键依赖：
-  - `spring-boot-starter-web`
-  - `spring-boot-starter-json`
-  - `spring-boot-starter-data-jpa`
-  - `spring-boot-starter-jdbc`
-  - `flyway-core`
-  - `hibernate-spatial`
-  - `postgresql`（runtimeOnly）
-
-> 重要历史：
-> - 项目曾因缺少 `hibernate-spatial` 导致 `PostgisDialect` 类无法加载；已通过添加 `hibernate-spatial` 修复。
-> - Spring Boot 4 使用 `tools.jackson.*`，而非传统 `com.fasterxml.jackson.*`。若代码注入 `com.fasterxml.jackson.databind.ObjectMapper` 会找不到 bean。
-
-### `backend/settings.gradle.kts`
-
-- `rootProject.name = "workflow"`
-
-## 4B.2 配置
-
-### `backend/src/main/resources/application.properties`
-
-- 设置应用名、数据源、JPA、Flyway。
-- JPA：`ddl-auto=validate`（要求表已存在；不会自动建表）
-- Flyway：`enabled=true`，迁移位置：`classpath:db/migration`
-
-## 4B.3 数据库迁移
-
-### `backend/src/main/resources/db/migration/V1__init_postgis_and_features.sql`
-
-- `CREATE EXTENSION IF NOT EXISTS postgis;`
-- 创建表 `geo_features`：
-  - `id TEXT PRIMARY KEY`
-  - `layer TEXT NOT NULL`
-  - `geom geometry(GEOMETRY, 4326) NOT NULL`
-  - `properties JSONB NOT NULL DEFAULT '{}'::jsonb`
-  - `created_at`/`updated_at`
-- 索引：
-  - `geo_features_layer_idx`（layer）
-  - `geo_features_geom_gist`（geom GIST）
-  - `geo_features_properties_gin`（properties GIN）
-- 更新触发器：`set_updated_at()` + trigger `trg_geo_features_updated_at`
-
-## 4B.4 源码入口与 Controller
-
-### `backend/src/main/java/com/jolt/workflow/WorkflowApplication.java`
-
-- Spring Boot 启动入口：`@SpringBootApplication`
-
-### `backend/src/main/java/com/jolt/workflow/HelloController.java`
-
-- 简单演示接口：`GET /api/v1/hello`
-- 返回：`{"message":"Hello, world!"}`
-
-### `backend/src/main/java/com/jolt/workflow/config/CorsConfig.java`
-
-- 对 `/api/**` 开放 CORS：
-  - `allowedOriginPatterns("*")`
-  - `allowedMethods(GET,POST,PUT,PATCH,DELETE,OPTIONS)`
-  - `allowedHeaders("*")`
-  - `allowCredentials(false)`
-
-> 用于前端跨域调用后端 API。
-
-### `backend/src/main/java/com/jolt/workflow/geo/GeoFeatureController.java`
-
-- Base path：`/api/v1`
-
-#### `GET /api/v1/features`
-
-参数：
-
-- `bbox`（可选）：`minLon,minLat,maxLon,maxLat`（EPSG:4326）
-- `layers`（可选）：逗号分隔 layer 列表
-- `limit`（可选，默认 2000）
-
-实现要点：
-
-- 使用 `JdbcTemplate` 直接查询 `geo_features` 表。
-- SQL 使用 Postgres JSONB 组合 GeoJSON：
-  - `jsonb_build_object('type','FeatureCollection', 'features', jsonb_agg(...))`
-  - 每个 feature：`id`、`properties`、`ST_AsGeoJSON(geom)::jsonb`
-- bbox 过滤：`geom && ST_MakeEnvelope(?, ?, ?, ?, 4326)`（使用 bbox 的矩形 envelope 与 bbox 运算符 &&）
-- layer 过滤：拼接 `layer IN (?, ?, ...)`。
-- 返回类型：`tools.jackson.databind.JsonNode`，通过 `tools.jackson.databind.ObjectMapper.readTree(json)` 解析。
-
-> 已知风险：
-> - `jdbcTemplate.queryForObject(sql, params, String.class)` 若返回 `null`（无行）会导致后续 `readTree(null)` 抛异常。
-> - SQL/参数个数匹配需要特别留意（尤其是 `LIMIT ?` 参数）。
-> - 当前 controller 返回 500 的可能原因通常在这里（表空、SQL 错误、参数错、返回 null）。
-
-#### `GET /api/v1/features/{id}`
-
-- 查询单条 feature，返回 JSON。
-- 若无数据：返回 `{"error":"not_found"}`（非 Spring 的 404，仍返回 200/JSON）。
-
-#### `parseBbox`
-
-- 解析 bbox 字符串，长度必须为 4，否则抛 `IllegalArgumentException`。
-
-### `backend/src/main/java/com/jolt/workflow/geo/GeoFeatureRow.java`
-
-- Java record：
-
-```java
-public record GeoFeatureRow(String id, String layer, String geomGeoJson, JsonNode properties) {}
-```
-
-- 注意：此处 `JsonNode` 仍为 `com.fasterxml.jackson.databind.JsonNode`（与 Spring Boot 4 的 `tools.jackson` 不一致）。
-- 当前代码中该 record 并未被 controller 使用；如果未来使用该类型，需要统一 Jackson 体系，否则会出现类型/bean 不匹配。
-
-## 4B.5 测试
-
-### `backend/src/test/java/com/jolt/workflow/WorkflowApplicationTests.java`
-
-- Spring Boot 默认生成的测试入口（未展开分析）。
-
----
-
-# 4C. Frontend（Nuxt 3 + Cesium）
-
-## 4C.1 构建与配置
-
-### `frontend/package.json`
-
-- Nuxt：`^3.15.3`
-- Cesium：`^1.137.0`
-- AI：`@google/genai`
-- `vite-plugin-cesium`
-- Tailwind：`@nuxtjs/tailwindcss`
-
-### `frontend/nuxt.config.ts`
-
-- modules：`@nuxtjs/tailwindcss`
-- css：`~/assets/css/main.css` + `cesium/Build/Cesium/Widgets/widgets.css`
-- runtimeConfig：
-  - server：`geminiApiKey`（来自 `GEMINI_API_KEY`）
-  - public：`appName`
-- vite：`plugins: [cesium()]`
-
-> 注意：仓库曾配置过 `vite.css.preprocessorOptions.scss`（注入 `~/assets/scss/variables.scss`），会导致开发机必须安装 `sass`/`sass-embedded`。目前已移除该配置，避免强制 SCSS 预处理依赖。
-
-### `frontend/tailwind.config.js`
-
-- Tailwind 配置（未展开阅读内容；若需要可补充）。
-
-### `frontend/tsconfig.json`
-
-- TS 配置（未展开阅读内容；若需要可补充）。
-
-### `frontend/app.vue`
-
-- 根组件：只渲染 `<NuxtPage />`
-- 使用 `useHead` 设置 `lang=zh-CN`
-
-## 4C.2 运行时数据模型
-
-### `frontend/types.ts`
-
-定义了前端业务类型：
-
-- `PipeNode`：管网资产（含压力/流量/材质/管径/埋深/坐标等）
-- `Building`：建筑资产（房间数/关键设备/能耗等）
-- `WorkOrder`：工单
-- `Alert`：告警
-- `ChatMessage`：聊天消息（含 `isLoading`）
-- `GeoJsonFeature`：地图拾取结果（`{id,type:'geojson',properties?}`）
-
-### `frontend/composables/useConstants.ts`
-
-提供 mock 数据：
-
-- `BUILDINGS`（3 条）
-- `PIPELINES`（3 条）
-- `WORK_ORDERS`
-- `MOCK_ALERTS`
-- `PRESSURE_DATA`
-
-这些数据被：
-
-- `pages/index.vue`：用于将选中 GeoJSON 匹配到资产
-- `components/SidebarLeft.vue`：用于压力/告警展示
-- `components/RightSidebar.vue`：用于关联工单
-- `pages/admin.vue`：用于后台大厅展示
-
-## 4C.3 主页面与状态流
-
-### `frontend/pages/index.vue`
-
-- 顶层布局：Map 作为背景层 + UI overlay（TopNav/SidebarLeft/MapControls/RightSidebar/ChatInterface）
-- 维护核心状态：
-  - `selectedItem`：`PipeNode | Building | GeoJsonFeature | null`
-  - `viewport`：`{x,y,scale}`（传给 MapView；MapView 也会回传 update）
-  - `layers`：water/sewage/drain/buildings/green
-  - `weatherMode`：切换 fog/lighting
-
-#### `handleSelection`
-
-- 接收 MapView emit 的选中对象。
-- 若选中为 GeoJSON：
-  - 若 `properties.building`：尝试匹配 `BUILDINGS`，否则动态生成 Building（注意 coordinates 目前填 0,0）
-  - 若 `properties.highway`：尝试匹配 `PIPELINES`，否则 fallback 第一个 pipeline
-  - 若都不匹配：保留 GeoJSON feature
-
-> 该逻辑是“将地图 feature 映射为业务资产”的核心。
-
-## 4C.4 地图核心
-
-### `frontend/components/MapView.vue`
-
-- 初始化 `Cesium.Viewer`，底图为 carto dark。
-- 建立 `CustomDataSource`：water/green/buildings/roads + sewage/drain（占位）。
-- 图层文件映射：
-  - `water: /map/water.geojson`
-  - `green: /map/green.geojson`
-  - `buildings: /map/buildings.geojson`
-  - `roads: /map/roads.geojson`
-- 按需加载：
-  - `loadedLayers: Set<string>` 防止重复加载
-  - `loadLayer(layerName)` 使用 `Cesium.GeoJsonDataSource.load(url, { clampToGround: true })`
-  - 加载后移除 `label/billboard/point`，并应用样式（water/green/buildings/roads）
-  - 加载后将 entity 加入对应 `CustomDataSource`
-- 卸载：`dataSource.entities.removeAll()` 并从 `loadedLayers` 移除
-
-#### 拾取与选中
-
-- `ScreenSpaceEventHandler` 监听 LEFT_CLICK
-- `viewer.scene.pick(...)` 获取 entity
-- 将 entity 的 `properties`（当前时间）取出并 emit `select`，类型为 `GeoJsonFeature`
-
-#### 高亮
-
-- watch `props.selectedId`：在所有 dataSources 中查找 entity
-- 保存原样式并改为黄色材质/加粗
-
-#### 视口同步
-
-- 相机变化时（`viewer.camera.changed`）emit `update:viewport`（RAF 节流）
-- watch `props.viewport`：flyTo（避免循环比较 eps）
-
-#### Weather 模式
-
-- watch `props.weatherMode`：控制 fog、lighting、imagery brightness/contrast 等
-
-### `frontend/components/MapControls.vue`
-
-- 底部图层切换 UI。
-- 会 emit `toggle-layer` 事件，参数：`water|sewage|drain|green|buildings`
-
-> 注意：MapView 实际加载的是 water/green/buildings/roads。
-> UI 暴露 sewage/drain，但 MapView 并未加载对应 GeoJSON（仅有占位 dataSource）。
-
-### `frontend/components/LayerToggle.vue`
-
-- 通用的图层按钮。
-- 支持图标模式（Eye/EyeOff）或彩色点。
-
-## 4C.5 UI 面板
-
-### `frontend/components/TopNav.vue`
-
-- 顶部导航：标题 + 在线状态 + 当前时间
-- 提供入口：`/admin`
-
-### `frontend/components/SidebarLeft.vue`
-
-- 左侧面板：系统状态卡片 + 压力图（占位）+ 事件日志（mock）
-- `PressureChart` 当前为占位组件
-
-### `frontend/components/RightSidebar.vue`
-
-- 右侧资产详情面板（仅对 `PipeNode` 或 `Building` 显示）
-- Tabs：基础台账 / 实时监测 / 运维工单
-- 工单来自 `WORK_ORDERS`（mock）
-
-### `frontend/components/TechPanel.vue`
-
-- 通用玻璃拟态/科技风容器组件（标题 + 边框装饰）
-
-### `frontend/components/PressureChart.vue`
-
-- 占位实现（已移除 React 图表依赖）
-
-### `frontend/components/InfoBox.vue`
-
-- 已废弃组件（模板写死 `v-if=false`），备注被 RightSidebar 替代。
-
-## 4C.6 后台大厅（资产中心）
-
-### `frontend/pages/admin.vue`
-
-- 后台大厅（浅色字节后台风格），当前聚焦“资产中心”。
-- UI 采用左侧菜单布局：
-  - `frontend/components/admin/AdminLayout.vue`
-  - `frontend/components/admin/AdminSider.vue`
-- 资产中心包含二级菜单（左侧展开）：
-  - 建筑数据（`layer=buildings`）
-  - 管道数据（当前映射为道路数据 `layer=roads`）
-- 数据来源：直接调用后端 GeoJSON API：
-  - `GET http://localhost:8080/api/v1/features?layers=buildings|roads&limit=...`
-- 搜索：页面顶部搜索框，按当前表格配置的 `searchKeys` 做模糊匹配。
-- 详情：点击行打开 JSON 抽屉，展示并支持复制原始 GeoJSON Feature。
-
-### 相关组件（admin）
-
-- `frontend/components/admin/GeoFeatureTable.vue`
-  - 通用图层表格组件
-  - 输入：`backendBaseUrl`、`layer`、`limit`、`columns`、`mapRow`、`search/searchKeys`
-  - 行点击：`emit('select', rawFeature)`
-  - 条数回传：`emit('count', n)`
-
-- `frontend/components/admin/JsonDrawer.vue`
-  - 通用 JSON 抽屉
-  - 输入：`open`、`obj`、`metaLabel`
-  - 内置复制 JSON
-
-## 4C.7 AI 聊天
-
-### `frontend/components/ChatInterface.vue`
-
-- 浮窗 UI，消息列表 + 输入框
-- 调用 `useGeminiChat().streamChatResponse` 获取流式输出
-
-### `frontend/composables/useGeminiChat.ts`
-
-- `POST /api/chat`
-- 解析响应体 `ReadableStream`：按行拆分，读取 `data: ...` 片段，JSON parse 后拿 `text`
-
-### `frontend/server/api/chat.post.ts`
-
-- 使用 `@google/genai` 的 `GoogleGenAI`
-- 模型：`gemini-3-flash-preview`
-- 返回 SSE：`Content-Type: text/event-stream`
-- 未配置 key：抛 500（`createError`）
-
-> 注意：SYSTEM_INSTRUCTION 中提到的“查询数据库/知识图谱”是模拟语气，并未与后端数据库做真实对接。
-
-## 4C.8 GeoJSON 数据文件
-
-目录：`frontend/public/map/`
-
-- `map_all.geojson`：原始数据合集
-- `water.geojson`/`green.geojson`/`buildings.geojson`/`roads.geojson`：MapView 实际加载的拆分文件
-- `split_geojson.py`：拆分脚本
-
-### `frontend/public/map/split_geojson.py`
-
-- 输入：`map_all.geojson`
-- 输出：`{water,green,buildings,roads}.geojson`
-- 分类规则：
-  - Point 跳过
-  - water：`natural=water` 或存在 `water`
-  - green：`natural=wood/wetland` 或 `landuse=cemetery`
-  - buildings：存在 `building`
-  - roads：存在 `highway`
-
----
-
-## 5. 数据流/请求流（端到端）
-
-### 5.1 前端地图数据流（当前）
-
-1. `pages/index.vue` 初始化 `layers` 默认全开
-2. `MapView.vue` onMounted -> `loadGeoJsonLayers()`
-3. `loadLayer('water')` 等 -> `GeoJsonDataSource.load('/map/water.geojson')`
-4. entities 加入 `CustomDataSource('water')`
-5. 用户点击 entity -> `scene.pick` -> emit `select(GeoJsonFeature)`
-6. `index.vue` `handleSelection`：将 GeoJsonFeature 尝试映射为 Building/PipeNode（mock），展示到 `RightSidebar`
-
-### 5.2 AI 聊天数据流
-
-1. `ChatInterface.vue` 输入 -> `useGeminiChat.streamChatResponse`
-2. `POST /api/chat`（Nuxt server）
-3. `server/api/chat.post.ts` 调用 Gemini stream
-4. SSE 分片写回 -> 前端按 `data:` 行解析 -> UI 实时追加
-
-### 5.3 后端 GeoJSON API（当前）
-
-1. `GET /api/v1/features?bbox=...&layers=...`
-2. `GeoFeatureController` 构造 SQL -> `JdbcTemplate` 查询 `geo_features`
-3. 数据库层用 JSONB + `ST_AsGeoJSON` 组合 FeatureCollection
-4. Java 用 `tools.jackson ObjectMapper` parse 成 `JsonNode` 返回
-
-> 前端后台大厅（`/admin`）已消费该 API（buildings/roads）；主地图仍默认加载静态 GeoJSON。
-
----
-
-## 6. 已知坑与历史修复记录（对未来智能体很重要）
-
-### 6.1 Spring Boot 4 的 Jackson 体系
-
-- Spring Boot 4 使用 `tools.jackson.*`（Jackson 3）
-- 若代码使用 `com.fasterxml.jackson.*` 进行依赖注入（如 `ObjectMapper`），会出现“找不到 bean”问题。
-- 本仓库中：
-  - `GeoFeatureController` 已使用 `tools.jackson.databind.ObjectMapper`
-  - 但 `GeoFeatureRow` 仍引用 `com.fasterxml.jackson.databind.JsonNode`（潜在问题）
-
-### 6.2 Hibernate Spatial/PostGIS Dialect
-
-- 曾出现 `PostgisDialect` 类找不到的问题。
-- 修复方式：添加 `implementation("org.hibernate.orm:hibernate-spatial")`
-- 同时避免硬编码 dialect（使用 metadata 自动识别）。
-
-### 6.3 /api/v1/features 返回 500 的可能原因
-
-当数据库为空或 SQL 参数不匹配时，`GeoFeatureController` 可能抛异常：
-
-- `queryForObject` 返回 `null` -> `objectMapper.readTree(null)` -> NPE/parse error
-- SQL grammar/参数数不一致（特别是 LIMIT 与 params）
-
-建议未来改造：
-
-- 让无数据时返回：`{"type":"FeatureCollection","features":[]}`
-- 对异常返回更明确的错误信息（或转换为 4xx/5xx）
-
-### 6.4 端口占用
-
-- 8080 被占用会导致后端启动失败。
-
----
-
-## 7. 扩展点与改造建议（面向下一阶段）
-
-### 7.1 GeoJSON -> PostGIS 导入（buildings/roads 实操记录）
-
-当前前端依赖静态文件；后端提供 `geo_features` 作为目标表。
-
-本仓库已验证的一套导入流程（适用于 `buildings.geojson` / `roads.geojson`）：
-
-1. 初始化表结构（未启动过后端/Flyway 未执行时）：
+至少执行：
 
 ```bash
-docker exec -i unispace-postgis psql -U postgres -d unispace < backend/src/main/resources/db/migration/V1__init_postgis_and_features.sql
+cd frontend && npm run typecheck
+cd frontend && npm run build
+curl -s "http://localhost:8080/api/v1/twin/drilldown/way/25598484" | head -c 400
+curl -s "http://localhost:8080/api/v1/twin/trace?startId=way/25598484&direction=down" | head -c 400
+curl -s "http://localhost:8080/api/v1/twin/telemetry/latest?featureIds=way/25598484" | head -c 400
+curl -s "http://localhost:8080/api/v1/twin/audit/way/25598484?limit=5" | head -c 400
 ```
 
-2. 将 GeoJSON 拷贝进数据库容器（避免 stdin 读取截断问题）：
+页面回归：
+
+- 打开 `/admin` -> 管道二维编辑
+- 选中线段成功
+- 选中节点成功
+- 插点/删点可用
+- 保存后重新打开仍为新几何
+- 重命名后刷新仍保留
+
+### 8.4 改 `pipeline-ops`
+
+至少执行：
 
 ```bash
-docker cp frontend/public/map/roads.geojson unispace-postgis:/tmp/roads.geojson
-docker cp frontend/public/map/buildings.geojson unispace-postgis:/tmp/buildings.geojson
+./scripts/verify-local.sh
 ```
 
-3. 执行导入（示例：roads；buildings 同理仅替换文件与 layer）：
+或最小子集：
 
 ```bash
-docker exec -i unispace-postgis psql -U postgres -d unispace -c "
-WITH gj AS (
-  SELECT pg_read_file('/tmp/roads.geojson')::jsonb AS fc
-),
-feat AS (
-  SELECT jsonb_array_elements(fc->'features') AS f
-  FROM gj
-)
-INSERT INTO geo_features (id, layer, geom, properties)
-SELECT
-  COALESCE(NULLIF(f->>'id',''), md5((f->'geometry')::text || (f->'properties')::text)) AS id,
-  'roads' AS layer,
-  ST_SetSRID(ST_GeomFromGeoJSON((f->'geometry')::text), 4326) AS geom,
-  COALESCE(f->'properties', '{}'::jsonb) AS properties
-FROM feat
-WHERE f ? 'geometry'
-ON CONFLICT (id) DO UPDATE
-SET layer = EXCLUDED.layer,
-    geom = EXCLUDED.geom,
-    properties = EXCLUDED.properties,
-    updated_at = now();
-"
+cd backend && ./gradlew test
+cd frontend && npm run typecheck
+curl -s "http://localhost:8080/api/v1/pipeline-ops/workorders?limit=2" | head -c 400
+curl -s "http://localhost:8080/api/v1/pipeline-ops/stats?type=inspection" | head -c 400
+curl -s "http://localhost:8080/api/v1/pipeline-ops/dashboard?type=inspection" | head -c 400
 ```
 
-4. 验证导入结果：
+页面回归：
+
+- `/admin` 看板可加载列表、统计、Dashboard
+- 任意筛选后，列表、统计、Dashboard 口径一致
+- 快速切换筛选不会出现旧数据回写
+- 建单、流转、写日志、泵控动作可走通
+
+### 8.5 改构建/脚本
+
+至少执行：
 
 ```bash
-docker exec -i unispace-postgis psql -U postgres -d unispace -c "select layer, count(*) from geo_features where layer in ('buildings','roads') group by layer order by layer;"
+./scripts/verify-local.sh
 ```
 
-验证 API：
+只改前端构建链路时可退化为：
 
 ```bash
-curl "http://localhost:8080/api/v1/features?layers=buildings,roads&limit=5" | head -c 400
+./scripts/verify-local.sh frontend
+./scripts/verify-local.sh guardrails
 ```
 
-导入策略要点：
+如涉及迁移脚本，再执行：
 
-- 每个文件对应一个 `layer`
-- `id`：优先使用 GeoJSON feature 的 `id`；缺失时以 `md5(geometry+properties)` 生成稳定 id（便于重复导入/幂等）
-- `properties`：直接存 JSONB
-- `geom`：`ST_SetSRID(ST_GeomFromGeoJSON(...), 4326)`
+```bash
+cd frontend && npm run migrate:pipeline-ops
+```
 
-### 7.2 前端改为按 bbox 动态加载
+### 8.6 验证失败时的闭环要求
 
-- MapView 已有 camera changed hook 与 viewport 计算。
-- 可用 viewport -> bbox（或直接用 `viewer.camera.computeViewRectangle`）来请求后端。
-- 支持：
-  - 按视口增量加载
-  - 按图层加载（layers 参数）
-  - limit 与分页
-
-### 7.3 统一业务台账
-
-- 当前 RightSidebar 展示依赖 mock 常量。
-- 可逐步增加后端接口：building/pipe/workorder/alert，并让 AI system instruction 与真实数据对接。
-
-### 7.4 AI 与业务数据对接
-
-- 当前 AI 仅做语言模型对话（system prompt 中“数据库查询”是模拟）。
-- 可扩展为：
-  - 后端提供查询接口
-  - Nuxt server route 调用后端并将结果注入 prompt 或工具调用
+- 交付说明中必须写清失败命令
+- 写清报错摘要
+- 写清已尝试修复动作
+- 不要把“未验证”描述成“已完成”
 
 ---
 
-## 8. 文件清单（用于智能体快速索引）
+## 9) 高价值文件索引
 
-### Root
+### 前端主地图
 
-- `start.sh`
-- `docker-compose.yml`
-- `README.md`
-- `agent.md`（本文）
-
-### Backend 源码
-
-- `backend/build.gradle.kts`
-- `backend/settings.gradle.kts`
-- `backend/src/main/resources/application.properties`
-- `backend/src/main/resources/db/migration/V1__init_postgis_and_features.sql`
-- `backend/src/main/java/com/jolt/workflow/WorkflowApplication.java`
-- `backend/src/main/java/com/jolt/workflow/HelloController.java`
-- `backend/src/main/java/com/jolt/workflow/config/CorsConfig.java`
-- `backend/src/main/java/com/jolt/workflow/geo/GeoFeatureController.java`
-- `backend/src/main/java/com/jolt/workflow/geo/GeoFeatureRow.java`
-- `backend/src/test/java/com/jolt/workflow/WorkflowApplicationTests.java`
-
-### Frontend 源码
-
-- `frontend/nuxt.config.ts`
-- `frontend/app.vue`
 - `frontend/pages/index.vue`
-- `frontend/pages/admin.vue`
 - `frontend/components/MapView.vue`
-- `frontend/components/MapControls.vue`
-- `frontend/components/LayerToggle.vue`
-- `frontend/components/TopNav.vue`
-- `frontend/components/SidebarLeft.vue`
-- `frontend/components/RightSidebar.vue`
-- `frontend/components/ChatInterface.vue`
-- `frontend/components/TechPanel.vue`
-- `frontend/components/PressureChart.vue`
-- `frontend/components/InfoBox.vue`
-- `frontend/composables/useGeminiChat.ts`
-- `frontend/composables/useConstants.ts`
-- `frontend/types.ts`
-- `frontend/server/api/chat.post.ts`
-- `frontend/assets/css/main.css`
+- `frontend/composables/shared/usePipeLayerLoader.ts`
+- `frontend/composables/shared/useMapViewSelection.ts`
+- `frontend/utils/map-view-helpers.ts`
 
-### Frontend 数据
+### 前端后台资产中心
 
-- `frontend/public/map/map_all.geojson`
-- `frontend/public/map/water.geojson`
-- `frontend/public/map/green.geojson`
-- `frontend/public/map/buildings.geojson`
-- `frontend/public/map/roads.geojson`
-- `frontend/public/map/split_geojson.py`
+- `frontend/pages/admin.vue`
+- `frontend/composables/admin/useAssetCrud.ts`
+- `frontend/services/geo-features.ts`
 
----
+### 前端二维编辑器
 
-## 9. 需要注意的“代码一致性”问题（未来智能体上手时优先检查）
+- `frontend/components/admin/Pipe2DEditorDialog.vue`
+- `frontend/components/admin/pipe2d-editor/Pipe2DEditorTopbarSection.vue`
+- `frontend/components/admin/pipe2d-editor/Pipe2DEditorToolbarSection.vue`
+- `frontend/components/admin/pipe2d-editor/Pipe2DEditorStageSection.vue`
+- `frontend/components/admin/pipe2d-editor/Pipe2DEditorRightPanelSection.vue`
+- `frontend/components/admin/pipe2d-editor/Pipe2DEditorStatusbarSection.vue`
+- `frontend/components/admin/pipe2d-editor/Pipe2DEditorShortcutHelp.vue`
+- `frontend/components/admin/pipe2d-editor/pipe2d-editor-config.ts`
+- `frontend/composables/admin/usePipe2DEditorWorkspace.ts`
+- `frontend/composables/admin/usePipe2DEditorDrafts.ts`
+- `frontend/composables/admin/usePipe2DEditorGraph.ts`
+- `frontend/composables/admin/useMindmapEditor.ts`
+- `frontend/composables/admin/useMindmapEditorEvents.ts`
+- `frontend/composables/admin/pipe2d-editor/pipe2d-editor-map-shared.ts`
+- `frontend/composables/admin/pipe2d-editor/usePipe2DEditorMapInteractions.ts`
+- `frontend/composables/admin/pipe2d-editor/usePipe2DEditorMapGraphics.ts`
+- `frontend/composables/admin/usePipe2DEditorMap.ts`
+- `frontend/composables/admin/usePipe2DEditorData.ts`
+- `frontend/services/twin.ts`
+- `frontend/utils/mars3d-loader.ts`
+- `frontend/utils/pipe2d-geometry.ts`
+- `frontend/utils/pipe2d-graph.ts`
 
-- 前端 `layers` 包含 `sewage/drain`，但 MapView 当前仅加载 `water/green/buildings/roads`。
-- 后端 `GeoFeatureRow` 使用 `com.fasterxml.jackson.databind.JsonNode` 与 Boot4 的 `tools.jackson` 不一致。
-- 后端 `/api/v1/features/{id}` 未返回 HTTP 404，而是 JSON `{error:not_found}`。
+### 前端工单联动
 
----
+- `frontend/components/admin/ops/PipelineOpsBoard.vue`
+- `frontend/components/admin/ops/PipelineOpsOverviewSection.vue`
+- `frontend/components/admin/ops/PipelineOpsCreateSection.vue`
+- `frontend/components/admin/ops/PipelineOpsListSection.vue`
+- `frontend/components/admin/ops/PipelineOpsActionDialog.vue`
+- `frontend/components/admin/ops/PipelineOpsDetailPanel.vue`
+- `frontend/components/admin/ops/PipelineOpsImpactCard.vue`
+- `frontend/components/admin/ops/PipelineOpsLogsCard.vue`
+- `frontend/components/admin/ops/PipelineOpsPumpCard.vue`
+- `frontend/components/admin/ops/PipelineOpsInspectionCard.vue`
+- `frontend/components/admin/ops/pipeline-ops-detail-types.ts`
+- `frontend/components/admin/ops/pipeline-ops-view-constants.ts`
+- `frontend/components/common/ProxyWriteAuthDialog.vue`
+- `frontend/composables/admin/usePipelineOpsBoardUi.ts`
+- `frontend/composables/admin/usePipelineOpsBoard.ts`
+- `frontend/services/pipeline-ops.ts`
+- `frontend/services/proxy-write-auth.ts`
+- `frontend/server/api/pipeline-ops/*.ts`
+- `frontend/server/utils/pipeline-ops-db.ts`
+- `frontend/scripts/migrate-pipeline-ops-json-to-postgres.mjs`
 
-## 10. 最小可用验证清单
+### 仓库脚本
+
+- `scripts/verify-local.sh`
+- `scripts/check-size-guardrails.sh`
+- `scripts/perf-baseline.sh`
 
 ### 后端
 
-- `GET http://localhost:8080/api/v1/hello` 应返回 `{"message":"Hello, world!"}`
-- 数据库连通时，启动日志应出现 Hikari/Database info。
+- `backend/src/main/java/com/jolt/workflow/geo/GeoFeatureController.java`
+- `backend/src/main/java/com/jolt/workflow/geo/TwinController.java`
+- `backend/src/main/java/com/jolt/workflow/geo/TwinWriteController.java`
+- `backend/src/main/java/com/jolt/workflow/geo/Module2TelemetryController.java`
+- `backend/src/main/java/com/jolt/workflow/pipelineops/PipelineOpsController.java`
+- `backend/src/main/java/com/jolt/workflow/pipelineops/WorkOrderRepository.java`
+- `backend/src/main/java/com/jolt/workflow/pipelineops/WorkOrderRepositorySupport.java`
+- `backend/src/main/resources/db/migration/`
 
-### 前端
+---
 
-- `http://localhost:3000/` 能渲染 Cesium 场景并加载 GeoJSON 图层
-- 点击 feature 能触发右侧面板（若匹配到 mock 资产）
-- `http://localhost:3000/admin` 可查看 GeoJSON 统计信息
-- 配置 `GEMINI_API_KEY` 后，AI 聊天可流式输出
+## 10) 文档同步要求
+
+以下变更做完后，默认要同步文档：
+
+- 语义变化：`pipes` / `roads` / 介质分类 / 图层名称
+- 接口变化：新增参数、返回字段、鉴权方式、错误码
+- 二维编辑器交互变化：选中、插点、删点、保存链路、草稿逻辑
+- `pipeline-ops` 过滤、流转、日志、泵控、迁移脚本行为变化
+
+最低同步集：
+
+- `README.md`
+- `开发日志.md`
+- `agent.md`

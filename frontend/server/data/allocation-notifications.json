@@ -1,0 +1,15 @@
+{
+  "list": [
+    {
+      "targetType": "ROOM",
+      "targetId": "RM-BLD-003-101",
+      "targetName": "学生宿舍楼 101",
+      "level": "INFO",
+      "channel": "SYSTEM",
+      "content": "腾退通知：学生宿舍楼101，原住户：演示状态:在住",
+      "id": "NTF-1774603705611",
+      "at": "2026-03-27T09:28:25.611Z",
+      "status": "Unread"
+    }
+  ]
+}

@@ -138,6 +138,7 @@
           :global-pipe-count="globalPipeCount"
           :global-node-count="globalNodeCount"
           :global-total-length-text="globalTotalLengthText"
+          :pipe25d-preview-available="Boolean(selectedPipe25DPreview)"
           @collapse-panel="panelCollapsed = true"
           @toggle-section="togglePanelSection"
           @update:selected-feature-id="handleSelectedFeatureIdChange"
@@ -157,6 +158,7 @@
           @update:relation-active-names="relationActiveNames = $event"
           @open-workorder="openRelatedWorkorder"
           @create-workorder="openSelectedPipeWorkorderPrompt"
+          @open-pipe-25d-preview="openSelectedPipe25DPreview"
           @reset-draft="handleResetDraft"
           @create-pipe="createDraftPipe"
           @save-geometry="saveGeometry"
@@ -266,6 +268,12 @@
           @action="handleAiAssistantAction"
         />
       </div>
+
+      <Pipe2DSelectedPipe25DPreview
+        :open="pipe25dPreviewOpen"
+        :preview="selectedPipe25DPreview"
+        @close="pipe25dPreviewOpen = false"
+      />
     </div>
   </div>
 </template>
@@ -286,6 +294,7 @@ import Pipe2DEditorRightPanelSection from '~/components/admin/pipe2d-editor/Pipe
 import Pipe2DEditorQuickReportModal from '~/components/admin/pipe2d-editor/Pipe2DEditorQuickReportModal.vue'
 import type { QuickReportDraft } from '~/components/admin/pipe2d-editor/Pipe2DEditorQuickReportModal.vue'
 import Pipe2DEditorAssetBindingModal from '~/components/admin/pipe2d-editor/Pipe2DEditorAssetBindingModal.vue'
+import Pipe2DSelectedPipe25DPreview from '~/components/admin/pipe2d-editor/Pipe2DSelectedPipe25DPreview.vue'
 import Pipe2DEditorSaveConfirmModal from '~/components/admin/pipe2d-editor/Pipe2DEditorSaveConfirmModal.vue'
 import Pipe2DEditorShortcutHelp from '~/components/admin/pipe2d-editor/Pipe2DEditorShortcutHelp.vue'
 import Pipe2DEditorBuildingModelModal from '~/components/admin/pipe2d-editor/Pipe2DEditorBuildingModelModal.vue'
@@ -295,6 +304,7 @@ import Pipe2DEditorStatusbarSection from '~/components/admin/pipe2d-editor/Pipe2
 import Pipe2DEditorToolbarSection from '~/components/admin/pipe2d-editor/Pipe2DEditorToolbarSection.vue'
 import Pipe2DEditorTopbarSection from '~/components/admin/pipe2d-editor/Pipe2DEditorTopbarSection.vue'
 import { sumLength } from '~/composables/admin/pipe2d-editor/pipe2d-editor-map-shared'
+import { useSelectedPipe25DPreview } from '~/composables/admin/pipe2d-editor/useSelectedPipe25DPreview'
 import { usePipe2DEditorData } from '~/composables/admin/usePipe2DEditorData'
 import { usePipe2DEditorDrafts } from '~/composables/admin/usePipe2DEditorDrafts'
 import { usePipe2DEditorMap } from '~/composables/admin/usePipe2DEditorMap'
@@ -350,6 +360,7 @@ const pendingQuickReportLocation = ref<{ lon: number; lat: number; nodeId?: stri
 const assetBindingModalOpen = ref(false)
 const assetBindingSaving = ref(false)
 const buildingModelModalOpen = ref(false)
+const pipe25dPreviewOpen = ref(false)
 const saveConfirmVisible = ref(false)
 const pendingSaveDiff = ref<GraphDiff | null>(null)
 const validationResults = ref<ValidationIssue[]>([])
@@ -452,6 +463,11 @@ function requestDialogClose() {
 
 function openAiAssistant() {
   aiAssistantOpen.value = true
+}
+
+function openSelectedPipe25DPreview() {
+  if (!selectedPipe25DPreview.value) return
+  pipe25dPreviewOpen.value = true
 }
 
 function firstString(value: unknown) {
@@ -690,6 +706,14 @@ const {
   saving,
   actionMessage,
   emitSaved: (id) => emit('saved', id),
+})
+
+const { selectedPipe25DPreview } = useSelectedPipe25DPreview({
+  selectedFeature,
+  drilldown,
+  buildings,
+  telemetryList,
+  relatedWorkorders,
 })
 
 function hasMeaningfulGraphValue(value: unknown): boolean {
@@ -2378,6 +2402,7 @@ watch(selectedFeature, () => {
   workorderPromptVisible.value = false
   workorderPromptSubmitting.value = false
   quickReportVisible.value = false
+  pipe25dPreviewOpen.value = false
   pendingQuickReportLocation.value = null
   assetBindingModalOpen.value = false
   assetBindingSaving.value = false

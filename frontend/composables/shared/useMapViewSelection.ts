@@ -77,7 +77,7 @@ export function useMapViewSelection(options: UseMapViewSelectionOptions) {
       return
     }
 
-    const applyEntityHighlight = (target: Cesium.Entity, color: Cesium.Color, lineWidth = 6) => {
+    const applyEntityHighlight = (target: Cesium.Entity, color: Cesium.Color) => {
       highlightedSnapshots.push({
         entity: target,
         color,
@@ -101,7 +101,6 @@ export function useMapViewSelection(options: UseMapViewSelectionOptions) {
       }
       if (target.polyline) {
         target.polyline.material = highlightColor
-        target.polyline.width = new Cesium.ConstantProperty(lineWidth)
       }
       if (target.point) {
         target.point.color = new Cesium.ConstantProperty(color.withAlpha(0.95))
@@ -144,27 +143,27 @@ export function useMapViewSelection(options: UseMapViewSelectionOptions) {
     }
 
     const highlighted = new Set<string>()
-    const tryHighlight = (keyword: string, color: Cesium.Color, width = 6) => {
+    const tryHighlight = (keyword: string, color: Cesium.Color) => {
       const target = matchEntity(keyword)
       if (!target) return null
       const key = String(target.id)
       if (highlighted.has(key)) return target
       highlighted.add(key)
-      applyEntityHighlight(target, color, width)
+      applyEntityHighlight(target, color)
       return target
     }
 
     if (selectedId) {
-      tryHighlight(selectedId, Cesium.Color.YELLOW, 7)
+      tryHighlight(selectedId, Cesium.Color.YELLOW)
     }
 
     for (const target of selectedTargets?.pipes || []) {
-      tryHighlight(target, Cesium.Color.ORANGE, 7)
+      tryHighlight(target, Cesium.Color.ORANGE)
     }
 
     const buildingCenters = new Map<string, Cesium.Cartesian3>()
     for (const target of selectedTargets?.buildings || []) {
-      const entity = tryHighlight(target, Cesium.Color.CYAN, 5)
+      const entity = tryHighlight(target, Cesium.Color.YELLOW)
       if (!entity) continue
       const now = viewer.clock.currentTime
       const center = entity.position?.getValue(now)
@@ -172,32 +171,22 @@ export function useMapViewSelection(options: UseMapViewSelectionOptions) {
         || null
       if (center) {
         buildingCenters.set(target, center)
+        options.dataSources.focus.entities.add({
+          id: `focus-building-${target}`,
+          position: center,
+          point: new Cesium.PointGraphics({
+            color: Cesium.Color.YELLOW.withAlpha(0.92),
+            pixelSize: 10,
+            outlineColor: Cesium.Color.WHITE.withAlpha(0.92),
+            outlineWidth: 2,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          }),
+        })
       }
     }
 
     for (const roomId of selectedTargets?.rooms || []) {
-      const roomEntity = tryHighlight(roomId, Cesium.Color.MAGENTA, 5)
-      if (roomEntity) continue
-      const anchor = buildingCenters.values().next().value as Cesium.Cartesian3 | undefined
-      if (!anchor) continue
-      options.dataSources.focus.entities.add({
-        id: `focus-room-${roomId}`,
-        position: anchor,
-        point: new Cesium.PointGraphics({
-          color: Cesium.Color.MAGENTA.withAlpha(0.9),
-          pixelSize: 8,
-          outlineColor: Cesium.Color.WHITE.withAlpha(0.9),
-          outlineWidth: 1,
-        }),
-        label: new Cesium.LabelGraphics({
-          text: roomId,
-          fillColor: Cesium.Color.MAGENTA.withAlpha(0.95),
-          font: '12px sans-serif',
-          pixelOffset: new Cesium.Cartesian2(0, -14),
-          showBackground: true,
-          backgroundColor: Cesium.Color.BLACK.withAlpha(0.55),
-        }),
-      })
+      tryHighlight(roomId, Cesium.Color.MAGENTA)
     }
   }
 

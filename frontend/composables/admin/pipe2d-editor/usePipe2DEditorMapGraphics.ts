@@ -140,6 +140,13 @@ function resolveSelectedPipePalette(
   }
 }
 
+function normalizePipeFaultLevel(value: unknown): 'normal' | 'warning' | 'critical' {
+  const raw = String(value || '').trim().toLowerCase()
+  if (raw === 'critical') return 'critical'
+  if (raw === 'warning') return 'warning'
+  return 'normal'
+}
+
 export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOptions) {
   const lineGraphicMap = new Map<number, any>()
   const currentLineEntities: Cesium.Entity[] = []
@@ -748,6 +755,10 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
         } else {
           options.pipes.value.forEach((feature) => {
             const overviewColor = resolvePipeBaseColor(feature)
+            const featureFaultLevel = normalizePipeFaultLevel(
+              (feature.properties as Record<string, unknown> | undefined)?.status,
+            )
+            const overviewPalette = resolveSelectedPipePalette(overviewColor, featureFaultLevel)
             const lines = geometryToLines(feature.geometry)
             for (const line of lines) {
               if (line.length < 2) continue
@@ -755,7 +766,7 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
                 positions: line.map((point) => [point[0], point[1], 0]),
                 style: {
                   width: 4,
-                  color: overviewColor,
+                  color: overviewPalette.baseColor,
                   opacity: 0.92,
                   outline: false,
                   arcType: GROUND_POLYLINE_ARC_TYPE,
@@ -802,6 +813,10 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
       } else {
         options.pipes.value.forEach((feature) => {
           const overviewColor = resolvePipeBaseColor(feature)
+          const featureFaultLevel = normalizePipeFaultLevel(
+            (feature.properties as Record<string, unknown> | undefined)?.status,
+          )
+          const overviewPalette = resolveSelectedPipePalette(overviewColor, featureFaultLevel)
           const lines = geometryToLines(feature.geometry)
           for (const line of lines) {
             if (line.length < 2) continue
@@ -811,7 +826,7 @@ export function usePipe2DEditorMapGraphics(options: UsePipe2DEditorMapGraphicsOp
                 width: 4,
                 arcType: GROUND_POLYLINE_ARC_TYPE,
                 clampToGround: true,
-                material: createSolidPolylineMaterial(overviewColor, 0.92),
+                material: createSolidPolylineMaterial(overviewPalette.baseColor, 0.92),
               },
             })
             currentLineEntities.push(lineEntity)

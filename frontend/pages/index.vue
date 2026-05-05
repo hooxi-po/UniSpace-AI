@@ -66,13 +66,25 @@ const runtimeConfig = useRuntimeConfig()
 const selectionToken = ref(0)
 const route = useRoute()
 const selectedTargets = computed(() => {
-  if (!selectedItem.value || !('type' in selectedItem.value) || selectedItem.value.type !== 'geojson') {
+  if (!selectedItem.value) {
+    return emptySelectedTargets()
+  }
+
+  if ('diameter' in selectedItem.value) {
+    if (selectedItem.value.status === 'normal') {
+      return emptySelectedTargets()
+    }
     return {
-      pipes: [] as string[],
-      buildings: [] as string[],
-      rooms: [] as string[],
+      pipes: [],
+      buildings: toStringArray(selectedItem.value.connectedBuildingIds || []),
+      rooms: toStringArray((selectedItem.value.impactedRooms || []).map(room => room.id)),
     }
   }
+
+  if (!('type' in selectedItem.value) || selectedItem.value.type !== 'geojson') {
+    return emptySelectedTargets()
+  }
+
   const props = toRecord(selectedItem.value.properties)
   const focusTargets = toRecord(props.focusTargets)
   return {
@@ -192,6 +204,14 @@ function toStringArray(values: unknown[]) {
       return ''
     })
     .filter(Boolean)
+}
+
+function emptySelectedTargets() {
+  return {
+    pipes: [] as string[],
+    buildings: [] as string[],
+    rooms: [] as string[],
+  }
 }
 
 function summarizeHealth(score: number): PipeNode['healthSummary'] {
@@ -371,7 +391,7 @@ async function buildPipeAsset(feature: GeoJsonFeature) {
     depth,
     installDate,
     lastMaintain,
-    connectedBuildingIds: linkedBuildingNames,
+    connectedBuildingIds: linkedBuildingIds,
     topologyNodeIds,
     linkedValves,
     impactedRooms,

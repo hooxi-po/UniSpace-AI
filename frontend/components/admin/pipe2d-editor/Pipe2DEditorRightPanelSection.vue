@@ -29,6 +29,23 @@ type AuditLog = {
   changedBy?: string | null
 }
 
+type PipeFaultLevel = 'normal' | 'warning' | 'critical'
+type PipeFaultReason = {
+  type: 'status' | 'telemetry' | 'workorder'
+  level: PipeFaultLevel
+  label: string
+  count?: number
+}
+
+type PipeFaultHistoryItem = {
+  id: string
+  level: PipeFaultLevel
+  source: 'status' | 'telemetry' | 'workorder' | 'audit'
+  title: string
+  description: string
+  timestamp: string
+}
+
 type RelatedWorkorder = {
   id: string
   title: string
@@ -75,6 +92,10 @@ const props = defineProps<{
   telemetryMaxText: string
   telemetryList: TelemetryItem[]
   auditLogs: AuditLog[]
+  selectedPipeFaultLevel: PipeFaultLevel
+  selectedPipeFaultReasons: PipeFaultReason[]
+  selectedPipeFaultLatestAt: string
+  selectedPipeFaultHistory: PipeFaultHistoryItem[]
   totalPoints: number
   segmentCount: number
   totalLengthText: string
@@ -151,6 +172,19 @@ function formatDateTime(value: string) {
   const ts = new Date(value)
   if (Number.isNaN(ts.getTime())) return value || '-'
   return `${ts.getFullYear()}-${String(ts.getMonth() + 1).padStart(2, '0')}-${String(ts.getDate()).padStart(2, '0')} ${String(ts.getHours()).padStart(2, '0')}:${String(ts.getMinutes()).padStart(2, '0')}`
+}
+
+function faultLevelLabel(level: PipeFaultLevel) {
+  if (level === 'critical') return '严重异常'
+  if (level === 'warning') return '预警'
+  return '正常'
+}
+
+function faultSourceLabel(source: PipeFaultHistoryItem['source']) {
+  if (source === 'status') return '状态'
+  if (source === 'telemetry') return '测点'
+  if (source === 'workorder') return '工单'
+  return '审计'
 }
 
 const workorderTypeLabel: Record<PipelineOrderType, string> = {
@@ -261,6 +295,37 @@ function handleRemoveEdge(edgeId: string) {
         </div>
 
         <template v-if="selectedFeature">
+          <div
+            :class="[
+              'fault-overview',
+              `fault-overview--${selectedPipeFaultLevel}`,
+            ]"
+          >
+            <div class="fault-overview__head">
+              <div>
+                <div class="fault-overview__eyebrow">异常状态</div>
+                <div class="fault-overview__title">{{ faultLevelLabel(selectedPipeFaultLevel) }}</div>
+              </div>
+              <span :class="['fault-badge', `fault-badge--${selectedPipeFaultLevel}`]">
+                {{ faultLevelLabel(selectedPipeFaultLevel) }}
+              </span>
+            </div>
+            <div class="fault-overview__meta">
+              <span>最近异常</span>
+              <strong>{{ selectedPipeFaultLatestAt ? formatDateTime(selectedPipeFaultLatestAt) : '暂无异常记录' }}</strong>
+            </div>
+            <div v-if="selectedPipeFaultReasons.length" class="token-wrap">
+              <span
+                v-for="reason in selectedPipeFaultReasons"
+                :key="`${reason.type}-${reason.label}`"
+                :class="['token', 'token--fault', `token--fault-${reason.level}`]"
+              >
+                {{ reason.label }}
+              </span>
+            </div>
+            <div v-else class="fault-overview__empty">当前未发现状态、测点或关联工单异常。</div>
+          </div>
+
           <div class="panel-field">
             <label>管道名称</label>
             <button
@@ -414,10 +479,26 @@ function handleRemoveEdge(edgeId: string) {
 
     <section v-if="showPipeInsightPanels" class="panel-card">
       <button class="panel-collapse-toggle" type="button" @click="emit('toggle-section', 'timeline')">
-        <span>运维记录</span>
+        <span>异常历史 / 运维记录</span>
         <component :is="panelSectionCollapsed.timeline ? ChevronRight : ChevronDown" :size="16" />
       </button>
       <div v-show="!panelSectionCollapsed.timeline" class="panel-section-body">
+        <ul v-if="selectedPipeFaultHistory.length" class="timeline-list timeline-list--fault">
+          <li v-for="item in selectedPipeFaultHistory" :key="item.id" class="timeline-item">
+            <span :class="['timeline-dot', `timeline-dot--${item.level}`]" />
+            <div :class="['timeline-body', 'timeline-body--fault', `timeline-body--${item.level}`]">
+              <div class="timeline-title">
+                {{ item.title }}
+                <span :class="['token', 'token--soft', 'timeline-token', `timeline-token--${item.level}`]">
+                  {{ faultSourceLabel(item.source) }}
+                </span>
+              </div>
+              <div class="timeline-meta">{{ formatDateTime(item.timestamp) }}</div>
+              <div class="timeline-desc">{{ item.description }}</div>
+            </div>
+          </li>
+        </ul>
+        <div v-else class="inline-empty">暂无异常历史记录</div>
         <ul v-if="auditLogs.length" class="timeline-list">
           <li v-for="item in auditLogs.slice(0, 8)" :key="item.id" class="timeline-item">
             <span class="timeline-dot" />

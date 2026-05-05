@@ -89,6 +89,7 @@ const props = defineProps<{
   globalTotalLengthText: string
   graph?: PipeGraph | null
   graphSelected?: SelectedElement | null
+  pipe25dPreviewAvailable?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -114,6 +115,7 @@ const emit = defineEmits<{
   (e: 'reset-draft'): void
   (e: 'create-pipe'): void
   (e: 'save-geometry'): void
+  (e: 'open-pipe-25d-preview'): void
   (e: 'update-node', nodeId: string, attrs: NodeAttributes): void
   (e: 'update-node-type', nodeId: string, type: NodeType): void
   (e: 'update-edge', edgeId: string, attrs: EdgeAttributes): void
@@ -246,6 +248,16 @@ function handleRemoveEdge(edgeId: string) {
           <button class="btn btn--sm" type="button" :disabled="loading" @click="emit('refresh')">刷新</button>
           <button class="btn btn--sm" type="button" :disabled="saving" @click="emit('create-pipe')">新建管道</button>
           <button class="btn btn--sm" type="button" :disabled="saving || !selectedFeature" @click="emit('focus')">聚焦</button>
+        </div>
+        <div v-if="selectedFeature" class="panel-row-actions panel-row-actions--secondary">
+          <button
+            class="btn btn--sm btn--ghost"
+            type="button"
+            :disabled="!pipe25dPreviewAvailable"
+            @click="emit('open-pipe-25d-preview')"
+          >
+            查看 2.5D
+          </button>
         </div>
 
         <template v-if="selectedFeature">

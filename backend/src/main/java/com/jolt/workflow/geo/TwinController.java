@@ -72,10 +72,15 @@ public class TwinController {
         root.set("relations", relations);
         ArrayNode linkedBuildings = queryLinkedBuildings(relations, featureId);
         root.set("linkedBuildings", linkedBuildings);
+        ArrayNode manholes = queryManholes(featureId, segment, nodes);
+        root.set("manholes", manholes);
         ArrayNode valves = queryValves(featureId, segment, nodes);
         root.set("valves", valves);
+        ArrayNode pumpStations = queryPumpStations(featureId, nodes, linkedBuildings, valves);
+        root.set("pumpStations", pumpStations);
+        root.set("buildingFloors", queryBuildingFloors(linkedBuildings));
         root.set("impactedRooms", queryImpactedRooms(linkedBuildings));
-        root.set("equipments", queryEquipments(featureId, nodes, linkedBuildings, valves));
+        root.set("equipments", queryEquipments(featureId, nodes, linkedBuildings, valves, pumpStations));
         return root;
     }
 
@@ -497,6 +502,78 @@ public class TwinController {
         return impactedRooms;
     }
 
+    private ArrayNode queryBuildingFloors(ArrayNode linkedBuildings) {
+        ArrayNode floors = objectMapper.createArrayNode();
+        Set<String> buildingIds = extractBuildingIds(linkedBuildings);
+        if (buildingIds.isEmpty()) return floors;
+
+        String placeholders = String.join(",", java.util.Collections.nCopies(buildingIds.size(), "?"));
+        String sql = "SELECT f.id, f.building_id, f.floor_no, COALESCE(f.floor_name, 'F' || f.floor_no::text) AS floor_name, " +
+                "       COALESCE(f.usage_type, '') AS usage_type, COUNT(r.id) AS room_count " +
+                "FROM building_floors f " +
+                "LEFT JOIN building_rooms r ON r.floor_id = f.id " +
+                "WHERE f.building_id IN (" + placeholders + ") " +
+                "GROUP BY f.id, f.building_id, f.floor_no, f.floor_name, f.usage_type " +
+                "ORDER BY f.building_id, f.floor_no";
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, buildingIds.toArray());
+        for (Map<String, Object> row : rows) {
+            ObjectNode floor = objectMapper.createObjectNode();
+            floor.put("id", String.valueOf(row.get("id")));
+            floor.put("buildingId", String.valueOf(row.get("building_id")));
+            Object floorNo = row.get("floor_no");
+            floor.put("floorNo", floorNo instanceof Number number ? number.intValue() : 0);
+            floor.put("floorName", String.valueOf(row.get("floor_name")));
+            floor.put("usageType", String.valueOf(row.get("usage_type")));
+            Object roomCount = row.get("room_count");
+            floor.put("roomCount", roomCount instanceof Number number ? number.intValue() : 0);
+            floors.add(floor);
+        }
+        return floors;
+    }
+
+    private ArrayNode queryManholes(String featureId, ObjectNode segment, ArrayNode nodes) {
+        ArrayNode manholes = objectMapper.createArrayNode();
+        Set<String> nodeIds = extractNodeIds(nodes);
+
+        List<String> conditions = new ArrayList<>();
+        List<Object> params = new ArrayList<>();
+        if (!nodeIds.isEmpty()) {
+            String placeholders = String.join(",", java.util.Collections.nCopies(nodeIds.size(), "?"));
+            conditions.add("m.node_id IN (" + placeholders + ")");
+            params.addAll(nodeIds);
+        }
+        String segmentFeatureId = segment == null ? null : segment.path("featureId").asText("");
+        if (segmentFeatureId != null && !segmentFeatureId.isBlank()) {
+            conditions.add("m.feature_id = ?");
+            params.add(segmentFeatureId);
+        } else if (featureId != null && !featureId.isBlank()) {
+            conditions.add("m.feature_id = ?");
+            params.add(featureId);
+        }
+        if (conditions.isEmpty()) return manholes;
+
+        String sql = "SELECT m.id, m.feature_id, m.node_id, m.manhole_type, m.cover_status, m.gas_risk_level, m.properties, " +
+                "       n.name, n.properties AS node_properties " +
+                "FROM pipe_manholes m " +
+                "LEFT JOIN pipe_nodes n ON n.id = m.node_id " +
+                "WHERE " + String.join(" OR ", conditions) + " ORDER BY m.id LIMIT 200";
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, params.toArray());
+        for (Map<String, Object> row : rows) {
+            ObjectNode manhole = objectMapper.createObjectNode();
+            manhole.put("id", String.valueOf(row.get("id")));
+            manhole.put("featureId", row.get("feature_id") == null ? "" : String.valueOf(row.get("feature_id")));
+            manhole.put("nodeId", row.get("node_id") == null ? "" : String.valueOf(row.get("node_id")));
+            manhole.put("name", row.get("name") == null ? "" : String.valueOf(row.get("name")));
+            manhole.put("manholeType", row.get("manhole_type") == null ? "" : String.valueOf(row.get("manhole_type")));
+            manhole.put("coverStatus", row.get("cover_status") == null ? "" : String.valueOf(row.get("cover_status")));
+            manhole.put("gasRiskLevel", row.get("gas_risk_level") == null ? "" : String.valueOf(row.get("gas_risk_level")));
+            manhole.set("properties", parseJsonObject(row.get("properties")));
+            manhole.set("nodeProperties", parseJsonObject(row.get("node_properties")));
+            manholes.add(manhole);
+        }
+        return manholes;
+    }
+
     private ArrayNode queryValves(String featureId, ObjectNode segment, ArrayNode nodes) {
         ArrayNode valves = objectMapper.createArrayNode();
         Set<String> nodeIds = extractNodeIds(nodes);
@@ -542,7 +619,58 @@ public class TwinController {
         return valves;
     }
 
-    private ArrayNode queryEquipments(String featureId, ArrayNode nodes, ArrayNode linkedBuildings, ArrayNode valves) {
+    private ArrayNode queryPumpStations(String featureId, ArrayNode nodes, ArrayNode linkedBuildings, ArrayNode valves) {
+        ArrayNode pumpStations = objectMapper.createArrayNode();
+        Set<String> nodeIds = extractNodeIds(nodes);
+        Set<String> buildingIds = extractBuildingIds(linkedBuildings);
+
+        List<String> conditions = new ArrayList<>();
+        List<Object> params = new ArrayList<>();
+        if (!nodeIds.isEmpty()) {
+            String placeholders = String.join(",", java.util.Collections.nCopies(nodeIds.size(), "?"));
+            conditions.add("p.node_id IN (" + placeholders + ")");
+            params.addAll(nodeIds);
+        }
+        if (featureId != null && !featureId.isBlank()) {
+            conditions.add("p.feature_id = ?");
+            params.add(featureId);
+        }
+        if (!buildingIds.isEmpty()) {
+            String placeholders = String.join(",", java.util.Collections.nCopies(buildingIds.size(), "?"));
+            conditions.add("EXISTS (SELECT 1 FROM asset_relations ar WHERE ar.source_id = p.id AND ar.source_type = 'pump_station' AND ar.target_id IN (" + placeholders + "))");
+            params.addAll(buildingIds);
+        }
+
+        if (conditions.isEmpty()) return pumpStations;
+
+        String sql = "SELECT p.id, p.feature_id, p.node_id, COALESCE(p.name, p.id) AS name, p.station_type, p.status, " +
+                "       p.design_flow_m3h, p.design_head_m, p.power_kw, p.properties " +
+                "FROM pump_stations p WHERE " + String.join(" OR ", conditions) + " ORDER BY p.id LIMIT 100";
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql, params.toArray());
+        for (Map<String, Object> row : rows) {
+            ObjectNode pump = objectMapper.createObjectNode();
+            pump.put("id", String.valueOf(row.get("id")));
+            pump.put("featureId", row.get("feature_id") == null ? "" : String.valueOf(row.get("feature_id")));
+            pump.put("nodeId", row.get("node_id") == null ? "" : String.valueOf(row.get("node_id")));
+            pump.put("name", String.valueOf(row.get("name")));
+            pump.put("stationType", row.get("station_type") == null ? "" : String.valueOf(row.get("station_type")));
+            pump.put("status", row.get("status") == null ? "" : String.valueOf(row.get("status")));
+            Object flow = row.get("design_flow_m3h");
+            if (flow instanceof Number number) pump.put("designFlowM3h", number.doubleValue());
+            else pump.putNull("designFlowM3h");
+            Object head = row.get("design_head_m");
+            if (head instanceof Number number) pump.put("designHeadM", number.doubleValue());
+            else pump.putNull("designHeadM");
+            Object power = row.get("power_kw");
+            if (power instanceof Number number) pump.put("powerKw", number.doubleValue());
+            else pump.putNull("powerKw");
+            pump.set("properties", parseJsonObject(row.get("properties")));
+            pumpStations.add(pump);
+        }
+        return pumpStations;
+    }
+
+    private ArrayNode queryEquipments(String featureId, ArrayNode nodes, ArrayNode linkedBuildings, ArrayNode valves, ArrayNode pumpStations) {
         ArrayNode equipments = objectMapper.createArrayNode();
         Set<String> nodeIds = extractNodeIds(nodes);
 
@@ -586,6 +714,18 @@ public class TwinController {
             }
         }
 
+        if (!equipments.isEmpty()) return equipments;
+
+        for (JsonNode pumpStation : pumpStations) {
+            ObjectNode equipment = objectMapper.createObjectNode();
+            equipment.put("id", pumpStation.path("id").asText(""));
+            equipment.put("equipmentType", "pump_station");
+            equipment.put("name", pumpStation.path("name").asText(""));
+            equipment.put("status", pumpStation.path("status").asText("normal"));
+            equipment.put("nodeId", pumpStation.path("nodeId").asText(""));
+            equipment.put("featureId", pumpStation.path("featureId").asText(""));
+            equipments.add(equipment);
+        }
         if (!equipments.isEmpty()) return equipments;
 
         for (JsonNode valve : valves) {

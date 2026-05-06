@@ -29,6 +29,9 @@ export type TwinDrilldown = {
   nodes: Array<Record<string, unknown>>
   relations: Array<Record<string, unknown>>
   linkedBuildings: Array<Record<string, unknown>>
+  manholes: Array<Record<string, unknown>>
+  pumpStations: Array<Record<string, unknown>>
+  buildingFloors: Array<Record<string, unknown>>
   impactedRooms: Array<Record<string, unknown>>
   valves: Array<Record<string, unknown>>
   equipments: Array<Record<string, unknown>>

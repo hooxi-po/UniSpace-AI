@@ -22,6 +22,86 @@ export type BuildingPreview = {
   modelConfig: BuildingPreviewModelConfig | null
 }
 
+export type BuildingFloorPreview = {
+  id: string
+  floorNo: number
+  floorName: string
+  usageType: string
+  roomCount: number
+}
+
+export type RoomPreview = {
+  id: string
+  floorId: string
+  floorNo: number | null
+  roomNo: string
+  roomName: string
+  roomType: string
+  status: string
+  areaM2: number | null
+  devices: RoomDevicePreview[]
+}
+
+export type RoomDevicePreview = {
+  id: string
+  name: string
+  deviceType: string
+  status: string
+}
+
+export type BuildingStackPreview = {
+  buildingId: string
+  buildingName: string
+  heightMeters: number
+  floors: BuildingFloorPreview[]
+  rooms: RoomPreview[]
+}
+
+export type ManholePreview = {
+  id: string
+  nodeId: string
+  name: string
+  point: Point
+  status: 'normal' | 'warning' | 'critical'
+  coverStatus: string
+  gasRiskLevel: string
+  depthMeters: number
+}
+
+export type PumpStationPreview = {
+  id: string
+  nodeId: string
+  name: string
+  point: Point
+  status: 'normal' | 'warning' | 'critical'
+  stationType: string
+  designFlowM3h: number | null
+  designHeadM: number | null
+  powerKw: number | null
+}
+
+export type DefectPreview = {
+  id: string
+  title: string
+  description: string
+  level: 'warning' | 'critical'
+  source: 'workorder' | 'telemetry'
+  nodeId: string
+  point: Point
+  timestamp: string
+}
+
+export type PreviewTimelineEvent = {
+  id: string
+  kind: 'defect' | 'workorder' | 'telemetry'
+  level: 'normal' | 'warning' | 'critical'
+  title: string
+  description: string
+  timestamp: string
+  nodeId: string
+  point: Point | null
+}
+
 export type NodePreview = {
   id: string
   name: string
@@ -62,6 +142,11 @@ export type Pipe25DPreviewData = {
   segment: SegmentPreview | null
   nodes: NodePreview[]
   buildings: BuildingPreview[]
+  buildingStacks: BuildingStackPreview[]
+  manholes: ManholePreview[]
+  pumpStations: PumpStationPreview[]
+  defects: DefectPreview[]
+  timeline: PreviewTimelineEvent[]
 }
 
 type UseSelectedPipe25DPreviewOptions = {
@@ -90,6 +175,11 @@ export function useSelectedPipe25DPreview(options: UseSelectedPipe25DPreviewOpti
     const segmentRaw = objectValue(options.drilldown.value?.segment)
     const linkedBuildingsRaw = arrayValue(options.drilldown.value?.linkedBuildings)
     const nodesRaw = arrayValue(options.drilldown.value?.nodes)
+    const manholesRaw = arrayValue(options.drilldown.value?.manholes)
+    const pumpStationsRaw = arrayValue(options.drilldown.value?.pumpStations)
+    const buildingFloorsRaw = arrayValue(options.drilldown.value?.buildingFloors)
+    const impactedRoomsRaw = arrayValue(options.drilldown.value?.impactedRooms)
+    const equipmentItemsRaw = arrayValue(options.drilldown.value?.equipments)
     const telemetry = options.telemetryList.value || []
     const relatedWorkorders = options.relatedWorkorders.value || []
 
@@ -128,6 +218,15 @@ export function useSelectedPipe25DPreview(options: UseSelectedPipe25DPreviewOpti
     const buildings = linkedBuildingsRaw
       .map(item => buildBuildingPreview(item, options.buildings.value))
       .filter((item): item is BuildingPreview => Boolean(item))
+    const buildingStacks = buildBuildingStacks(buildings, buildingFloorsRaw, impactedRoomsRaw, equipmentItemsRaw)
+    const manholes = manholesRaw
+      .map(item => buildManholePreview(item, nodes, mergedLinePoints, segmentDepth))
+      .filter((item): item is ManholePreview => Boolean(item))
+    const pumpStations = pumpStationsRaw
+      .map(item => buildPumpStationPreview(item, nodes, mergedLinePoints))
+      .filter((item): item is PumpStationPreview => Boolean(item))
+    const defects = buildDefectPreviews(relatedWorkorders, telemetry, nodes)
+    const timeline = buildTimeline(defects, relatedWorkorders, telemetry, nodes)
 
     return {
       featureId: String(feature.id),
@@ -144,6 +243,11 @@ export function useSelectedPipe25DPreview(options: UseSelectedPipe25DPreviewOpti
       } : null,
       nodes,
       buildings,
+      buildingStacks,
+      manholes,
+      pumpStations,
+      defects,
+      timeline,
     }
   })
 
@@ -256,6 +360,337 @@ function dedupeNodes(nodes: NodePreview[]) {
     }
   }
   return [...byId.values()]
+}
+
+function buildBuildingStacks(
+  buildings: BuildingPreview[],
+  floorItems: unknown[],
+  roomItems: unknown[],
+  equipmentItems: unknown[],
+) {
+  const equipmentCatalog = buildEquipmentCatalog(equipmentItems)
+  const floorsByBuilding = new Map<string, BuildingFloorPreview[]>()
+  for (const item of floorItems) {
+    const floor = objectValue(item)
+    if (!floor) continue
+    const buildingId = firstFilledText(floor.buildingId, '')
+    if (!buildingId) continue
+    const list = floorsByBuilding.get(buildingId) || []
+    list.push({
+      id: firstFilledText(floor.id, ''),
+      floorNo: Math.round(resolveNumber(floor.floorNo) ?? 0),
+      floorName: firstFilledText(floor.floorName, `F${Math.round(resolveNumber(floor.floorNo) ?? 0)}`),
+      usageType: firstFilledText(floor.usageType, ''),
+      roomCount: Math.round(resolveNumber(floor.roomCount) ?? 0),
+    })
+    floorsByBuilding.set(buildingId, list)
+  }
+
+  const roomsByBuilding = new Map<string, RoomPreview[]>()
+  for (const item of roomItems) {
+    const room = objectValue(item)
+    if (!room) continue
+    const buildingId = firstFilledText(room.buildingId, '')
+    if (!buildingId) continue
+    const list = roomsByBuilding.get(buildingId) || []
+    const roomNo = firstFilledText(room.roomNo, '')
+    const roomType = firstFilledText(room.roomType, '')
+    list.push({
+      id: firstFilledText(room.id, ''),
+      floorId: firstFilledText(room.floorId, ''),
+      floorNo: resolveNumber(room.floorNo) == null ? null : Math.round(resolveNumber(room.floorNo) as number),
+      roomNo,
+      roomName: firstFilledText(room.roomName, ''),
+      roomType,
+      status: firstFilledText(room.status, 'normal'),
+      areaM2: resolveNumber(room.areaM2),
+      devices: buildRoomDevices(buildingId, roomNo, roomType, equipmentCatalog),
+    })
+    roomsByBuilding.set(buildingId, list)
+  }
+
+  return buildings.map(building => ({
+    buildingId: building.id,
+    buildingName: building.name,
+    heightMeters: building.heightMeters,
+    floors: [...(floorsByBuilding.get(building.id) || [])].sort((a, b) => a.floorNo - b.floorNo),
+    rooms: [...(roomsByBuilding.get(building.id) || [])].sort((a, b) => {
+      const floorDiff = (a.floorNo ?? 0) - (b.floorNo ?? 0)
+      if (floorDiff !== 0) return floorDiff
+      return a.roomNo.localeCompare(b.roomNo)
+    }),
+  }))
+}
+
+function buildEquipmentCatalog(items: unknown[]) {
+  return items
+    .map(item => objectValue(item))
+    .filter((item): item is Record<string, any> => Boolean(item))
+    .map(item => ({
+      id: firstFilledText(item.id, ''),
+      name: firstFilledText(item.name, item.id, 'device'),
+      deviceType: firstFilledText(item.equipmentType, item.stationType, 'device'),
+      status: firstFilledText(item.status, 'unknown'),
+      buildingId: firstFilledText(item.buildingId, ''),
+      nodeId: firstFilledText(item.nodeId, ''),
+      featureId: firstFilledText(item.featureId, ''),
+    }))
+    .filter(item => item.id)
+}
+
+function buildRoomDevices(
+  buildingId: string,
+  roomNo: string,
+  roomType: string,
+  equipmentCatalog: Array<{
+    id: string
+    name: string
+    deviceType: string
+    status: string
+    buildingId: string
+    nodeId: string
+    featureId: string
+  }>,
+) {
+  const presets = defaultRoomDevices(roomType, roomNo)
+  const buildingDevices = equipmentCatalog
+    .filter(item => !item.buildingId || item.buildingId === buildingId)
+    .slice(0, 2)
+    .map(item => ({
+      id: `${roomNo || 'room'}:${item.id}`,
+      name: item.name,
+      deviceType: item.deviceType,
+      status: item.status,
+    }))
+
+  const merged = [...presets, ...buildingDevices]
+  const byId = new Map<string, RoomDevicePreview>()
+  for (const device of merged) {
+    if (!byId.has(device.id)) byId.set(device.id, device)
+  }
+  return [...byId.values()].slice(0, 4)
+}
+
+function defaultRoomDevices(roomType: string, roomNo: string) {
+  const normalized = String(roomType || '').trim().toLowerCase()
+  const prefix = roomNo || 'room'
+  if (normalized === 'lab') {
+    return [
+      { id: `${prefix}:env-sensor`, name: '环境传感器', deviceType: 'sensor', status: 'normal' },
+      { id: `${prefix}:exhaust`, name: '排风控制器', deviceType: 'controller', status: 'normal' },
+    ]
+  }
+  if (normalized === 'office') {
+    return [
+      { id: `${prefix}:ac`, name: '空调终端', deviceType: 'hvac', status: 'normal' },
+      { id: `${prefix}:access`, name: '门禁终端', deviceType: 'access', status: 'normal' },
+    ]
+  }
+  if (normalized === 'classroom') {
+    return [
+      { id: `${prefix}:projector`, name: '投影设备', deviceType: 'av', status: 'normal' },
+      { id: `${prefix}:ac`, name: '空调终端', deviceType: 'hvac', status: 'normal' },
+    ]
+  }
+  if (normalized === 'dorm') {
+    return [
+      { id: `${prefix}:water-meter`, name: '末端水表', deviceType: 'meter', status: 'normal' },
+      { id: `${prefix}:smoke`, name: '烟感终端', deviceType: 'safety', status: 'normal' },
+    ]
+  }
+  return [
+    { id: `${prefix}:sensor`, name: '室内传感器', deviceType: 'sensor', status: 'normal' },
+    { id: `${prefix}:terminal`, name: '末端设备', deviceType: 'terminal', status: 'normal' },
+  ]
+}
+
+function buildManholePreview(
+  raw: unknown,
+  nodes: NodePreview[],
+  line: Line,
+  defaultDepth: number,
+) {
+  const item = objectValue(raw)
+  if (!item) return null
+  const id = firstFilledText(item.id, '')
+  if (!id) return null
+  const nodeId = firstFilledText(item.nodeId, '')
+  const matchedNode = nodes.find(node => node.id === nodeId)
+  const nodeProps = objectValue(item.nodeProperties) || {}
+  const properties = objectValue(item.properties) || {}
+  const point = matchedNode?.point
+    || resolveNodePoint(id, { ...nodeProps, ...properties }, line, 0, new Map())
+  if (!point) return null
+
+  const gasRiskLevel = firstFilledText(item.gasRiskLevel, properties.gasRiskLevel, 'normal').toLowerCase()
+  const coverStatus = firstFilledText(item.coverStatus, properties.coverStatus, 'closed')
+  const status: 'normal' | 'warning' | 'critical' = gasRiskLevel === 'critical'
+    ? 'critical'
+    : gasRiskLevel === 'warning'
+      ? 'warning'
+      : 'normal'
+
+  return {
+    id,
+    nodeId,
+    name: firstFilledText(item.name, properties.name, `检查井 ${id}`),
+    point,
+    status,
+    coverStatus,
+    gasRiskLevel,
+    depthMeters: matchedNode?.depthMeters ?? defaultDepth,
+  }
+}
+
+function buildPumpStationPreview(
+  raw: unknown,
+  nodes: NodePreview[],
+  line: Line,
+) {
+  const item = objectValue(raw)
+  if (!item) return null
+  const id = firstFilledText(item.id, '')
+  if (!id) return null
+  const nodeId = firstFilledText(item.nodeId, '')
+  const properties = objectValue(item.properties) || {}
+  const matchedNode = nodes.find(node => node.id === nodeId)
+  const point = matchedNode?.point
+    || resolveNodePoint(id, properties, line, 0, new Map())
+  if (!point) return null
+
+  const statusRaw = firstFilledText(item.status, properties.status, 'normal').toLowerCase()
+  const status: 'normal' | 'warning' | 'critical' = statusRaw === 'critical'
+    ? 'critical'
+    : statusRaw === 'warning'
+      ? 'warning'
+      : 'normal'
+
+  return {
+    id,
+    nodeId,
+    name: firstFilledText(item.name, properties.name, id),
+    point,
+    status,
+    stationType: firstFilledText(item.stationType, properties.stationType, 'booster'),
+    designFlowM3h: resolveNumber(item.designFlowM3h, properties.designFlowM3h),
+    designHeadM: resolveNumber(item.designHeadM, properties.designHeadM),
+    powerKw: resolveNumber(item.powerKw, properties.powerKw),
+  }
+}
+
+function buildDefectPreviews(
+  workorders: PipelineWorkOrder[],
+  telemetry: TwinTelemetryPoint[],
+  nodes: NodePreview[],
+) {
+  const defects: DefectPreview[] = []
+
+  for (const workorder of workorders) {
+    const isDefectWorkorder = workorder.type === 'maintenance'
+      || workorder.priority === 'high'
+      || workorder.priority === 'urgent'
+      || workorder.source === 'anomaly_alert'
+      || workorder.source === 'telemetry_alert'
+    if (!isDefectWorkorder) continue
+    const nodeId = firstFilledText(workorder.nodeIds[0], '')
+    const node = nodes.find(item => item.id === nodeId) || nodes.find(item => workorder.nodeIds.includes(item.id))
+    if (!node) continue
+    defects.push({
+      id: `workorder:${workorder.id}`,
+      title: workorder.title || workorder.id,
+      description: workorder.description || '关联维修/异常工单',
+      level: workorder.priority === 'urgent' || workorder.priority === 'high' ? 'critical' : 'warning',
+      source: 'workorder',
+      nodeId: node.id,
+      point: node.point,
+      timestamp: workorder.updatedAt || workorder.createdAt || '',
+    })
+  }
+
+  for (const item of telemetry) {
+    const quality = String(item.quality || '').toLowerCase()
+    if (quality === 'good' || quality === 'normal') continue
+    const node = nodes.find(candidate => {
+      const pointId = String(item.pointId || '').toLowerCase()
+      const featureId = String(item.featureId || '').toLowerCase()
+      const id = candidate.id.toLowerCase()
+      return pointId.includes(id) || featureId.includes(id)
+    })
+    if (!node) continue
+    defects.push({
+      id: `telemetry:${item.pointId}:${item.sampledAt}`,
+      title: `${item.metric} 异常`,
+      description: `${item.pointId} ${item.value} ${item.unit}`.trim(),
+      level: quality === 'critical' ? 'critical' : 'warning',
+      source: 'telemetry',
+      nodeId: node.id,
+      point: node.point,
+      timestamp: item.sampledAt,
+    })
+  }
+
+  return defects
+    .sort((a, b) => parseTimestamp(b.timestamp) - parseTimestamp(a.timestamp))
+    .slice(0, 16)
+}
+
+function buildTimeline(
+  defects: DefectPreview[],
+  workorders: PipelineWorkOrder[],
+  telemetry: TwinTelemetryPoint[],
+  nodes: NodePreview[],
+) {
+  const events: PreviewTimelineEvent[] = defects.map(item => ({
+    id: item.id,
+    kind: 'defect',
+    level: item.level,
+    title: item.title,
+    description: item.description,
+    timestamp: item.timestamp,
+    nodeId: item.nodeId,
+    point: item.point,
+  }))
+
+  for (const workorder of workorders) {
+    const nodeId = firstFilledText(workorder.nodeIds[0], '')
+    const node = nodes.find(item => item.id === nodeId) || null
+    events.push({
+      id: `timeline:workorder:${workorder.id}`,
+      kind: 'workorder',
+      level: workorder.priority === 'urgent' ? 'critical' : workorder.priority === 'high' ? 'warning' : 'normal',
+      title: workorder.title || workorder.id,
+      description: `${workorder.type} · ${workorder.status}`,
+      timestamp: workorder.updatedAt || workorder.createdAt || '',
+      nodeId,
+      point: node?.point || null,
+    })
+  }
+
+  for (const item of telemetry) {
+    const quality = String(item.quality || '').toLowerCase()
+    if (quality === 'good' || quality === 'normal') continue
+    const node = nodes.find(candidate => {
+      const pointId = String(item.pointId || '').toLowerCase()
+      const featureId = String(item.featureId || '').toLowerCase()
+      const id = candidate.id.toLowerCase()
+      return pointId.includes(id) || featureId.includes(id)
+    }) || null
+    events.push({
+      id: `timeline:telemetry:${item.pointId}:${item.sampledAt}`,
+      kind: 'telemetry',
+      level: quality === 'critical' ? 'critical' : 'warning',
+      title: `${item.metric} 测点异常`,
+      description: `${item.pointId} ${item.value} ${item.unit}`.trim(),
+      timestamp: item.sampledAt,
+      nodeId: node?.id || '',
+      point: node?.point || null,
+    })
+  }
+
+  return events
+    .filter(item => item.timestamp)
+    .sort((a, b) => parseTimestamp(b.timestamp) - parseTimestamp(a.timestamp))
+    .slice(0, 24)
 }
 
 function ensureEndpointNodes(
@@ -577,4 +1012,9 @@ function objectValue(value: unknown) {
 
 function arrayValue(value: unknown) {
   return Array.isArray(value) ? value : []
+}
+
+function parseTimestamp(value: string) {
+  const timestamp = new Date(value).getTime()
+  return Number.isFinite(timestamp) ? timestamp : 0
 }

@@ -101,15 +101,21 @@
               </div>
             </div>
 
-            <div class="bg-white/5 p-3 border border-white/10 rounded">
-              <h4 class="text-tech-blue font-bold mb-2 text-xs uppercase">拓扑关系</h4>
-              <div class="text-xs text-gray-400 space-y-2">
-                <template v-if="isPipe">
-                  <div>该管段向下游供水至 {{ pipeLinkedTargetsText }}。</div>
-                  <div class="grid grid-cols-2 gap-2 text-[11px]">
-                    <div>关联节点: {{ pipeTopologyNodeCount }}</div>
-                    <div>关联阀门: {{ pipeLinkedValveCount }}</div>
-                    <div>受影响房间: {{ pipeImpactedRoomCount }}</div>
+	            <div class="bg-white/5 p-3 border border-white/10 rounded">
+	              <h4 class="text-tech-blue font-bold mb-2 text-xs uppercase">拓扑关系</h4>
+	              <div class="text-xs text-gray-400 space-y-2">
+	                <template v-if="isPipe">
+	                  <div>该管段向下游供水至 {{ pipeLinkedTargetsText }}。</div>
+	                  <div
+	                    v-if="pipeSelectionSummaryText"
+	                    class="rounded border border-yellow-400/30 bg-yellow-400/10 px-2 py-2 text-[11px] text-yellow-200"
+	                  >
+	                    已联动选中 {{ pipeSelectionSummaryText }}
+	                  </div>
+	                  <div class="grid grid-cols-2 gap-2 text-[11px]">
+	                    <div>关联节点: {{ pipeTopologyNodeCount }}</div>
+	                    <div>关联阀门: {{ pipeLinkedValveCount }}</div>
+	                    <div>受影响房间: {{ pipeImpactedRoomCount }}</div>
                     <div>关联设备: {{ pipeLinkedEquipmentCount }}</div>
                   </div>
                   <div v-if="pipeRoomPreviewText" class="text-[11px] text-gray-500">
@@ -362,6 +368,26 @@ const pipeImpactedRoomCount = computed(() => {
 const pipeLinkedEquipmentCount = computed(() => {
   if (!props.data || !isPipe.value) return 0
   return (props.data as PipeNode).linkedEquipments?.length || 0
+})
+
+const pipeSelectedBuildingCount = computed(() => {
+  if (!props.data || !isPipe.value) return 0
+  if ((props.data as PipeNode).status === 'normal') return 0
+  return (props.data as PipeNode).connectedBuildingIds?.length || 0
+})
+
+const pipeSelectedRoomCount = computed(() => {
+  if (!props.data || !isPipe.value) return 0
+  if ((props.data as PipeNode).status === 'normal') return 0
+  return (props.data as PipeNode).impactedRooms?.length || 0
+})
+
+const pipeSelectionSummaryText = computed(() => {
+  if (!props.data || !isPipe.value) return ''
+  const buildingCount = pipeSelectedBuildingCount.value
+  const roomCount = pipeSelectedRoomCount.value
+  if (!buildingCount && !roomCount) return ''
+  return `${buildingCount} 栋建筑 / ${roomCount} 个房间`
 })
 
 const pipeEquipmentPreview = computed(() => {

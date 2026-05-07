@@ -126,6 +126,10 @@
           :telemetry-max-text="telemetryMaxText"
           :telemetry-list="telemetryList"
           :audit-logs="auditLogs"
+          :selected-pipe-fault-level="selectedPipeFaultLevel"
+          :selected-pipe-fault-reasons="selectedPipeFaultState.reasons"
+          :selected-pipe-fault-latest-at="selectedPipeFaultState.latestFaultAt"
+          :selected-pipe-fault-history="selectedPipeFaultHistory"
           :total-points="totalPoints"
           :segment-count="segmentCount"
           :total-length-text="formatMeters(totalLengthMeters)"
@@ -138,6 +142,7 @@
           :global-pipe-count="globalPipeCount"
           :global-node-count="globalNodeCount"
           :global-total-length-text="globalTotalLengthText"
+          :pipe25d-preview-available="Boolean(selectedPipe25DPreview)"
           @collapse-panel="panelCollapsed = true"
           @toggle-section="togglePanelSection"
           @update:selected-feature-id="handleSelectedFeatureIdChange"
@@ -157,6 +162,7 @@
           @update:relation-active-names="relationActiveNames = $event"
           @open-workorder="openRelatedWorkorder"
           @create-workorder="openSelectedPipeWorkorderPrompt"
+          @open-pipe-25d-preview="openSelectedPipe25DPreview"
           @reset-draft="handleResetDraft"
           @create-pipe="createDraftPipe"
           @save-geometry="saveGeometry"
@@ -266,6 +272,12 @@
           @action="handleAiAssistantAction"
         />
       </div>
+
+      <Pipe2DSelectedPipe25DPreview
+        :open="pipe25dPreviewOpen"
+        :preview="selectedPipe25DPreview"
+        @close="pipe25dPreviewOpen = false"
+      />
     </div>
   </div>
 </template>
@@ -286,6 +298,7 @@ import Pipe2DEditorRightPanelSection from '~/components/admin/pipe2d-editor/Pipe
 import Pipe2DEditorQuickReportModal from '~/components/admin/pipe2d-editor/Pipe2DEditorQuickReportModal.vue'
 import type { QuickReportDraft } from '~/components/admin/pipe2d-editor/Pipe2DEditorQuickReportModal.vue'
 import Pipe2DEditorAssetBindingModal from '~/components/admin/pipe2d-editor/Pipe2DEditorAssetBindingModal.vue'
+import Pipe2DSelectedPipe25DPreview from '~/components/admin/pipe2d-editor/Pipe2DSelectedPipe25DPreview.vue'
 import Pipe2DEditorSaveConfirmModal from '~/components/admin/pipe2d-editor/Pipe2DEditorSaveConfirmModal.vue'
 import Pipe2DEditorShortcutHelp from '~/components/admin/pipe2d-editor/Pipe2DEditorShortcutHelp.vue'
 import Pipe2DEditorBuildingModelModal from '~/components/admin/pipe2d-editor/Pipe2DEditorBuildingModelModal.vue'
@@ -295,6 +308,7 @@ import Pipe2DEditorStatusbarSection from '~/components/admin/pipe2d-editor/Pipe2
 import Pipe2DEditorToolbarSection from '~/components/admin/pipe2d-editor/Pipe2DEditorToolbarSection.vue'
 import Pipe2DEditorTopbarSection from '~/components/admin/pipe2d-editor/Pipe2DEditorTopbarSection.vue'
 import { sumLength } from '~/composables/admin/pipe2d-editor/pipe2d-editor-map-shared'
+import { useSelectedPipe25DPreview } from '~/composables/admin/pipe2d-editor/useSelectedPipe25DPreview'
 import { usePipe2DEditorData } from '~/composables/admin/usePipe2DEditorData'
 import { usePipe2DEditorDrafts } from '~/composables/admin/usePipe2DEditorDrafts'
 import { usePipe2DEditorMap } from '~/composables/admin/usePipe2DEditorMap'
@@ -350,6 +364,7 @@ const pendingQuickReportLocation = ref<{ lon: number; lat: number; nodeId?: stri
 const assetBindingModalOpen = ref(false)
 const assetBindingSaving = ref(false)
 const buildingModelModalOpen = ref(false)
+const pipe25dPreviewOpen = ref(false)
 const saveConfirmVisible = ref(false)
 const pendingSaveDiff = ref<GraphDiff | null>(null)
 const validationResults = ref<ValidationIssue[]>([])
@@ -414,21 +429,189 @@ const ACTIVE_WORKORDER_STATUSES = new Set<PipelineWorkOrder['status']>([
   'review',
 ])
 
-const selectedPipeFaultLevel = computed<'normal' | 'warning' | 'critical'>(() => {
-  if (!selectedFeature.value) return 'normal'
+type PipeFaultLevel = 'normal' | 'warning' | 'critical'
+type PipeFaultReasonType = 'status' | 'telemetry' | 'workorder'
+type PipeFaultReason = {
+  type: PipeFaultReasonType
+  level: PipeFaultLevel
+  label: string
+  count?: number
+}
+type PipeFaultHistoryItem = {
+  id: string
+  level: PipeFaultLevel
+  source: PipeFaultReasonType | 'audit'
+  title: string
+  description: string
+  timestamp: string
+}
 
-  let warning = false
-  for (const workorder of relatedWorkorders.value) {
-    if (!ACTIVE_WORKORDER_STATUSES.has(workorder.status)) continue
-    if (workorder.type === 'maintenance' || workorder.priority === 'urgent' || workorder.priority === 'high') {
-      return 'critical'
-    }
-    if (workorder.type === 'inspection' || workorder.type === 'retrofit' || workorder.type === 'retire') {
-      warning = true
+function normalizeFaultLevel(value: unknown): PipeFaultLevel {
+  const raw = String(value || '').trim().toLowerCase()
+  if (raw === 'critical') return 'critical'
+  if (raw === 'warning') return 'warning'
+  return 'normal'
+}
+
+function maxFaultLevel(current: PipeFaultLevel, next: PipeFaultLevel): PipeFaultLevel {
+  if (current === 'critical' || next === 'critical') return 'critical'
+  if (current === 'warning' || next === 'warning') return 'warning'
+  return 'normal'
+}
+
+function parseTimestamp(value: string) {
+  const ts = new Date(value).getTime()
+  return Number.isFinite(ts) ? ts : 0
+}
+
+const selectedPipeFaultState = computed(() => {
+  const reasons: PipeFaultReason[] = []
+  if (!selectedFeature.value) {
+    return {
+      level: 'normal' as PipeFaultLevel,
+      reasons,
+      latestFaultAt: '',
     }
   }
 
-  return warning ? 'warning' : 'normal'
+  let level: PipeFaultLevel = normalizeFaultLevel((selectedFeature.value.properties as Record<string, unknown> | undefined)?.status)
+  let latestFaultAt = ''
+
+  if (level !== 'normal') {
+    reasons.push({
+      type: 'status',
+      level,
+      label: level === 'critical' ? '管段状态严重异常' : '管段状态预警',
+    })
+  }
+
+  const abnormalTelemetry = telemetryList.value.filter(item => String(item.quality || '').toLowerCase() !== 'good')
+  if (abnormalTelemetry.length) {
+    const telemetryLevel: PipeFaultLevel = abnormalTelemetry.some(item => String(item.quality || '').toLowerCase() === 'critical')
+      ? 'critical'
+      : 'warning'
+    reasons.push({
+      type: 'telemetry',
+      level: telemetryLevel,
+      label: `异常测点 ${abnormalTelemetry.length} 项`,
+      count: abnormalTelemetry.length,
+    })
+    level = maxFaultLevel(level, telemetryLevel)
+    latestFaultAt = abnormalTelemetry
+      .map(item => item.sampledAt)
+      .sort((a, b) => parseTimestamp(b) - parseTimestamp(a))[0] || latestFaultAt
+  }
+
+  const activeFaultWorkorders = relatedWorkorders.value.filter(workorder => {
+    if (!ACTIVE_WORKORDER_STATUSES.has(workorder.status)) return false
+    return workorder.type === 'maintenance'
+      || workorder.priority === 'urgent'
+      || workorder.priority === 'high'
+      || workorder.source === 'telemetry_alert'
+      || workorder.source === 'anomaly_alert'
+  })
+
+  if (activeFaultWorkorders.length) {
+    const workorderLevel: PipeFaultLevel = activeFaultWorkorders.some(item => item.priority === 'urgent' || item.priority === 'high')
+      ? 'critical'
+      : 'warning'
+    reasons.push({
+      type: 'workorder',
+      level: workorderLevel,
+      label: `异常工单 ${activeFaultWorkorders.length} 条`,
+      count: activeFaultWorkorders.length,
+    })
+    level = maxFaultLevel(level, workorderLevel)
+    const latestWorkorderAt = activeFaultWorkorders
+      .map(item => item.updatedAt)
+      .sort((a, b) => parseTimestamp(b) - parseTimestamp(a))[0] || ''
+    if (parseTimestamp(latestWorkorderAt) > parseTimestamp(latestFaultAt)) {
+      latestFaultAt = latestWorkorderAt
+    }
+  }
+
+  return {
+    level,
+    reasons,
+    latestFaultAt,
+  }
+})
+
+const selectedPipeFaultLevel = computed<PipeFaultLevel>(() => selectedPipeFaultState.value.level)
+
+const selectedPipeFaultHistory = computed<PipeFaultHistoryItem[]>(() => {
+  if (!selectedFeature.value) return []
+
+  const items: PipeFaultHistoryItem[] = []
+  const pipeStatus = normalizeFaultLevel((selectedFeature.value.properties as Record<string, unknown> | undefined)?.status)
+  if (pipeStatus !== 'normal') {
+    items.push({
+      id: `status:${selectedFeature.value.id}`,
+      level: pipeStatus,
+      source: 'status',
+      title: pipeStatus === 'critical' ? '管段状态严重异常' : '管段状态预警',
+      description: `当前管段状态为 ${pipeStatus === 'critical' ? 'critical' : 'warning'}`,
+      timestamp: selectedFeature.value.properties?.updatedAt
+        ? String(selectedFeature.value.properties.updatedAt)
+        : '',
+    })
+  }
+
+  telemetryList.value
+    .filter(item => String(item.quality || '').toLowerCase() !== 'good')
+    .forEach((item, index) => {
+      const quality = String(item.quality || '').toLowerCase()
+      const level: PipeFaultLevel = quality === 'critical' ? 'critical' : 'warning'
+      items.push({
+        id: `telemetry:${item.pointId}:${item.sampledAt}:${index}`,
+        level,
+        source: 'telemetry',
+        title: `${item.metric} 测点异常`,
+        description: `${item.pointId} 当前值 ${item.value} ${item.unit}`.trim(),
+        timestamp: item.sampledAt,
+      })
+    })
+
+  relatedWorkorders.value
+    .filter(workorder => ACTIVE_WORKORDER_STATUSES.has(workorder.status))
+    .forEach((workorder) => {
+      const level: PipeFaultLevel = workorder.priority === 'urgent' || workorder.priority === 'high' || workorder.type === 'maintenance'
+        ? 'critical'
+        : 'warning'
+      items.push({
+        id: `workorder:${workorder.id}`,
+        level,
+        source: 'workorder',
+        title: `${workorder.title || workorder.id}`,
+        description: `关联${workorder.type === 'maintenance' ? '维修' : workorder.type === 'inspection' ? '巡检' : workorder.type === 'retrofit' ? '改造' : '报废'}工单进行中`,
+        timestamp: workorder.updatedAt,
+      })
+    })
+
+  auditLogs.value.forEach((log) => {
+    const actionText = String(log.action || '')
+    const lowered = actionText.toLowerCase()
+    let level: PipeFaultLevel = 'normal'
+    if (lowered.includes('critical') || actionText.includes('异常') || actionText.includes('告警')) {
+      level = 'critical'
+    } else if (lowered.includes('warning') || actionText.includes('预警')) {
+      level = 'warning'
+    }
+    if (level === 'normal') return
+    items.push({
+      id: `audit:${log.id}`,
+      level,
+      source: 'audit',
+      title: actionText || '异常状态变更',
+      description: `由 ${log.changedBy || 'system'} 记录`,
+      timestamp: log.changedAt,
+    })
+  })
+
+  return items
+    .filter(item => item.level !== 'normal')
+    .sort((a, b) => parseTimestamp(b.timestamp) - parseTimestamp(a.timestamp))
+    .slice(0, 12)
 })
 
 const isDraftPipe = computed(() => {
@@ -452,6 +635,11 @@ function requestDialogClose() {
 
 function openAiAssistant() {
   aiAssistantOpen.value = true
+}
+
+function openSelectedPipe25DPreview() {
+  if (!selectedPipe25DPreview.value) return
+  pipe25dPreviewOpen.value = true
 }
 
 function firstString(value: unknown) {
@@ -690,6 +878,14 @@ const {
   saving,
   actionMessage,
   emitSaved: (id) => emit('saved', id),
+})
+
+const { selectedPipe25DPreview } = useSelectedPipe25DPreview({
+  selectedFeature,
+  drilldown,
+  buildings,
+  telemetryList,
+  relatedWorkorders,
 })
 
 function hasMeaningfulGraphValue(value: unknown): boolean {
@@ -2378,6 +2574,7 @@ watch(selectedFeature, () => {
   workorderPromptVisible.value = false
   workorderPromptSubmitting.value = false
   quickReportVisible.value = false
+  pipe25dPreviewOpen.value = false
   pendingQuickReportLocation.value = null
   assetBindingModalOpen.value = false
   assetBindingSaving.value = false

@@ -49,15 +49,42 @@ const PIPE_STYLES: PipeStyles = {
 
 const PIPE_DISTANCE_DISPLAY_CONDITION = new Cesium.DistanceDisplayCondition(0, 9000)
 
-function stylePipeEntity(entity: Cesium.Entity, pipeLayer: PipeLayerName) {
-  const pipeStyle = PIPE_STYLES[pipeLayer]
+function normalizePipeFaultLevel(value: unknown): 'normal' | 'warning' | 'critical' {
+  const raw = String(value || '').trim().toLowerCase()
+  if (raw === 'critical') return 'critical'
+  if (raw === 'warning') return 'warning'
+  return 'normal'
+}
+
+function resolvePipeStrokeColor(pipeLayer: PipeLayerName, status: unknown) {
+  const level = normalizePipeFaultLevel(status)
+  if (level === 'critical') return Cesium.Color.fromCssColorString('#ef4444')
+  if (level === 'warning') return Cesium.Color.fromCssColorString('#f59e0b')
+  return PIPE_STYLES[pipeLayer].glowStroke
+}
+
+function stylePipeEntity(entity: Cesium.Entity, pipeLayer: PipeLayerName, status: unknown) {
+  const level = normalizePipeFaultLevel(status)
+  const strokeColor = resolvePipeStrokeColor(pipeLayer, status)
   if (entity.polyline) {
-    entity.polyline.material = new Cesium.PolylineGlowMaterialProperty({
-      color: pipeStyle.glowStroke,
-      glowPower: 0.4,
-      taperPower: 1,
-    })
-    entity.polyline.width = new Cesium.ConstantProperty(pipeStyle.glowWidth)
+    if (level === 'critical' || level === 'warning') {
+      const outlineColor = level === 'critical'
+        ? Cesium.Color.fromCssColorString('#7f1d1d').withAlpha(0.95)
+        : Cesium.Color.fromCssColorString('#78350f').withAlpha(0.95)
+      entity.polyline.material = new Cesium.PolylineOutlineMaterialProperty({
+        color: strokeColor.withAlpha(0.98),
+        outlineColor,
+        outlineWidth: 1.8,
+      })
+      entity.polyline.width = new Cesium.ConstantProperty(PIPE_STYLES[pipeLayer].glowWidth)
+    } else {
+      entity.polyline.material = new Cesium.PolylineGlowMaterialProperty({
+        color: strokeColor,
+        glowPower: 0.4,
+        taperPower: 1,
+      })
+      entity.polyline.width = new Cesium.ConstantProperty(PIPE_STYLES[pipeLayer].glowWidth)
+    }
     entity.polyline.clampToGround = new Cesium.ConstantProperty(true)
     entity.polyline.distanceDisplayCondition = new Cesium.ConstantProperty(
       PIPE_DISTANCE_DISPLAY_CONDITION
@@ -65,10 +92,12 @@ function stylePipeEntity(entity: Cesium.Entity, pipeLayer: PipeLayerName) {
   }
 
   if (entity.polygon) {
-    entity.polygon.material = new Cesium.ColorMaterialProperty(pipeStyle.glowStroke.withAlpha(0.15))
+    entity.polygon.material = new Cesium.ColorMaterialProperty(
+      strokeColor.withAlpha(level === 'normal' ? 0.15 : 0.24),
+    )
     entity.polygon.outline = new Cesium.ConstantProperty(true)
-    entity.polygon.outlineColor = new Cesium.ConstantProperty(pipeStyle.glowStroke.withAlpha(0.8))
-    entity.polygon.outlineWidth = new Cesium.ConstantProperty(1)
+    entity.polygon.outlineColor = new Cesium.ConstantProperty(strokeColor.withAlpha(0.8))
+    entity.polygon.outlineWidth = new Cesium.ConstantProperty(level === 'normal' ? 1 : 2)
     entity.polygon.distanceDisplayCondition = new Cesium.ConstantProperty(
       PIPE_DISTANCE_DISPLAY_CONDITION
     )
@@ -216,7 +245,7 @@ export function usePipeLayerLoader(options: UsePipeLayerLoaderOptions) {
             pipeType: pipeLayer,
           })
 
-          stylePipeEntity(entity, pipeLayer)
+          stylePipeEntity(entity, pipeLayer, rawProps.status)
           options.dataSources[pipeLayer].entities.add(entity)
         }
 
